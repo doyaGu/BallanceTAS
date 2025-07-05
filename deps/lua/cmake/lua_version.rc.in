@@ -1,0 +1,80 @@
+// lua_version.rc.in - Windows DLL Resource Template
+// Version and copyright information configured by CMake from lua.h
+
+#include <winres.h>
+
+// Version information configured by CMake
+#define LUA_VERSION_MAJOR_NUM @PROJECT_VERSION_MAJOR@
+#define LUA_VERSION_MINOR_NUM @PROJECT_VERSION_MINOR@
+#define LUA_VERSION_PATCH_NUM @PROJECT_VERSION_PATCH@
+#define LUA_VERSION_BUILD_NUM 0
+
+// File version (4 numbers: major.minor.patch.build)
+#define LUA_FILE_VERSION LUA_VERSION_MAJOR_NUM,LUA_VERSION_MINOR_NUM,LUA_VERSION_PATCH_NUM,LUA_VERSION_BUILD_NUM
+#define LUA_FILE_VERSION_STR "@PROJECT_VERSION@.0"
+
+// Product version (same as file version)
+#define LUA_PRODUCT_VERSION LUA_FILE_VERSION
+#define LUA_PRODUCT_VERSION_STR LUA_FILE_VERSION_STR
+
+// Information extracted from lua.h by CMake
+#define LUA_COMPANY_NAME "Lua.org, PUC-Rio"
+#define LUA_FULL_COPYRIGHT "@LUA_COPYRIGHT_FROM_HEADER@"
+#define LUA_AUTHORS_INFO "@LUA_AUTHORS_FROM_HEADER@"
+#define LUA_RELEASE_INFO "@LUA_RELEASE_FROM_HEADER@"
+
+// File descriptions
+#define LUA_FILE_DESCRIPTION "Lua Programming Language Runtime Library"
+#define LUA_INTERNAL_NAME "lua"
+#define LUA_ORIGINAL_FILENAME "lua.dll"
+#define LUA_PRODUCT_NAME "Lua Programming Language"
+
+// Build information configured by CMake
+#define LUA_BUILD_INFO "Built with CMake on @CMAKE_SYSTEM_NAME@"
+#define LUA_COMPILER_INFO "@CMAKE_C_COMPILER_ID@ @CMAKE_C_COMPILER_VERSION@"
+
+// Static information
+#define LUA_LICENSE_INFO "MIT License"
+#define LUA_WEBSITE "https://www.lua.org"
+
+// Version Info Resource
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     LUA_FILE_VERSION
+PRODUCTVERSION  LUA_PRODUCT_VERSION
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+FILEFLAGS       VS_FF_DEBUG
+#else
+FILEFLAGS       0x0L
+#endif
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_DLL
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"  // English (US), Unicode
+        BEGIN
+            VALUE "CompanyName",      LUA_COMPANY_NAME
+            VALUE "FileDescription",  LUA_FILE_DESCRIPTION
+            VALUE "FileVersion",      LUA_FILE_VERSION_STR
+            VALUE "InternalName",     LUA_INTERNAL_NAME
+            VALUE "LegalCopyright",   LUA_FULL_COPYRIGHT
+            VALUE "OriginalFilename", LUA_ORIGINAL_FILENAME
+            VALUE "ProductName",      LUA_PRODUCT_NAME
+            VALUE "ProductVersion",   LUA_PRODUCT_VERSION_STR
+            VALUE "Comments",         "Official Lua runtime library"
+            VALUE "LegalTrademarks",  "Lua is a trademark of PUC-Rio"
+            VALUE "Authors",          LUA_AUTHORS_INFO
+            VALUE "BuildInfo",        LUA_BUILD_INFO
+            VALUE "CompilerInfo",     LUA_COMPILER_INFO
+            VALUE "Website",          LUA_WEBSITE
+            VALUE "License",          LUA_LICENSE_INFO
+            VALUE "LuaRelease",       LUA_RELEASE_INFO
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200  // English (US), Unicode
+    END
+END

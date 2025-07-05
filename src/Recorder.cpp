@@ -1,0 +1,175 @@
+#include "Recorder.h"
+
+#include <algorithm>
+
+#include "TASEngine.h"
+#include "BallanceTAS.h"
+#include "GameInterface.h"
+
+Recorder::Recorder(TASEngine *engine)
+    : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {
+    if (!m_Engine || !m_Mod || !m_BML) {
+        throw std::runtime_error("Recorder requires valid TASEngine, BallanceTAS, and IBML instances.");
+    }
+
+    // Reserve space for better performance
+    m_Frames.reserve(10000);
+    m_PendingEvents.reserve(100);
+}
+
+void Recorder::Start() {
+    if (m_IsRecording) {
+        m_Mod->GetLogger()->Warn("Recorder is already recording. Stopping previous session.");
+        Stop();
+    }
+
+    // Clear previous data
+    m_Frames.clear();
+    m_PendingEvents.clear();
+    m_CurrentTick = 0;
+    m_WarnedMaxFrames = false;
+
+    // Get starting frame from game interface
+    if (auto *gameInterface = m_Engine->GetGameInterface()) {
+        m_CurrentTick = gameInterface->GetCurrentTick();
+    }
+
+    m_IsRecording = true;
+    NotifyStatusChange(true);
+
+    m_Mod->GetLogger()->Info("Recording started at frame %d", m_CurrentTick);
+}
+
+std::vector<RawFrameData> Recorder::Stop() {
+    if (!m_IsRecording) {
+        m_Mod->GetLogger()->Warn("Recorder is not currently recording.");
+        return {};
+    }
+
+    m_IsRecording = false;
+    NotifyStatusChange(false);
+
+    // Process any remaining pending events
+    if (!m_PendingEvents.empty() && !m_Frames.empty()) {
+        // Assign pending events to the last frame
+        m_Frames.back().events.insert(
+            m_Frames.back().events.end(),
+            m_PendingEvents.begin(),
+            m_PendingEvents.end()
+        );
+        m_PendingEvents.clear();
+    }
+
+    m_Mod->GetLogger()->Info("Recording stopped. Captured %zu frames over %d ticks.",
+                             m_Frames.size(), m_CurrentTick);
+
+    // Return a copy of the recorded frames
+    return m_Frames;
+}
+
+void Recorder::Tick() {
+    if (!m_IsRecording) {
+        return;
+    }
+
+    // Check frame limit
+    if (m_Frames.size() >= m_MaxFrames) {
+        if (!m_WarnedMaxFrames) {
+            m_Mod->GetLogger()->Warn("Recording reached maximum frame limit (%zu). Recording will stop.", m_MaxFrames);
+            m_WarnedMaxFrames = true;
+            Stop();
+        }
+        return;
+    }
+
+    try {
+        RawFrameData frame;
+        frame.frameIndex = m_CurrentTick;
+        frame.inputState = CaptureRealInput();
+
+        // Capture physics data for validation
+        CapturePhysicsData(frame);
+
+        // Assign any events that were fired since the last tick to this frame
+        frame.events = std::move(m_PendingEvents);
+        m_PendingEvents.clear();
+
+        m_Frames.push_back(std::move(frame));
+        m_CurrentTick++;
+    } catch (const std::exception &e) {
+        m_Mod->GetLogger()->Error("Error during recording tick: %s", e.what());
+        Stop(); // Stop recording on error to prevent corruption
+    }
+}
+
+void Recorder::OnGameEvent(const std::string &eventName, int eventData) {
+    if (!m_IsRecording) {
+        return;
+    }
+
+    try {
+        // Store event in pending list - it will be associated with the next frame
+        m_PendingEvents.emplace_back(eventName, eventData);
+
+        m_Mod->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
+                                 eventName.c_str(), eventData, m_CurrentTick);
+    } catch (const std::exception &e) {
+        m_Mod->GetLogger()->Error("Error recording game event: %s", e.what());
+    }
+}
+
+RawInputState Recorder::CaptureRealInput() const {
+    auto *inputManager = m_BML->GetInputManager();
+    if (!inputManager) {
+        return {};
+    }
+
+    // CRITICAL: Use 'oIsKeyDown' functions to get the original,
+    // un-synthesized keyboard state representing actual player input
+    RawInputState state;
+
+    try {
+        state.keyUp = inputManager->oIsKeyDown(CKKEY_UP);
+        state.keyDown = inputManager->oIsKeyDown(CKKEY_DOWN);
+        state.keyLeft = inputManager->oIsKeyDown(CKKEY_LEFT);
+        state.keyRight = inputManager->oIsKeyDown(CKKEY_RIGHT);
+        state.keyShift = inputManager->oIsKeyDown(CKKEY_LSHIFT) || inputManager->oIsKeyDown(CKKEY_RSHIFT);
+        state.keySpace = inputManager->oIsKeyDown(CKKEY_SPACE);
+        state.keyQ = inputManager->oIsKeyDown(CKKEY_Q);
+        state.keyEsc = inputManager->oIsKeyDown(CKKEY_ESCAPE);
+    } catch (const std::exception &e) {
+        m_Mod->GetLogger()->Error("Error capturing input state: %s", e.what());
+        return {}; // Return empty state on error
+    }
+
+    return state;
+}
+
+void Recorder::CapturePhysicsData(RawFrameData &frameData) const {
+    try {
+        auto *gameInterface = m_Engine->GetGameInterface();
+        if (!gameInterface) return;
+
+        // Get ball velocity for validation/debugging
+        auto *ball = gameInterface->GetBall();
+        if (ball) {
+            VxVector velocity = gameInterface->GetVelocity(ball);
+            frameData.ballSpeed = velocity.Magnitude();
+            frameData.isOnGround = gameInterface->IsOnGround();
+        }
+    } catch (const std::exception &e) {
+        // Don't log physics capture errors as they're non-critical
+        frameData.ballSpeed = 0.0f;
+        frameData.isOnGround = false;
+    }
+}
+
+void Recorder::NotifyStatusChange(bool isRecording) {
+    if (m_StatusCallback) {
+        try {
+            m_StatusCallback(isRecording);
+        } catch (const std::exception &e) {
+            m_Mod->GetLogger()->Error("Error in recording status callback: %s", e.what());
+        }
+    }
+}

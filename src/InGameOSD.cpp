@@ -215,13 +215,13 @@ void InGameOSD::DrawVelocityPanel() {
     }
 
     // Current velocity info
-    ImGui::Text("Speed: %.2f", m_PhysicsData.speed);
+    ImGui::Text("Speed: %.3f", m_PhysicsData.speed);
 
-    ImGui::TextColored(GetVelocityColor(m_PhysicsData.velocity.x), "X:%.1f", m_PhysicsData.velocity.x);
+    ImGui::TextColored(GetVelocityColor(m_PhysicsData.velocity.x), "X:%.3f", m_PhysicsData.velocity.x);
     ImGui::SameLine();
-    ImGui::TextColored(GetVelocityColor(m_PhysicsData.velocity.y), "Y:%.1f", m_PhysicsData.velocity.y);
+    ImGui::TextColored(GetVelocityColor(m_PhysicsData.velocity.y), "Y:%.3f", m_PhysicsData.velocity.y);
     ImGui::SameLine();
-    ImGui::TextColored(GetVelocityColor(m_PhysicsData.velocity.z), "Z:%.1f", m_PhysicsData.velocity.z);
+    ImGui::TextColored(GetVelocityColor(m_PhysicsData.velocity.z), "Z:%.3f", m_PhysicsData.velocity.z);
 
     DrawVelocityGraphs();
 }
@@ -233,7 +233,8 @@ void InGameOSD::DrawPositionPanel() {
     }
 
     // Current position
-    ImGui::Text("Pos: %s", FormatVector(m_PhysicsData.position).c_str());
+    const auto &pos = m_PhysicsData.position;
+    ImGui::Text("Pos: (%.3f, %.3f, %.3f)", pos.x, pos.y, pos.z);
 
     if (!m_PhysicsHistory.positionX.empty()) {
         DrawPositionTrajectory();
@@ -249,7 +250,7 @@ void InGameOSD::DrawPhysicsPanel() {
     ImGui::TextColored(ImVec4(0.9f, 0.8f, 1.0f, 1.0f), "Physics State:");
 
     // Angular velocity
-    ImGui::Text("Angular: %.2f", m_PhysicsData.angularSpeed);
+    ImGui::Text("Angular: %.3f", m_PhysicsData.angularSpeed);
     ImGui::SameLine();
     ImGui::Text("Mass: %.2f", m_PhysicsData.mass);
 
@@ -567,22 +568,6 @@ PhysicsObject *InGameOSD::GetBallPhysicsObject() {
     }
 
     return nullptr;
-}
-
-std::string InGameOSD::FormatVector(const VxVector &vec, int precision) {
-    char buffer[128];
-    const char *format = (precision == 1) ? "(%.1f, %.1f, %.1f)" : "(%.2f, %.2f, %.2f)";
-    snprintf(buffer, sizeof(buffer), format, vec.x, vec.y, vec.z);
-    return std::string(buffer);
-}
-
-std::string InGameOSD::FormatTime(float seconds) {
-    int minutes = static_cast<int>(seconds) / 60;
-    float remainingSeconds = seconds - (minutes * 60);
-
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "%d:%05.2f", minutes, remainingSeconds);
-    return std::string(buffer);
 }
 
 ImVec4 InGameOSD::GetVelocityColor(float velocity, float maxVel) {

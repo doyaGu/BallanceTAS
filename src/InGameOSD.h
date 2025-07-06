@@ -172,8 +172,6 @@ private:
 
     // --- Utility Methods ---
     PhysicsObject *GetBallPhysicsObject();
-    std::string FormatVector(const VxVector &vec, int precision = 2);
-    std::string FormatTime(float seconds);
     ImVec4 GetVelocityColor(float velocity, float maxVel = 20.0f);
     float DrawKeyButton(ImDrawList *drawList, const ImVec2 &pos, float padding, float minHeight, bool pressed, const char *label);
 

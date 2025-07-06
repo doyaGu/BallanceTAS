@@ -1,10 +1,10 @@
 #include "LuaScheduler.h"
+
 #include "TASEngine.h"
 #include "BallanceTAS.h"
 
 LuaScheduler::LuaScheduler(TASEngine *engine)
-    : m_Engine(engine), m_CurrentThread(nullptr) {
-}
+    : m_Engine(engine), m_CurrentThread(nullptr) {}
 
 sol::state &LuaScheduler::GetLuaState() const {
     return m_Engine->GetLuaState();

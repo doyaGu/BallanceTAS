@@ -6,7 +6,6 @@
 #include "TASEngine.h"
 #include "GameInterface.h"
 #include "BallanceTAS.h"
-#include "InputSystem.h"
 #include "UIManager.h"
 
 size_t PhysicsHistory::s_MaxHistory = 300; // 5 seconds at 60fps

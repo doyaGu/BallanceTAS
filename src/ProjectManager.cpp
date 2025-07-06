@@ -1,6 +1,6 @@
 #include "ProjectManager.h"
 
-#include <filesystem> // Requires C++17
+#include <filesystem>
 
 #include "BallanceTAS.h"
 

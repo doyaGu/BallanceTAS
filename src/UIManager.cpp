@@ -1,11 +1,13 @@
 #include "UIManager.h"
 
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+
+#include "TASEngine.h"
 #include "BallanceTAS.h"
 #include "TASMenu.h"
 #include "InGameOSD.h"
-#include "TASEngine.h"
-
-#include <imgui.h>
 
 UIManager::UIManager(TASEngine *engine)
     : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {}

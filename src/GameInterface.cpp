@@ -1,9 +1,5 @@
 #include "GameInterface.h"
 
-#include <CK3dEntity.h>
-#include <CKParameter.h>
-#include <CKContext.h>
-
 #include "physics_RT.h"
 #include "BallanceTAS.h"
 

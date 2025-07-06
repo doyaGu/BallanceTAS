@@ -1,7 +1,5 @@
 #include "TASMenu.h"
 
-#include "BML/InputHook.h"
-
 #include "BallanceTAS.h"
 #include "GameInterface.h"
 #include "TASEngine.h"

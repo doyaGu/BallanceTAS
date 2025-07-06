@@ -10,13 +10,8 @@
 #include "EventManager.h"
 #include "GameInterface.h"
 #include "DevTools.h"
-#include "ProjectManager.h" // For manifest access
-#include "TASProject.h" // For manifest access
-
-// Include game-specific headers for data types
-#include <VxVector.h>
-#include <VxQuaternion.h>
-#include <CK3dEntity.h>
+#include "ProjectManager.h"
+#include "TASProject.h"
 
 // Helper function to format strings with variadic arguments
 std::string FormatString(const std::string &fmt, sol::variadic_args va) {

@@ -1,15 +1,14 @@
 #include "BallanceTAS.h"
 
-#include "GameInterface.h"
-#include "TASEngine.h"
-#include "physics_RT.h"
-#include "UIManager.h"
-#include "TASHook.h"
-
 #include <BML/Bui.h>
 
+#include "physics_RT.h"
+#include "TASHook.h"
+#include "TASEngine.h"
 #include "InGameOSD.h"
 #include "Recorder.h"
+#include "GameInterface.h"
+#include "UIManager.h"
 
 // Global instance pointer required by BML
 BallanceTAS *g_Mod;

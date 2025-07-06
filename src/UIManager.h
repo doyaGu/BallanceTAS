@@ -175,12 +175,6 @@ public:
     // --- Configuration ---
 
     /**
-     * @brief Sets the hotkey for toggling the TAS menu.
-     * @param key The key code (default: CKKEY_F10).
-     */
-    void SetMenuHotkey(CKKEYBOARD key) { m_MenuHotkey = key; }
-
-    /**
      * @brief Sets the hotkey for toggling the OSD.
      * @param key The key code (default: CKKEY_F11).
      */
@@ -242,7 +236,6 @@ private:
     UIMode m_CurrentMode = UIMode::Idle;
 
     // --- Configuration ---
-    CKKEYBOARD m_MenuHotkey = CKKEY_F10;
     CKKEYBOARD m_OSDHotkey = CKKEY_F11;
     CKKEYBOARD m_RecordingHotkey = CKKEY_F3;
     CKKEYBOARD m_StatusPanelHotkey = CKKEY_F5;

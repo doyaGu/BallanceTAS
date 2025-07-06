@@ -4,14 +4,11 @@
 #include "TASMenu.h"
 #include "InGameOSD.h"
 #include "TASEngine.h"
-#include "ScriptGenerator.h"
 
 #include <imgui.h>
-#include <cstring>
 
 UIManager::UIManager(TASEngine *engine)
-    : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {
-}
+    : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {}
 
 UIManager::~UIManager() {
     Shutdown();
@@ -346,11 +343,6 @@ void UIManager::SetMode(UIMode mode) {
 
 void UIManager::UpdateHotkeys() {
     auto *inputManager = m_Mod->GetInputManager();
-
-    // Menu hotkey handling using IsKeyToggled (same pattern as existing code)
-    if (inputManager->IsKeyToggled(m_MenuHotkey)) {
-        ToggleTASMenu();
-    }
 
     // Recording hotkey handling
     if (inputManager->IsKeyToggled(m_RecordingHotkey)) {

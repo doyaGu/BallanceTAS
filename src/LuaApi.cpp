@@ -203,13 +203,6 @@ void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
         scheduler->YieldUntil(predicate);
     });
 
-    // tas.end_script(message_string)
-    tas["end_script"] = [engine, mod](const sol::optional<std::string> &message) {
-        std::string msg = message.value_or("Script ended by tas.end_script()");
-        mod->GetLogger()->Info("[TAS] %s", msg.c_str());
-        engine->UnloadTAS();
-    };
-
     // tas.get_tick()
     tas["get_tick"] = [engine]() -> int {
         try {

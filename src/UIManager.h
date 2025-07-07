@@ -1,9 +1,8 @@
 #pragma once
 
-#include <BML/Bui.h>
-
 #include <memory>
-#include <string>
+
+#include <BML/Bui.h>
 
 // Forward declarations
 class BallanceTAS;
@@ -21,7 +20,7 @@ enum class UIMode {
     Idle      = 0,
     Playing   = 1,
     Paused    = 2,
-    Recording = 3 // New recording mode
+    Recording = 3
 };
 
 /**
@@ -31,7 +30,7 @@ enum class UIMode {
  * This class provides a centralized system for managing TAS-related UI components,
  * handling their lifecycle, state synchronization, and rendering coordination.
  * It serves as the main interface between the TAS engine and the visual components.
- * UIManager is owned by BallanceTAS and receives a TASEngine reference for data access.
+ * UIManager delegates recording and replay control to TASEngine for consistency.
  */
 class UIManager {
 public:
@@ -97,11 +96,10 @@ public:
     bool StartRecording();
 
     /**
-     * @brief Stops recording and prompts for script generation.
-     * @param projectName Optional project name (will prompt if empty).
+     * @brief Stops recording (auto-generates script).
      * @return True if recording was stopped.
      */
-    bool StopRecording(const std::string &projectName = "");
+    bool StopRecording();
 
     /**
      * @brief Toggles recording state.
@@ -110,9 +108,34 @@ public:
 
     /**
      * @brief Checks if currently recording.
-     * @return True if recording is active.
+     * @return True if recording is active or pending.
      */
     bool IsRecording() const;
+
+    // --- Replay Control ---
+
+    /**
+     * @brief Starts replaying the current TAS project.
+     * @return True if replay started successfully.
+     */
+    bool StartReplay();
+
+    /**
+     * @brief Stops replay.
+     * @return True if replay was stopped.
+     */
+    bool StopReplay();
+
+    /**
+     * @brief Toggles replay state.
+     */
+    void ToggleReplay();
+
+    /**
+     * @brief Checks if currently replaying.
+     * @return True if replay is active or pending.
+     */
+    bool IsReplaying() const;
 
     // --- OSD Control ---
 
@@ -244,10 +267,4 @@ private:
     CKKEYBOARD m_PhysicsPanelHotkey = CKKEY_F8;
     CKKEYBOARD m_KeysPanelHotkey = CKKEY_F4;
     CKKEYBOARD m_TrajectoryPlaneHotkey = CKKEY_F9;
-
-    // --- Recording UI State ---
-    bool m_ShowRecordingPrompt = false;
-    char m_RecordingProjectName[256] = "Generated_TAS";
-    float m_RecordingPromptTimer = 0.0f;
-    static constexpr float RECORDING_PROMPT_TIMEOUT = 10.0f; // 10 seconds to respond
 };

@@ -28,6 +28,10 @@ public:
     explicit TASMenu(TASEngine *engine);
     ~TASMenu() override;
 
+    // TASMenu is not copyable or movable
+    TASMenu(const TASMenu &) = delete;
+    TASMenu &operator=(const TASMenu &) = delete;
+
     void Init();
     void Shutdown();
 
@@ -41,8 +45,12 @@ public:
 
     // Actions
     void PlayProject(TASProject *project);
+    void StopTAS();
     void StartRecording();
     void StopRecording();
+
+    // State queries
+    bool IsTASActive() const;
 
     TASEngine *GetEngine() const { return m_Engine; }
 
@@ -67,6 +75,7 @@ public:
 private:
     bool OnDrawEntry(size_t index, bool *v);
     void DrawMainButtons();
+    void DrawTASStatus();
 
     int m_Count = 0;
 };
@@ -98,27 +107,27 @@ public:
     void OnAfterBegin() override;
     void OnDraw() override;
 
-    void StartRecording();
-    void StopRecording();
-
 private:
     void DrawRecordingControls();
     void DrawGenerationOptions();
+    void DrawStartButton();
 
-    // Generation options
+    void StartRecording();
+    void StopRecording();
+
+    // Project configuration
     char m_ProjectName[256] = "My_Recording";
     char m_AuthorName[128] = "Player";
     char m_Description[512] = "Recorded TAS run";
     int m_TargetLevelIndex = 0;
+
+    // Generation options
     bool m_OptimizeShortWaits = true;
     bool m_AddFrameComments = true;
     bool m_AddPhysicsComments = false;
     bool m_GroupSimilarActions = true;
 
-    // UI state
-    bool m_ShowAdvancedOptions = false;
-
-    // Level selection
+    // Level selection constants
     static constexpr const char *LEVEL_OPTIONS[] = {
         "Level_01", "Level_02", "Level_03", "Level_04", "Level_05",
         "Level_06", "Level_07", "Level_08", "Level_09", "Level_10",

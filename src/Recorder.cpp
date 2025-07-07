@@ -1,10 +1,15 @@
 #include "Recorder.h"
 
 #include <algorithm>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 
 #include "TASEngine.h"
 #include "BallanceTAS.h"
 #include "GameInterface.h"
+#include "ProjectManager.h"
+#include "ScriptGenerator.h"
 
 Recorder::Recorder(TASEngine *engine)
     : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {
@@ -63,8 +68,86 @@ std::vector<RawFrameData> Recorder::Stop() {
     m_Mod->GetLogger()->Info("Recording stopped. Captured %zu frames over %d ticks.",
                              m_Frames.size(), m_CurrentTick);
 
+    // Auto-generate script if we have frames
+    if (!m_Frames.empty() && m_AutoGenerateOnStop) {
+        GenerateScript();
+    }
+
     // Return a copy of the recorded frames
     return m_Frames;
+}
+
+std::string Recorder::GenerateAutoProjectName() const {
+    auto now = std::chrono::system_clock::now();
+    auto time_t = std::chrono::system_clock::to_time_t(now);
+
+    std::stringstream ss;
+    ss << "TAS_" << std::put_time(std::localtime(&time_t), "%y%m%d_%H%M%S");
+
+    return ss.str();
+}
+
+bool Recorder::GenerateScript() {
+    if (m_Frames.empty()) {
+        m_Mod->GetLogger()->Warn("No frames recorded, cannot generate script.");
+        return false;
+    }
+
+    try {
+        // Get script generator from engine
+        auto *scriptGenerator = m_Engine->GetScriptGenerator();
+        if (!scriptGenerator) {
+            m_Mod->GetLogger()->Error("ScriptGenerator not available.");
+            return false;
+        }
+
+        // Generate auto project name
+        std::string projectName = GenerateAutoProjectName();
+
+        // Clean up the project name (replace invalid characters)
+        std::replace_if(projectName.begin(), projectName.end(),
+                        [](char c) {
+                            return c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' ||
+                                   c == '?' || c == '"' || c == '<' || c == '>' || c == '|';
+                        },
+                        '_');
+
+        m_Mod->GetLogger()->Info("Auto-generating TAS script: %s", projectName.c_str());
+
+        // Create generation options
+        GenerationOptions options;
+        options.projectName = projectName;
+        options.authorName = m_DefaultAuthor;
+        options.description = "Auto-recorded TAS run";
+
+        // Try to determine target level from game interface
+        if (auto *gameInterface = m_Engine->GetGameInterface()) {
+            std::string mapName = gameInterface->GetMapName();
+            if (!mapName.empty()) {
+                options.targetLevel = mapName;
+            }
+        }
+
+        // Generate the script
+        bool success = scriptGenerator->Generate(m_Frames, options);
+        if (!success) {
+            m_Mod->GetLogger()->Error("Failed to auto-generate script from recording.");
+            return false;
+        }
+
+        m_Mod->GetLogger()->Info("Recording auto-generated successfully: %s", projectName.c_str());
+
+        // Refresh projects in project manager
+        if (auto *projectManager = m_Engine->GetProjectManager()) {
+            projectManager->RefreshProjects();
+        }
+
+        return true;
+
+    } catch (const std::exception &e) {
+        m_Mod->GetLogger()->Error("Exception during script auto-generation: %s", e.what());
+        return false;
+    }
 }
 
 void Recorder::Tick() {

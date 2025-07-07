@@ -60,7 +60,7 @@ void BallanceTAS::OnLoad() {
     m_StopKey->SetDefaultKey(CKKEY_F3);
 
     m_RecordingKey = GetConfig()->GetProperty("Hotkeys", "RecordingKey");
-    m_RecordingKey->SetComment("Key to start/stop recording TAS input (default F3)");
+    m_RecordingKey->SetComment("Key to start/stop recording TAS input");
     m_RecordingKey->SetDefaultKey(CKKEY_F3);
 
     // --- Recording Configuration ---
@@ -71,10 +71,6 @@ void BallanceTAS::OnLoad() {
     m_RecordingMaxFrames = GetConfig()->GetProperty("Recording", "MaxFrames");
     m_RecordingMaxFrames->SetComment("Maximum frames to record (prevents memory issues)");
     m_RecordingMaxFrames->SetDefaultInteger(100000);
-
-    m_AutoGenerateScript = GetConfig()->GetProperty("Recording", "AutoGenerateScript");
-    m_AutoGenerateScript->SetComment("Automatically generate script when recording stops");
-    m_AutoGenerateScript->SetDefaultBoolean(false);
 
     // --- OSD Panel Configuration ---
     m_ShowOSDStatus = GetConfig()->GetProperty("OSD", "ShowStatusPanel");
@@ -175,7 +171,13 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
             m_UIManager->SetRecordingHotkey(m_RecordingKey->GetKey());
         }
     } else if (prop == m_RecordingMaxFrames && m_Initialized) {
-        m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
+        if (m_Engine && m_Engine->GetRecorder()) {
+            m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
+        }
+    } else if (prop == m_DefaultAuthor && m_Initialized) {
+        if (m_Engine && m_Engine->GetRecorder()) {
+            m_Engine->GetRecorder()->SetDefaultAuthor(m_DefaultAuthor->GetString());
+        }
     }
 
     // Forward relevant config changes to the engine and UI if they're running.
@@ -354,13 +356,19 @@ bool BallanceTAS::Initialize() {
         SetOSDVisible(m_ShowOSD->GetBoolean());
         UpdateOSDPanelConfig();
 
+        // Configure recording settings
+        if (auto *recorder = m_Engine->GetRecorder()) {
+            recorder->SetDefaultAuthor(m_DefaultAuthor->GetString());
+            recorder->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
+            recorder->SetAutoGenerate(true); // Always auto-generate
+        }
+
         // Configure recording hotkey
         if (m_UIManager) {
             m_UIManager->SetRecordingHotkey(m_RecordingKey->GetKey());
         }
 
         return true;
-
     } catch (const std::exception &e) {
         GetLogger()->Error("Exception during initialization: %s", e.what());
 
@@ -441,25 +449,18 @@ void BallanceTAS::OnMenuStart() {
 }
 
 void BallanceTAS::OnProcess() {
-    if (m_Initialized) {
+    if (m_Initialized && m_Engine && m_UIManager) {
         OnMenuStart();
 
         // Process and render UI
-        if (m_UIManager) {
-            m_UIManager->Process();
-            m_UIManager->Render();
-        }
+        m_UIManager->Process();
+        m_UIManager->Render();
 
         // Handle stop key for both playback and recording
-        if (m_Engine && (m_Engine->IsPlaying() || m_Engine->IsRecording())) {
-            if (m_InputManager->oIsKeyPressed(m_StopKey->GetKey())) {
-                if (m_Engine->IsRecording()) {
-                    // For recording, the stop key should trigger the UI manager's recording handler
-                    // which will show the generation prompt
-                    m_UIManager->StopRecording();
-                } else {
-                    m_Engine->Stop();
-                }
+        if (m_Engine->IsPlaying() || m_Engine->IsRecording()) {
+            if (m_InputManager && m_InputManager->oIsKeyPressed(m_StopKey->GetKey())) {
+                m_Engine->Stop();
+                GetLogger()->Info("TAS stopped via stop hotkey.");
             }
         }
     }
@@ -511,19 +512,19 @@ void BallanceTAS::UpdateOSDPanelConfig() {
 // --- Event Forwarding Implementations ---
 
 void BallanceTAS::OnPreStartMenu() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_start_menu");
     }
 }
 
 void BallanceTAS::OnPostStartMenu() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_start_menu");
     }
 }
 
 void BallanceTAS::OnExitGame() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("exit_game");
         m_Engine->Stop();
     }
@@ -532,185 +533,193 @@ void BallanceTAS::OnExitGame() {
 }
 
 void BallanceTAS::OnPreLoadLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->Start();
         m_Engine->OnGameEvent("pre_load_level");
     }
 }
 
 void BallanceTAS::OnPostLoadLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_load_level");
     }
 }
 
 void BallanceTAS::OnStartLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("start_level");
     }
 }
 
 void BallanceTAS::OnPreResetLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_reset_level");
         m_Engine->Stop();
     }
 }
 
 void BallanceTAS::OnPostResetLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_reset_level");
     }
 }
 
 void BallanceTAS::OnPauseLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pause_level");
     }
 }
 
 void BallanceTAS::OnUnpauseLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("unpause_level");
     }
 }
 
 void BallanceTAS::OnPreExitLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_exit_level");
         m_Engine->Stop();
     }
 }
 
 void BallanceTAS::OnPostExitLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_exit_level");
     }
 }
 
 void BallanceTAS::OnPreNextLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_next_level");
     }
 }
 
 void BallanceTAS::OnPostNextLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_next_level");
     }
 }
 
 void BallanceTAS::OnDead() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("ball_off");
     }
 }
 
 void BallanceTAS::OnPreEndLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_level_end");
     }
 }
 
 void BallanceTAS::OnPostEndLevel() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_level_end");
     }
 }
 
 void BallanceTAS::OnCounterActive() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("counter_active");
     }
 }
 
 void BallanceTAS::OnCounterInactive() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("counter_inactive");
     }
 }
 
 void BallanceTAS::OnBallNavActive() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("ball_nav_active");
     }
 }
 
 void BallanceTAS::OnBallNavInactive() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("ball_nav_inactive");
     }
 }
 
 void BallanceTAS::OnCamNavActive() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("cam_nav_active");
     }
 }
 
 void BallanceTAS::OnCamNavInactive() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("cam_nav_inactive");
     }
 }
 
 void BallanceTAS::OnBallOff() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("ball_off");
     }
 }
 
 void BallanceTAS::OnPreCheckpointReached() {
-    if (m_Initialized && m_Engine) {
-        m_Engine->OnGameEvent("pre_checkpoint_reached", m_Engine->GetGameInterface()->GetCurrentSector());
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
+        int sector = -1;
+        if (m_Engine->GetGameInterface()) {
+            sector = m_Engine->GetGameInterface()->GetCurrentSector();
+        }
+        m_Engine->OnGameEvent("pre_checkpoint_reached", sector);
     }
 }
 
 void BallanceTAS::OnPostCheckpointReached() {
-    if (m_Initialized && m_Engine) {
-        m_Engine->OnGameEvent("post_checkpoint_reached", m_Engine->GetGameInterface()->GetCurrentSector());
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
+        int sector = -1;
+        if (m_Engine->GetGameInterface()) {
+            sector = m_Engine->GetGameInterface()->GetCurrentSector();
+        }
+        m_Engine->OnGameEvent("post_checkpoint_reached", sector);
     }
 }
 
 void BallanceTAS::OnLevelFinish() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("level_finish");
         m_Engine->Stop();
     }
 }
 
 void BallanceTAS::OnGameOver() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("game_over");
     }
 }
 
 void BallanceTAS::OnExtraPoint() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("extra_point");
     }
 }
 
 void BallanceTAS::OnPreSubLife() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_sub_life");
     }
 }
 
 void BallanceTAS::OnPostSubLife() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_sub_life");
     }
 }
 
 void BallanceTAS::OnPreLifeUp() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("pre_life_up");
     }
 }
 
 void BallanceTAS::OnPostLifeUp() {
-    if (m_Initialized && m_Engine) {
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("post_life_up");
     }
 }

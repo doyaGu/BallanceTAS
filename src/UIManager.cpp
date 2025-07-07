@@ -1,16 +1,12 @@
 #include "UIManager.h"
 
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-
-#include "TASEngine.h"
 #include "BallanceTAS.h"
 #include "TASMenu.h"
 #include "InGameOSD.h"
+#include "TASEngine.h"
 
 UIManager::UIManager(TASEngine *engine)
-    : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {}
+    : m_Engine(engine), m_Mod(engine ? engine->GetMod() : nullptr), m_BML(m_Mod ? m_Mod->GetBML() : nullptr) {}
 
 UIManager::~UIManager() {
     Shutdown();
@@ -18,8 +14,17 @@ UIManager::~UIManager() {
 
 bool UIManager::Initialize() {
     if (m_Initialized) {
-        m_Mod->GetLogger()->Warn("UIManager already initialized.");
+        if (m_Mod && m_Mod->GetLogger()) {
+            m_Mod->GetLogger()->Warn("UIManager already initialized.");
+        }
         return true;
+    }
+
+    if (!m_Engine || !m_Mod || !m_BML) {
+        if (m_Mod && m_Mod->GetLogger()) {
+            m_Mod->GetLogger()->Error("UIManager missing required dependencies.");
+        }
+        return false;
     }
 
     m_Mod->GetLogger()->Info("Initializing UIManager...");
@@ -52,7 +57,9 @@ bool UIManager::Initialize() {
 void UIManager::Shutdown() {
     if (!m_Initialized) return;
 
-    m_Mod->GetLogger()->Info("Shutting down UIManager...");
+    if (m_Mod && m_Mod->GetLogger()) {
+        m_Mod->GetLogger()->Info("Shutting down UIManager...");
+    }
 
     // Shutdown components in reverse order
     if (m_InGameOSD) {
@@ -66,16 +73,19 @@ void UIManager::Shutdown() {
     }
 
     m_Initialized = false;
-    m_Mod->GetLogger()->Info("UIManager shutdown complete.");
+
+    if (m_Mod && m_Mod->GetLogger()) {
+        m_Mod->GetLogger()->Info("UIManager shutdown complete.");
+    }
 }
 
 void UIManager::Process() {
-    if (!m_Initialized) return;
+    if (!m_Initialized || !m_Engine || m_Engine->IsShuttingDown()) return;
 
     UpdateHotkeys();
 
     // Update OSD visibility based on game state
-    if (m_InGameOSD) {
+    if (m_InGameOSD && m_BML) {
         bool shouldShowOSD = m_BML->IsIngame() && m_OSDVisible;
         m_InGameOSD->SetVisibility(shouldShowOSD);
 
@@ -85,22 +95,13 @@ void UIManager::Process() {
     }
 
     // Close TAS menu if we're in game (similar to MapMenu behavior)
-    if (m_BML->IsIngame() && IsTASMenuOpen()) {
+    if (m_BML && m_BML->IsIngame() && IsTASMenuOpen()) {
         CloseTASMenu();
-    }
-
-    // Update recording prompt timer
-    if (m_ShowRecordingPrompt) {
-        m_RecordingPromptTimer += ImGui::GetIO().DeltaTime;
-        if (m_RecordingPromptTimer > RECORDING_PROMPT_TIMEOUT) {
-            m_ShowRecordingPrompt = false;
-            m_RecordingPromptTimer = 0.0f;
-        }
     }
 }
 
 void UIManager::Render() {
-    if (!m_Initialized) return;
+    if (!m_Initialized || !m_Engine || m_Engine->IsShuttingDown()) return;
 
     // Use Bui's ImGui context scope for proper rendering
     Bui::ImGuiContextScope scope;
@@ -114,83 +115,24 @@ void UIManager::Render() {
     if (m_InGameOSD) {
         m_InGameOSD->Render();
     }
-
-    // Render recording prompt overlay
-    if (m_ShowRecordingPrompt) {
-        ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
-                                ImGuiWindowFlags_NoBackground |
-                                ImGuiWindowFlags_NoMove |
-                                ImGuiWindowFlags_NoResize |
-                                ImGuiWindowFlags_AlwaysAutoResize |
-                                ImGuiWindowFlags_NoSavedSettings;
-
-        const ImVec2& vpSize = ImGui::GetMainViewport()->Size;
-        ImGui::SetNextWindowPos(ImVec2(vpSize.x * 0.5f, vpSize.y * 0.5f), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-
-        if (ImGui::Begin("Recording Prompt", nullptr, flags)) {
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.1f, 0.1f, 0.1f, 0.9f));
-            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.8f, 1.0f, 1.0f));
-
-            if (ImGui::BeginChild("PromptContent", ImVec2(vpSize.x * 0.4f, vpSize.y * 0.3f), true)) {
-                ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), "Recording Stopped!");
-                ImGui::Separator();
-
-                ImGui::Text("Generate TAS script?");
-                ImGui::Spacing();
-
-                ImGui::Text("Project Name:");
-                ImGui::SetNextItemWidth(300);
-                ImGui::InputText("##ProjectName", m_RecordingProjectName, sizeof(m_RecordingProjectName));
-
-                ImGui::Spacing();
-
-                float timeLeft = RECORDING_PROMPT_TIMEOUT - m_RecordingPromptTimer;
-                ImGui::Text("Time remaining: %.1fs", timeLeft);
-
-                ImGui::Spacing();
-
-                if (ImGui::Button("Generate Script", ImVec2(120, 0))) {
-                    std::string projectName = m_RecordingProjectName;
-                    if (projectName.empty()) {
-                        projectName = "Generated_TAS";
-                    }
-
-                    if (m_Engine->StopRecordingAndGenerate(projectName)) {
-                        m_Mod->GetLogger()->Info("Script generated: %s", projectName.c_str());
-                    }
-
-                    m_ShowRecordingPrompt = false;
-                    m_RecordingPromptTimer = 0.0f;
-                }
-
-                ImGui::SameLine();
-
-                if (ImGui::Button("Discard", ImVec2(120, 0))) {
-                    m_Engine->StopRecording();
-                    m_ShowRecordingPrompt = false;
-                    m_RecordingPromptTimer = 0.0f;
-                }
-            }
-            ImGui::EndChild();
-
-            ImGui::PopStyleColor(2);
-        }
-        ImGui::End();
-    }
 }
 
 void UIManager::OpenTASMenu() {
-    if (!m_TASMenu || m_BML->IsIngame()) return;
+    if (!m_TASMenu || !m_BML || m_BML->IsIngame()) return;
 
     m_TASMenu->Open("TAS Projects");
-    m_Mod->GetLogger()->Info("TAS Menu opened.");
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("TAS Menu opened.");
+    }
 }
 
 void UIManager::CloseTASMenu() {
     if (!m_TASMenu) return;
 
     m_TASMenu->Close();
-    m_Mod->GetLogger()->Info("TAS Menu closed.");
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("TAS Menu closed.");
+    }
 }
 
 void UIManager::ToggleTASMenu() {
@@ -216,51 +158,35 @@ bool UIManager::IsTASMenuOpen() const {
            (statusPage && statusPage->IsVisible());
 }
 
+// === Recording Control ===
+
 bool UIManager::StartRecording() {
     if (!m_Engine) return false;
 
-    if (m_Engine->IsPlaying()) {
-        m_Mod->GetLogger()->Warn("Cannot start recording while TAS is playing.");
-        return false;
+    bool success = m_Engine->StartRecording();
+    if (success && m_Mod) {
+        m_Mod->GetLogger()->Info("Recording started via UI.");
     }
-
-    if (m_Engine->IsRecording() || m_Engine->IsPendingRecord()) {
-        m_Mod->GetLogger()->Warn("Already recording or recording is pending.");
-        return false;
-    }
-
-    bool success = m_Engine->SetupRecording();
-    if (success) {
-        m_Mod->GetLogger()->Info("Recording setup complete. Load a level to begin recording.");
-    }
-
     return success;
 }
 
-bool UIManager::StopRecording(const std::string& projectName) {
-    if (!m_Engine || !m_Engine->IsRecording()) {
+bool UIManager::StopRecording() {
+    if (!m_Engine) return false;
+
+    if (!m_Engine->IsRecording() && !m_Engine->IsPendingRecord()) {
         return false;
     }
 
-    if (!projectName.empty()) {
-        // Generate script immediately with provided name
-        return m_Engine->StopRecordingAndGenerate(projectName);
-    } else {
-        // Show prompt for project name
-        m_ShowRecordingPrompt = true;
-        m_RecordingPromptTimer = 0.0f;
-        strcpy_s(m_RecordingProjectName, sizeof(m_RecordingProjectName), "Generated_TAS");
-        return true;
+    m_Engine->StopRecording();
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("Recording stopped via UI.");
     }
+    return true;
 }
 
 void UIManager::ToggleRecording() {
     if (IsRecording()) {
         StopRecording();
-    } else if (m_Engine && m_Engine->IsPendingRecord()) {
-        // Cancel pending recording
-        m_Engine->Stop();
-        m_Mod->GetLogger()->Info("Cancelled pending recording.");
     } else {
         StartRecording();
     }
@@ -270,16 +196,58 @@ bool UIManager::IsRecording() const {
     return m_Engine && (m_Engine->IsRecording() || m_Engine->IsPendingRecord());
 }
 
+// === Replay Control ===
+
+bool UIManager::StartReplay() {
+    if (!m_Engine) return false;
+
+    bool success = m_Engine->StartReplay();
+    if (success && m_Mod) {
+        m_Mod->GetLogger()->Info("Replay started via UI.");
+    }
+    return success;
+}
+
+bool UIManager::StopReplay() {
+    if (!m_Engine) return false;
+
+    if (!m_Engine->IsPlaying() && !m_Engine->IsPendingPlay()) {
+        return false;
+    }
+
+    m_Engine->StopReplay();
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("Replay stopped via UI.");
+    }
+    return true;
+}
+
+void UIManager::ToggleReplay() {
+    if (IsReplaying()) {
+        StopReplay();
+    } else {
+        StartReplay();
+    }
+}
+
+bool UIManager::IsReplaying() const {
+    return m_Engine && (m_Engine->IsPlaying() || m_Engine->IsPendingPlay());
+}
+
+// === OSD Control ===
+
 void UIManager::SetOSDVisible(bool visible) {
     m_OSDVisible = visible;
 
-    if (m_InGameOSD) {
+    if (m_InGameOSD && m_BML) {
         // Only actually show if we're in game
         bool shouldShow = visible && m_BML->IsIngame();
         m_InGameOSD->SetVisibility(shouldShow);
     }
 
-    m_Mod->GetLogger()->Info("OSD visibility set to %s", visible ? "visible" : "hidden");
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("OSD visibility set to %s", visible ? "visible" : "hidden");
+    }
 }
 
 void UIManager::ToggleOSD() {
@@ -315,7 +283,9 @@ void UIManager::ToggleOSDPanel(OSDPanel panel) {
     }
 
     bool isVisible = m_InGameOSD->IsPanelVisible(panel);
-    m_Mod->GetLogger()->Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
+    }
 }
 
 void UIManager::CycleTrajectoryPlane() {
@@ -340,11 +310,16 @@ void UIManager::SetMode(UIMode mode) {
         break;
     }
 
-    m_Mod->GetLogger()->Info("UI Mode changed to: %s", modeStr);
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("UI Mode changed to: %s", modeStr);
+    }
 }
 
 void UIManager::UpdateHotkeys() {
+    if (!m_Mod) return;
+
     auto *inputManager = m_Mod->GetInputManager();
+    if (!inputManager) return;
 
     // Recording hotkey handling
     if (inputManager->IsKeyToggled(m_RecordingHotkey)) {
@@ -357,7 +332,7 @@ void UIManager::UpdateHotkeys() {
     }
 
     // Panel-specific hotkeys (only when in-game and OSD is enabled)
-    if (m_BML->IsIngame() && m_OSDVisible) {
+    if (m_BML && m_BML->IsIngame() && m_OSDVisible) {
         if (inputManager->IsKeyToggled(m_StatusPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Status);
         }
@@ -387,14 +362,14 @@ void UIManager::UpdateHotkeys() {
 void UIManager::HandleRecordingHotkey() {
     if (!m_Engine) return;
 
-    if (m_Engine->IsRecording()) {
-        // Stop recording and show prompt
+    if (m_Engine->IsRecording() || m_Engine->IsPendingRecord()) {
+        // Stop recording
         StopRecording();
-    } else if (!m_Engine->IsPlaying()) {
-        // Start recording if not playing
-        StartRecording();
+    } else if (m_Engine->IsPlaying() || m_Engine->IsPendingPlay()) {
+        // Stop replay
+        StopReplay();
     } else {
-        // Cannot record while playing
-        m_Mod->GetLogger()->Warn("Cannot toggle recording while TAS is playing. Stop the TAS first.");
+        // Start recording
+        StartRecording();
     }
 }

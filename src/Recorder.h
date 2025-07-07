@@ -80,6 +80,9 @@ struct RawFrameData {
  * It captures the real (un-synthesized) player input and any significant game
  * events that occurred, storing them in a sequence of RawFrameData. This sequence
  * is later used by the ScriptGenerator to create a Lua script.
+ *
+ * The Recorder handles its own lifecycle and auto-generation, similar to how
+ * replay is handled by the TAS engine.
  */
 class Recorder {
 public:
@@ -97,6 +100,7 @@ public:
 
     /**
      * @brief Stops the current recording session and returns the captured data.
+     * If auto-generation is enabled, automatically generates a TAS script.
      * @return A vector of RawFrameData representing the entire recording.
      */
     std::vector<RawFrameData> Stop();
@@ -131,6 +135,32 @@ public:
      */
     size_t GetTotalFrames() const { return m_Frames.size(); }
 
+    // --- Configuration ---
+
+    /**
+     * @brief Sets whether to automatically generate a script when recording stops.
+     * @param autoGenerate True to auto-generate, false to just capture data.
+     */
+    void SetAutoGenerate(bool autoGenerate) { m_AutoGenerateOnStop = autoGenerate; }
+
+    /**
+     * @brief Gets the auto-generation setting.
+     * @return True if auto-generation is enabled.
+     */
+    bool GetAutoGenerate() const { return m_AutoGenerateOnStop; }
+
+    /**
+     * @brief Sets the default author name for generated scripts.
+     * @param author The default author name.
+     */
+    void SetDefaultAuthor(const std::string &author) { m_DefaultAuthor = author; }
+
+    /**
+     * @brief Gets the default author name.
+     * @return The default author name.
+     */
+    const std::string &GetDefaultAuthor() const { return m_DefaultAuthor; }
+
     /**
      * @brief Sets a callback to be called when recording starts/stops.
      * @param callback Function to call with recording state.
@@ -155,6 +185,18 @@ public:
     }
 
 private:
+    /**
+     * @brief Generates a TAS script from the current recorded frames.
+     * @return True if generation was successful.
+     */
+    bool GenerateScript();
+
+    /**
+     * @brief Generates an automatic project name with timestamp.
+     * @return A project name string with current date and time.
+     */
+    std::string GenerateAutoProjectName() const;
+
     /**
      * @brief Captures the current state of the physical keyboard.
      * This uses the original input methods to get unmodified player input.
@@ -182,6 +224,10 @@ private:
     // Recording state
     bool m_IsRecording = false;
     uint32_t m_CurrentTick = 0;
+
+    // Configuration
+    bool m_AutoGenerateOnStop = true;  // Auto-generate by default
+    std::string m_DefaultAuthor = "Player";
     float m_DeltaTime = 1 / 132.0f * 1000;
 
     // Recorded data

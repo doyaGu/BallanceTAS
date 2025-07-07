@@ -181,7 +181,6 @@ private:
     void OnMenuStart();
 
     // The single, top-level instance of the TAS framework's core engine.
-    // std::unique_ptr ensures proper RAII and lifetime management.
     std::unique_ptr<TASEngine> m_Engine;
 
     // UI Manager for all TAS-related user interface components.
@@ -203,7 +202,7 @@ private:
     IProperty *m_EnableDeveloperMode = nullptr;
     IProperty *m_ShowOSD = nullptr;
     IProperty *m_StopKey = nullptr;
-    IProperty *m_RecordingKey = nullptr;  // New recording hotkey
+    IProperty *m_RecordingKey = nullptr;
 
     IProperty *m_ShowOSDStatus = nullptr;
     IProperty *m_ShowOSDVelocity = nullptr;
@@ -218,5 +217,4 @@ private:
     // --- Recording Configuration ---
     IProperty *m_DefaultAuthor = nullptr;
     IProperty *m_RecordingMaxFrames = nullptr;
-    IProperty *m_AutoGenerateScript = nullptr;
 };

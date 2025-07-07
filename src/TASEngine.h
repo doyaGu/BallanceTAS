@@ -1,8 +1,10 @@
 #pragma once
 
-#include <sol/sol.hpp>
 #include <memory>
 #include <string>
+#include <atomic>
+
+#include <sol/sol.hpp>
 
 class TASProject;
 // Forward declarations of our subsystems and managers
@@ -23,8 +25,8 @@ typedef enum TASState {
     TAS_IDLE           = 0,
     TAS_PLAYING        = 0x1,
     TAS_PLAY_PENDING   = 0x2,
-    TAS_RECORDING      = 0x4, // New recording state
-    TAS_RECORD_PENDING = 0x8, // Recording will start when level loads
+    TAS_RECORDING      = 0x4,
+    TAS_RECORD_PENDING = 0x8,
 } TASState;
 
 /**
@@ -33,7 +35,7 @@ typedef enum TASState {
  *
  * TASEngine owns and manages the lifecycle of all core TAS subsystems. It holds the main
  * Lua VM instance and orchestrates the flow of data and control between the game,
- * the hooks, and the Lua scripts. It now also handles recording and script generation.
+ * the hooks, and the Lua scripts.
  */
 class TASEngine {
 public:
@@ -50,6 +52,7 @@ public:
     bool IsRecording() const { return (m_State & TAS_RECORDING) != 0; }
     bool IsPendingRecord() const { return (m_State & TAS_RECORD_PENDING) != 0; }
     bool IsIdle() const { return m_State == TAS_IDLE; }
+    bool IsShuttingDown() const { return m_ShuttingDown; }
 
     /**
      * @brief Initializes all subsystems.
@@ -82,8 +85,111 @@ public:
     template <typename... Args>
     void OnGameEvent(const std::string &eventName, Args... args);
 
-    // --- High-Level Control ---
+    // === Recording Control ===
 
+    /**
+     * @brief Sets up recording to start when next level loads.
+     * @return True if recording mode was set successfully.
+     */
+    bool StartRecording();
+
+    /**
+     * @brief Stops recording (will auto-generate script if configured).
+     */
+    void StopRecording();
+
+    /**
+     * @brief Gets the current recording frame count.
+     * @return Number of frames recorded, or 0 if not recording.
+     */
+    size_t GetRecordingFrameCount() const;
+
+    // === Replay Control ===
+
+    /**
+     * @brief Sets up replay to start when next level loads.
+     * @return True if replay mode was set successfully.
+     */
+    bool StartReplay();
+
+    /**
+     * @brief Stops replay.
+     */
+    void StopReplay();
+
+    // --- State & Configuration Setters ---
+
+    void SetDeveloperMode(bool enabled);
+
+    // --- Subsystem Accessors ---
+    // These are used by other parts of the framework (e.g., LuaApi) to get handles
+    // to the necessary systems.
+
+    BallanceTAS *GetMod() const { return m_Mod; }
+    sol::state &GetLuaState() { return m_LuaState; }
+    const sol::state &GetLuaState() const { return m_LuaState; }
+
+    ProjectManager *GetProjectManager() const { return m_ProjectManager.get(); }
+    LuaScheduler *GetScheduler() const { return m_Scheduler.get(); }
+    InputSystem *GetInputSystem() const { return m_InputSystem.get(); }
+    GameInterface *GetGameInterface() const { return m_GameInterface.get(); }
+    DevTools *GetDevTools() const { return m_DevTools.get(); }
+    EventManager *GetEventManager() const { return m_EventManager.get(); }
+
+    // Recording subsystem accessors
+    Recorder *GetRecorder() const { return m_Recorder.get(); }
+    ScriptGenerator *GetScriptGenerator() const { return m_ScriptGenerator.get(); }
+
+private:
+    /**
+     * @brief Internal method to start recording when level loads.
+     */
+    void StartRecordingInternal();
+
+    /**
+     * @brief Internal method to start replay when level loads.
+     */
+    void StartReplayInternal();
+
+    /**
+     * @brief Immediately stops recording without timers (for shutdown).
+     */
+    void StopRecordingImmediate();
+
+    /**
+     * @brief Immediately stops replay without timers (for shutdown).
+     */
+    void StopReplayImmediate();
+
+    /**
+     * @brief Clears all registered callbacks to prevent duplicates.
+     * Called before registering new callbacks in Start().
+     */
+    void ClearCallbacks();
+
+    /**
+     * @brief Sets up callbacks for recording mode.
+     */
+    void SetupRecordingCallbacks();
+
+    /**
+     * @brief Sets up callbacks for playback mode.
+     */
+    void SetupPlaybackCallbacks();
+
+    /**
+     * @brief Loads a TAS project and prepares it for execution.
+     * @param project The TAS project to load, containing metadata and scripts.
+     * @return True if the project was loaded successfully, false otherwise.
+     */
+    bool LoadTAS(const TASProject *project);
+
+    /**
+     * @brief Unloads the currently active TAS, stopping execution and cleaning up.
+     */
+    void UnloadTAS();
+
+    // State setters (used internally and by callbacks)
     void SetPlayPending(bool pending) {
         if (pending) {
             m_State |= TAS_PLAY_PENDING;
@@ -120,96 +226,6 @@ public:
         }
     }
 
-    /**
-     * @brief Loads a TAS project and prepares it for execution.
-     * @param project The TAS project to load, containing metadata and scripts.
-     * @return True if the project was loaded successfully, false otherwise.
-     */
-    bool LoadTAS(const TASProject *project);
-
-    /**
-     * @brief Unloads the currently active TAS, stopping execution and cleaning up.
-     */
-    void UnloadTAS();
-
-    // --- Recording Control ---
-
-    /**
-     * @brief Sets up recording to start when next level loads.
-     * @return True if recording mode was set successfully.
-     */
-    bool SetupRecording();
-
-    /**
-     * @brief Starts actual recording (called internally when level loads).
-     * @return True if recording started successfully.
-     */
-    bool StartRecording();
-
-    /**
-     * @brief Stops recording and generates a TAS script.
-     * @param projectName Name for the generated project.
-     * @param options Optional generation options.
-     * @return True if script was generated successfully.
-     */
-    bool StopRecordingAndGenerate(const std::string &projectName, const GenerationOptions *options = nullptr);
-
-    /**
-     * @brief Stops recording without generating a script.
-     */
-    void StopRecording();
-
-    /**
-     * @brief Gets the current recording frame count.
-     * @return Number of frames recorded, or 0 if not recording.
-     */
-    size_t GetRecordingFrameCount() const;
-
-    // --- State & Configuration Setters ---
-
-    void SetDeveloperMode(bool enabled);
-
-    // --- Subsystem Accessors ---
-    // These are used by other parts of the framework (e.g., LuaApi) to get handles
-    // to the necessary systems.
-
-    BallanceTAS *GetMod() const { return m_Mod; }
-    sol::state &GetLuaState() { return m_LuaState; }
-    const sol::state &GetLuaState() const { return m_LuaState; }
-
-    ProjectManager *GetProjectManager() const { return m_ProjectManager.get(); }
-    LuaScheduler *GetScheduler() const { return m_Scheduler.get(); }
-    InputSystem *GetInputSystem() const { return m_InputSystem.get(); }
-    GameInterface *GetGameInterface() const { return m_GameInterface.get(); }
-    DevTools *GetDevTools() const { return m_DevTools.get(); }
-    EventManager *GetEventManager() const { return m_EventManager.get(); }
-
-    // Recording subsystem accessors
-    Recorder *GetRecorder() const { return m_Recorder.get(); }
-    ScriptGenerator *GetScriptGenerator() const { return m_ScriptGenerator.get(); }
-
-private:
-    /**
-     * @brief Clears all registered callbacks to prevent duplicates.
-     * Called before registering new callbacks in Start().
-     */
-    void ClearCallbacks();
-
-    /**
-     * @brief Sets up callbacks for recording mode.
-     */
-    void SetupRecordingCallbacks();
-
-    /**
-     * @brief Sets up callbacks for playback mode.
-     */
-    void SetupPlaybackCallbacks();
-
-    /**
-     * @brief Internal method to handle recording tick.
-     */
-    void TickRecording();
-
     BallanceTAS *m_Mod;
 
     // The single, master Lua virtual machine for all TAS scripts.
@@ -231,4 +247,5 @@ private:
 
     // --- State ---
     uint32_t m_State = TAS_IDLE;
+    std::atomic<bool> m_ShuttingDown;
 };

@@ -244,19 +244,16 @@ void TASListPage::OnDraw() {
     if (m_Count == 0) {
         // No projects message using standard positioning
         const auto menuPos = Bui::GetMenuPos();
+        const auto menuSize = Bui::GetMenuSize();
 
         ImGui::SetCursorPosX(menuPos.x);
         ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.2f)));
 
         ImGui::SetCursorPosX(menuPos.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-        ImGui::Text("No TAS projects found.");
+        Page::WrappedText("No TAS projects found.", menuSize.x, 1.0f);
         ImGui::PopStyleColor();
 
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-        ImGui::Text("Record a new TAS or place projects in the TAS folder.");
-        ImGui::PopStyleColor();
         return;
     }
 

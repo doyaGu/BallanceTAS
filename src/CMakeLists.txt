@@ -1,6 +1,4 @@
-set(TAS_PUBLIC_HEADERS
-        # ${TAS_INCLUDE_DIR}/Export.h
-)
+set(TAS_PUBLIC_HEADERS)
 
 set(TAS_PRIVATE_HEADERS
         BallanceTAS.h
@@ -9,12 +7,13 @@ set(TAS_PRIVATE_HEADERS
 		EventManager.h
 		GameInterface.h
 		DevTools.h
-		LuaApi.h
-		LuaScheduler.h
 		ProjectManager.h
 		TASProject.h
 		Recorder.h
 		ScriptGenerator.h
+		LuaScheduler.h
+
+		LuaApi.h
 
 		TASHook.h
 		physics_RT.h
@@ -31,12 +30,19 @@ set(TAS_SOURCES
 		EventManager.cpp
 		GameInterface.cpp
 		DevTools.cpp
-		LuaApi.cpp
-		LuaScheduler.cpp
 		ProjectManager.cpp
 		TASProject.cpp
 		Recorder.cpp
 		ScriptGenerator.cpp
+		LuaScheduler.cpp
+
+		LuaApi.cpp
+		LuaApi_TAS.cpp
+		LuaApi_VxColor.cpp
+		LuaApi_VxMatrix.cpp
+		LuaApi_VxQuaternion.cpp
+		LuaApi_VxRect.cpp
+		LuaApi_VxVector.cpp
 
 		TASHook.cpp
 		physics_RT.cpp

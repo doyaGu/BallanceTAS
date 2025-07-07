@@ -25,12 +25,17 @@ public:
 
 private:
     // --- Private helper methods for organized registration ---
+    static void RegisterDataTypes(sol::state &lua);
+    static void RegisterVxColor(sol::state &lua);
+    static void RegisterVxMatrix(sol::state &lua);
+    static void RegisterVxQuaternion(sol::state &lua);
+    static void RegisterVxRect(sol::state &lua);
+    static void RegisterVxVector(sol::state &lua);
 
-    static void RegisterCoreApi(sol::table& tas, TASEngine *engine);
-    static void RegisterInputApi(sol::table& tas, TASEngine *engine);
-    static void RegisterWorldQueryApi(sol::table& tas, TASEngine *engine);
-    static void RegisterConcurrencyApi(sol::table& tas, TASEngine *engine);
-    static void RegisterDebugApi(sol::table& tas, TASEngine *engine);
-    static void RegisterDataTypes(sol::state& lua, TASEngine *engine);
-    static void RegisterDevTools(sol::table& tas, TASEngine *engine);
+    static void RegisterCoreApi(sol::table &tas, TASEngine *engine);
+    static void RegisterInputApi(sol::table &tas, TASEngine *engine);
+    static void RegisterWorldQueryApi(sol::table &tas, TASEngine *engine);
+    static void RegisterConcurrencyApi(sol::table &tas, TASEngine *engine);
+    static void RegisterDebugApi(sol::table &tas, TASEngine *engine);
+    static void RegisterDevTools(sol::table &tas, TASEngine *engine);
 };

@@ -59,10 +59,6 @@ void BallanceTAS::OnLoad() {
     m_StopKey->SetComment("Key for stopping TAS playback or recording");
     m_StopKey->SetDefaultKey(CKKEY_F3);
 
-    m_RecordingKey = GetConfig()->GetProperty("Hotkeys", "RecordingKey");
-    m_RecordingKey->SetComment("Key to start/stop recording TAS input");
-    m_RecordingKey->SetDefaultKey(CKKEY_F3);
-
     // --- Recording Configuration ---
     m_DefaultAuthor = GetConfig()->GetProperty("Recording", "DefaultAuthor");
     m_DefaultAuthor->SetComment("Default author name for recorded TAS projects");
@@ -165,11 +161,6 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
     prop == m_OSDPositionX || prop == m_OSDPositionY ||
     prop == m_OSDOpacity || prop == m_OSDScale) {
         UpdateOSDPanelConfig();
-    } else if (prop == m_RecordingKey && m_Initialized) {
-        // Update recording hotkey
-        if (m_UIManager) {
-            m_UIManager->SetRecordingHotkey(m_RecordingKey->GetKey());
-        }
     } else if (prop == m_RecordingMaxFrames && m_Initialized) {
         if (m_Engine && m_Engine->GetRecorder()) {
             m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
@@ -361,11 +352,6 @@ bool BallanceTAS::Initialize() {
             recorder->SetDefaultAuthor(m_DefaultAuthor->GetString());
             recorder->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
             recorder->SetAutoGenerate(true); // Always auto-generate
-        }
-
-        // Configure recording hotkey
-        if (m_UIManager) {
-            m_UIManager->SetRecordingHotkey(m_RecordingKey->GetKey());
         }
 
         return true;

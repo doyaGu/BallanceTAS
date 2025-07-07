@@ -321,11 +321,6 @@ void UIManager::UpdateHotkeys() {
     auto *inputManager = m_Mod->GetInputManager();
     if (!inputManager) return;
 
-    // Recording hotkey handling
-    if (inputManager->IsKeyToggled(m_RecordingHotkey)) {
-        HandleRecordingHotkey();
-    }
-
     // OSD hotkey handling using IsKeyToggled
     if (inputManager->IsKeyToggled(m_OSDHotkey)) {
         ToggleOSD();
@@ -356,20 +351,5 @@ void UIManager::UpdateHotkeys() {
         if (inputManager->IsKeyToggled(m_TrajectoryPlaneHotkey)) {
             CycleTrajectoryPlane();
         }
-    }
-}
-
-void UIManager::HandleRecordingHotkey() {
-    if (!m_Engine) return;
-
-    if (m_Engine->IsRecording() || m_Engine->IsPendingRecord()) {
-        // Stop recording
-        StopRecording();
-    } else if (m_Engine->IsPlaying() || m_Engine->IsPendingPlay()) {
-        // Stop replay
-        StopReplay();
-    } else {
-        // Start recording
-        StartRecording();
     }
 }

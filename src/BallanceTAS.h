@@ -202,7 +202,6 @@ private:
     IProperty *m_EnableDeveloperMode = nullptr;
     IProperty *m_ShowOSD = nullptr;
     IProperty *m_StopKey = nullptr;
-    IProperty *m_RecordingKey = nullptr;
 
     IProperty *m_ShowOSDStatus = nullptr;
     IProperty *m_ShowOSDVelocity = nullptr;

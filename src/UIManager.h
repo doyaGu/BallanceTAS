@@ -204,12 +204,6 @@ public:
     void SetOSDHotkey(CKKEYBOARD key) { m_OSDHotkey = key; }
 
     /**
-     * @brief Sets the hotkey for starting/stopping recording.
-     * @param key The key code (default: CKKEY_F3).
-     */
-    void SetRecordingHotkey(CKKEYBOARD key) { m_RecordingHotkey = key; }
-
-    /**
      * @brief Sets the hotkey for toggling the status panel.
      * @param key The key code (default: CKKEY_F5).
      */
@@ -242,7 +236,6 @@ public:
 private:
     // --- Internal Methods ---
     void UpdateHotkeys();
-    void HandleRecordingHotkey();
 
     // --- Core References ---
     TASEngine *m_Engine;
@@ -260,7 +253,6 @@ private:
 
     // --- Configuration ---
     CKKEYBOARD m_OSDHotkey = CKKEY_F11;
-    CKKEYBOARD m_RecordingHotkey = CKKEY_F3;
     CKKEYBOARD m_StatusPanelHotkey = CKKEY_F5;
     CKKEYBOARD m_VelocityPanelHotkey = CKKEY_F6;
     CKKEYBOARD m_PositionPanelHotkey = CKKEY_F7;

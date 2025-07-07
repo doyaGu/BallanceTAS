@@ -33,14 +33,20 @@ static void *GetModuleBaseAddress(const char *modulePath) {
     return moduleInfo.lpBaseOfDll;
 }
 
-// qh_RANDOMmax
-static const int QH_RAND_MAX = 2147483646;
+// ivp_rand
+static float (*ivp_rand)() = nullptr;
+static float (*ivp_rand_orig)() = nullptr;
 
+static float IVP_Rand() { return 0.5f; }
+
+// qh_rand
 static int (*qh_rand)() = nullptr;
 static int (*qh_rand_orig)() = nullptr;
 
-int QH_Rand() { return QH_RAND_MAX; }
+static constexpr auto QH_RAND_MAX = 2147483646UL / 2UL;
+static int QH_Rand() { return QH_RAND_MAX; }
 
+// must_perform_movement_check
 static int (IVP_Environment::*must_perform_movement_check)();
 static int (IVP_Environment::*must_perform_movement_check_orig)();
 
@@ -58,9 +64,17 @@ bool HookPhysicsRT() {
         return false;
     }
 
+    ivp_rand = ForceReinterpretCast<decltype(ivp_rand)>(base, 0x2FCD0);
     qh_rand = ForceReinterpretCast<decltype(qh_rand)>(base, 0x52F50);
 
     must_perform_movement_check = ForceReinterpretCast<decltype(must_perform_movement_check)>(base, 0x13610);
+
+    if (MH_CreateHook(*reinterpret_cast<LPVOID *>(&ivp_rand),
+                      reinterpret_cast<LPVOID>(IVP_Rand),
+                      reinterpret_cast<LPVOID *>(&ivp_rand_orig)) != MH_OK ||
+        MH_EnableHook(*reinterpret_cast<LPVOID *>(&ivp_rand)) != MH_OK) {
+        return false;
+    }
 
     if (MH_CreateHook(*reinterpret_cast<LPVOID *>(&qh_rand),
                       reinterpret_cast<LPVOID>(QH_Rand),
@@ -81,11 +95,14 @@ bool HookPhysicsRT() {
 }
 
 void UnhookPhysicsRT() {
+    MH_DisableHook(*reinterpret_cast<LPVOID *>(&must_perform_movement_check));
+    MH_RemoveHook(*reinterpret_cast<LPVOID *>(&must_perform_movement_check));
+
     MH_DisableHook(*reinterpret_cast<LPVOID *>(&qh_rand));
     MH_RemoveHook(*reinterpret_cast<LPVOID *>(&qh_rand));
 
-    MH_DisableHook(*reinterpret_cast<LPVOID *>(&must_perform_movement_check));
-    MH_RemoveHook(*reinterpret_cast<LPVOID *>(&must_perform_movement_check));
+    MH_DisableHook(*reinterpret_cast<LPVOID *>(&ivp_rand));
+    MH_RemoveHook(*reinterpret_cast<LPVOID *>(&ivp_rand));
 }
 
 static int g_FixedRandomValue = RAND_MAX / 2;

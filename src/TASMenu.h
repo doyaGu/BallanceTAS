@@ -116,7 +116,7 @@ private:
     void StopRecording();
 
     // Project configuration
-    char m_ProjectName[256] = "My_Recording";
+    char m_ProjectName[256] = "TAS_Untitled";
     char m_AuthorName[128] = "Player";
     char m_Description[512] = "Recorded TAS run";
     int m_TargetLevelIndex = 0;

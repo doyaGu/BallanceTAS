@@ -20,6 +20,21 @@ Recorder::Recorder(TASEngine *engine)
     // Reserve space for better performance
     m_Frames.reserve(10000);
     m_PendingEvents.reserve(100);
+
+    // Initialize default generation options
+    m_GenerationOptions = std::make_unique<GenerationOptions>();
+    m_GenerationOptions->projectName = "Generated_TAS";
+    m_GenerationOptions->authorName = "Player";
+    m_GenerationOptions->targetLevel = "Level_01";
+    m_GenerationOptions->description = "Auto-generated TAS script";
+    m_GenerationOptions->optimizeShortWaits = true;
+    m_GenerationOptions->addFrameComments = true;
+    m_GenerationOptions->addPhysicsComments = false;
+    m_GenerationOptions->groupSimilarActions = true;
+}
+
+void Recorder::SetGenerationOptions(const GenerationOptions &options) {
+    *m_GenerationOptions = options;
 }
 
 void Recorder::Start() {
@@ -101,32 +116,38 @@ bool Recorder::GenerateScript() {
             return false;
         }
 
-        // Generate auto project name
-        std::string projectName = GenerateAutoProjectName();
+        // Use the stored generation options, but update dynamic fields
+        GenerationOptions options = *m_GenerationOptions;
+
+        // If project name is empty, generate auto name
+        if (options.projectName.empty()) {
+            options.projectName = GenerateAutoProjectName();
+        }
 
         // Clean up the project name (replace invalid characters)
-        std::replace_if(projectName.begin(), projectName.end(),
+        std::replace_if(options.projectName.begin(), options.projectName.end(),
                         [](char c) {
                             return c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' ||
                                    c == '?' || c == '"' || c == '<' || c == '>' || c == '|';
                         },
                         '_');
 
-        m_Mod->GetLogger()->Info("Auto-generating TAS script: %s", projectName.c_str());
-
-        // Create generation options
-        GenerationOptions options;
-        options.projectName = projectName;
-        options.authorName = m_DefaultAuthor;
-        options.description = "Auto-recorded TAS run";
-
-        // Try to determine target level from game interface
-        if (auto *gameInterface = m_Engine->GetGameInterface()) {
-            std::string mapName = gameInterface->GetMapName();
-            if (!mapName.empty()) {
-                options.targetLevel = mapName;
+        // Try to determine target level from game interface if not set
+        if (options.targetLevel.empty() || options.targetLevel == "Level_01") {
+            if (auto *gameInterface = m_Engine->GetGameInterface()) {
+                std::string mapName = gameInterface->GetMapName();
+                if (!mapName.empty()) {
+                    options.targetLevel = mapName;
+                }
             }
         }
+
+        // Ensure description is not empty
+        if (options.description.empty()) {
+            options.description = "Auto-recorded TAS run";
+        }
+
+        m_Mod->GetLogger()->Info("Auto-generating TAS script: %s", options.projectName.c_str());
 
         // Generate the script
         bool success = scriptGenerator->Generate(m_Frames, options);
@@ -135,7 +156,7 @@ bool Recorder::GenerateScript() {
             return false;
         }
 
-        m_Mod->GetLogger()->Info("Recording auto-generated successfully: %s", projectName.c_str());
+        m_Mod->GetLogger()->Info("Recording auto-generated successfully: %s", options.projectName.c_str());
 
         // Refresh projects in project manager
         if (auto *projectManager = m_Engine->GetProjectManager()) {

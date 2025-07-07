@@ -674,7 +674,7 @@ void TASRecordingPage::StartRecording() {
     // Validate and clean project name
     std::string projectName = m_ProjectName;
     if (projectName.empty()) {
-        projectName = "Untitled_TAS";
+        projectName = "TAS_Untitled";
         strcpy_s(m_ProjectName, sizeof(m_ProjectName), projectName.c_str());
     }
 
@@ -689,13 +689,39 @@ void TASRecordingPage::StartRecording() {
     // Update the field with cleaned name
     strcpy_s(m_ProjectName, sizeof(m_ProjectName), projectName.c_str());
 
+    // Get target level string
+    std::string targetLevel = "Level_01";
+    if (m_TargetLevelIndex >= 0 && m_TargetLevelIndex < LEVEL_COUNT) {
+        targetLevel = LEVEL_OPTIONS[m_TargetLevelIndex];
+    }
+
     // Configure recorder with settings from UI
     if (auto *recorder = engine->GetRecorder()) {
-        recorder->SetDefaultAuthor(m_AuthorName);
+        // Create generation options from UI settings
+        GenerationOptions options;
+        options.projectName = projectName;
+        options.authorName = m_AuthorName;
+        options.targetLevel = targetLevel;
+        options.description = m_Description;
+        options.optimizeShortWaits = m_OptimizeShortWaits;
+        options.addFrameComments = m_AddFrameComments;
+        options.addPhysicsComments = m_AddPhysicsComments;
+        options.groupSimilarActions = m_GroupSimilarActions;
+
+        // Set the generation options on the recorder
+        recorder->SetGenerationOptions(options);
     }
 
     if (engine->StartRecording()) {
         engine->GetMod()->GetLogger()->Info("Recording setup for project: %s", projectName.c_str());
+        engine->GetMod()->GetLogger()->Info("  Author: %s", m_AuthorName);
+        engine->GetMod()->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
+        engine->GetMod()->GetLogger()->Info("  Description: %s", m_Description);
+        engine->GetMod()->GetLogger()->Info("  Generation Options: optimizeWaits=%s, frameComments=%s, physicsComments=%s, groupActions=%s",
+                                            m_OptimizeShortWaits ? "true" : "false",
+                                            m_AddFrameComments ? "true" : "false",
+                                            m_AddPhysicsComments ? "true" : "false",
+                                            m_GroupSimilarActions ? "true" : "false");
         m_Menu->Close();
     } else {
         engine->GetMod()->GetLogger()->Error("Failed to setup recording.");

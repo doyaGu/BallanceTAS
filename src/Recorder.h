@@ -10,6 +10,7 @@ class TASEngine;
 class EventManager;
 class IBML;
 class BallanceTAS;
+struct GenerationOptions;
 
 /**
  * @struct RawInputState
@@ -150,16 +151,16 @@ public:
     bool GetAutoGenerate() const { return m_AutoGenerateOnStop; }
 
     /**
-     * @brief Sets the default author name for generated scripts.
-     * @param author The default author name.
+     * @brief Sets the generation options to use when auto-generating scripts.
+     * @param options The generation options to use.
      */
-    void SetDefaultAuthor(const std::string &author) { m_DefaultAuthor = author; }
+    void SetGenerationOptions(const GenerationOptions &options);
 
     /**
-     * @brief Gets the default author name.
-     * @return The default author name.
+     * @brief Gets the current generation options.
+     * @return The current generation options.
      */
-    const std::string &GetDefaultAuthor() const { return m_DefaultAuthor; }
+    const GenerationOptions &GetGenerationOptions() const { return *m_GenerationOptions; }
 
     /**
      * @brief Sets a callback to be called when recording starts/stops.
@@ -227,8 +228,8 @@ private:
 
     // Configuration
     bool m_AutoGenerateOnStop = true;  // Auto-generate by default
-    std::string m_DefaultAuthor = "Player";
     float m_DeltaTime = 1 / 132.0f * 1000;
+    std::unique_ptr<GenerationOptions> m_GenerationOptions;
 
     // Recorded data
     std::vector<RawFrameData> m_Frames;

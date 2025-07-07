@@ -99,7 +99,7 @@ void InputSystem::InitializeKeyMap() {
     m_Keymap["pageup"] = CKKEY_PRIOR;
     m_Keymap["pagedown"] = CKKEY_NEXT;
 
-    // Numbers (individual mapping according to CKKEYBOARD enum)
+    // Numbers
     m_Keymap["1"] = CKKEY_1;
     m_Keymap["2"] = CKKEY_2;
     m_Keymap["3"] = CKKEY_3;
@@ -111,8 +111,7 @@ void InputSystem::InitializeKeyMap() {
     m_Keymap["9"] = CKKEY_9;
     m_Keymap["0"] = CKKEY_0;
 
-    // Letters (mapped according to QWERTY layout order in CKKEYBOARD enum)
-    // Top row: Q W E R T Y U I O P
+    // Letters (QWERTY layout)
     m_Keymap["q"] = CKKEY_Q;
     m_Keymap["w"] = CKKEY_W;
     m_Keymap["e"] = CKKEY_E;
@@ -144,7 +143,7 @@ void InputSystem::InitializeKeyMap() {
     m_Keymap["n"] = CKKEY_N;
     m_Keymap["m"] = CKKEY_M;
 
-    // Function keys (individual mapping - F11 and F12 are not sequential!)
+    // Function keys
     m_Keymap["f1"] = CKKEY_F1;
     m_Keymap["f2"] = CKKEY_F2;
     m_Keymap["f3"] = CKKEY_F3;
@@ -155,8 +154,8 @@ void InputSystem::InitializeKeyMap() {
     m_Keymap["f8"] = CKKEY_F8;
     m_Keymap["f9"] = CKKEY_F9;
     m_Keymap["f10"] = CKKEY_F10;
-    m_Keymap["f11"] = CKKEY_F11; // 0x57 - NOT sequential!
-    m_Keymap["f12"] = CKKEY_F12; // 0x58 - NOT sequential!
+    m_Keymap["f11"] = CKKEY_F11;
+    m_Keymap["f12"] = CKKEY_F12;
     m_Keymap["f13"] = CKKEY_F13;
     m_Keymap["f14"] = CKKEY_F14;
     m_Keymap["f15"] = CKKEY_F15;
@@ -213,8 +212,6 @@ CKKEYBOARD InputSystem::GetKeyCode(const std::string &key) const {
 }
 
 bool InputSystem::IsValidKeyCode(CKKEYBOARD keyCode) {
-    // Check if the key code is within the valid range for keyboard state array
-    // Most keyboard state arrays are 256 bytes, and all CKKEYBOARD values should fit
     return keyCode > 0 && keyCode < 256;
 }
 
@@ -228,13 +225,14 @@ void InputSystem::Press(const std::string &keyString) {
         CKKEYBOARD code = GetKeyCode(key);
         if (IsValidKeyCode(code)) {
             m_PressedKeys.insert(code);
+            m_IsActive = true;
         }
     }
 }
 
 void InputSystem::Hold(const std::string &keyString, int durationTicks) {
     if (durationTicks <= 0) {
-        return; // Invalid duration
+        return;
     }
 
     auto keys = ParseKeyString(keyString);
@@ -242,6 +240,7 @@ void InputSystem::Hold(const std::string &keyString, int durationTicks) {
         CKKEYBOARD code = GetKeyCode(key);
         if (IsValidKeyCode(code)) {
             m_HeldKeys[code] = {durationTicks};
+            m_IsActive = true;
         }
     }
 }
@@ -252,6 +251,7 @@ void InputSystem::KeyDown(const std::string &keyString) {
         CKKEYBOARD code = GetKeyCode(key);
         if (IsValidKeyCode(code)) {
             m_DownKeys.insert(code);
+            m_IsActive = true;
         }
     }
 }
@@ -262,19 +262,44 @@ void InputSystem::KeyUp(const std::string &keyString) {
         CKKEYBOARD code = GetKeyCode(key);
         if (IsValidKeyCode(code)) {
             m_DownKeys.erase(code);
+            m_KeysToRelease.insert(code);
         }
     }
 }
 
 void InputSystem::ReleaseAllKeys() {
+    // Mark all currently controlled keys for release
+    for (CKKEYBOARD key : m_PressedKeys) {
+        m_KeysToRelease.insert(key);
+    }
+    for (const auto &pair : m_HeldKeys) {
+        m_KeysToRelease.insert(pair.first);
+    }
+    for (CKKEYBOARD key : m_DownKeys) {
+        m_KeysToRelease.insert(key);
+    }
+    for (CKKEYBOARD key : m_PreviouslyControlledKeys) {
+        m_KeysToRelease.insert(key);
+    }
+
+    // Clear all active state
     m_PressedKeys.clear();
     m_HeldKeys.clear();
     m_DownKeys.clear();
+
+    // Set force release flag to ensure cleanup
+    m_ForceReleaseAll = true;
 }
 
 void InputSystem::Reset() {
-    ReleaseAllKeys();
+    m_PressedKeys.clear();
+    m_HeldKeys.clear();
+    m_DownKeys.clear();
     m_PreviouslyControlledKeys.clear();
+    m_KeysToRelease.clear();
+    m_OriginalKeyStates.clear();
+    m_ForceReleaseAll = false;
+    m_IsActive = false;
 }
 
 bool InputSystem::IsKeyPressed(const std::string &keyString) const {
@@ -308,21 +333,108 @@ std::vector<std::string> InputSystem::GetAvailableKeys() const {
     return keys;
 }
 
+void InputSystem::BackupOriginalState(unsigned char *keyboardState) {
+    if (!keyboardState) return;
+
+    // Backup original state for keys we're about to control
+    std::set<CKKEYBOARD> allControlledKeys;
+
+    // Collect all keys we're controlling this frame
+    allControlledKeys.insert(m_PressedKeys.begin(), m_PressedKeys.end());
+    for (const auto &pair : m_HeldKeys) {
+        allControlledKeys.insert(pair.first);
+    }
+    allControlledKeys.insert(m_DownKeys.begin(), m_DownKeys.end());
+
+    // Backup original states
+    for (CKKEYBOARD key : allControlledKeys) {
+        if (IsValidKeyCode(key) && m_OriginalKeyStates.find(key) == m_OriginalKeyStates.end()) {
+            m_OriginalKeyStates[key] = keyboardState[key];
+        }
+    }
+}
+
+void InputSystem::RestoreOriginalState(unsigned char *keyboardState) {
+    if (!keyboardState) return;
+
+    // Restore keys that are no longer being controlled
+    for (auto it = m_OriginalKeyStates.begin(); it != m_OriginalKeyStates.end();) {
+        CKKEYBOARD key = it->first;
+
+        // Check if this key is still being controlled
+        bool stillControlled = m_PressedKeys.count(key) > 0 ||
+                              m_HeldKeys.count(key) > 0 ||
+                              m_DownKeys.count(key) > 0;
+
+        if (!stillControlled) {
+            // Restore original state or set to idle
+            keyboardState[key] = it->second;
+            it = m_OriginalKeyStates.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 void InputSystem::Apply(unsigned char *keyboardState) {
     if (!keyboardState) {
         return;
     }
 
-    // --- Phase 1: Apply keys BEFORE decrementing counters ---
-    // This ensures keys are held for the correct duration
+    // Handle force release all
+    if (m_ForceReleaseAll) {
+        // Release all keys in release list and previously controlled keys
+        for (CKKEYBOARD key : m_KeysToRelease) {
+            if (IsValidKeyCode(key)) {
+                keyboardState[key] = KS_IDLE;
+            }
+        }
+        for (CKKEYBOARD key : m_PreviouslyControlledKeys) {
+            if (IsValidKeyCode(key)) {
+                keyboardState[key] = KS_IDLE;
+            }
+        }
 
-    std::set<CKKEYBOARD> controlledKeys;
+        // Clear all state
+        m_KeysToRelease.clear();
+        m_PreviouslyControlledKeys.clear();
+        m_OriginalKeyStates.clear();
+        m_ForceReleaseAll = false;
+        m_IsActive = false;
+        return;
+    }
+
+    // Handle specific key releases
+    for (CKKEYBOARD key : m_KeysToRelease) {
+        if (IsValidKeyCode(key)) {
+            // Set to idle to properly release the key
+            keyboardState[key] = KS_IDLE;
+        }
+    }
+    m_KeysToRelease.clear();
+
+    // If we have no active operations, just handle restoration and return
+    bool hasActiveOperations = !m_PressedKeys.empty() || !m_HeldKeys.empty() || !m_DownKeys.empty();
+    if (!hasActiveOperations) {
+        if (m_IsActive) {
+            // Restore any remaining original states
+            RestoreOriginalState(keyboardState);
+            m_IsActive = false;
+        }
+        return;
+    }
+
+    // We have active operations, so backup original states
+    BackupOriginalState(keyboardState);
+
+    // Collect all keys we're controlling this frame
+    std::set<CKKEYBOARD> currentlyControlledKeys;
 
     // Apply one-frame presses
     for (CKKEYBOARD key : m_PressedKeys) {
         if (IsValidKeyCode(key)) {
             keyboardState[key] = KS_PRESSED;
-            controlledKeys.insert(key);
+            currentlyControlledKeys.insert(key);
         }
     }
 
@@ -331,7 +443,7 @@ void InputSystem::Apply(unsigned char *keyboardState) {
         CKKEYBOARD key = pair.first;
         if (IsValidKeyCode(key)) {
             keyboardState[key] = KS_PRESSED;
-            controlledKeys.insert(key);
+            currentlyControlledKeys.insert(key);
         }
     }
 
@@ -339,32 +451,42 @@ void InputSystem::Apply(unsigned char *keyboardState) {
     for (CKKEYBOARD key : m_DownKeys) {
         if (IsValidKeyCode(key)) {
             keyboardState[key] = KS_PRESSED;
-            controlledKeys.insert(key);
+            currentlyControlledKeys.insert(key);
         }
     }
 
-    // --- Phase 2: Update internal state AFTER applying ---
-
-    // NOW decrement ticks for held keys
-    for (auto it = m_HeldKeys.begin(); it != m_HeldKeys.end();) {
-        it->second.remainingTicks--;
-        if (it->second.remainingTicks <= 0) {
-            it = m_HeldKeys.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    // Release previously controlled keys that aren't controlled this frame
-    for (const auto &prev_key : m_PreviouslyControlledKeys) {
-        if (controlledKeys.find(prev_key) == controlledKeys.end()) {
-            if (IsValidKeyCode(prev_key)) {
-                keyboardState[prev_key] = KS_RELEASED;
+    // Restore keys that we were controlling but no longer are
+    for (CKKEYBOARD key : m_PreviouslyControlledKeys) {
+        if (currentlyControlledKeys.find(key) == currentlyControlledKeys.end()) {
+            if (IsValidKeyCode(key)) {
+                // Restore to original state if we have it, otherwise set to idle
+                auto originalIt = m_OriginalKeyStates.find(key);
+                if (originalIt != m_OriginalKeyStates.end()) {
+                    keyboardState[key] = originalIt->second;
+                    m_OriginalKeyStates.erase(originalIt);
+                } else {
+                    keyboardState[key] = KS_IDLE;
+                }
             }
         }
     }
 
-    m_PreviouslyControlledKeys = controlledKeys;
+    // Update tracking
+    m_PreviouslyControlledKeys = currentlyControlledKeys;
+
+    // Update held key durations
+    for (auto it = m_HeldKeys.begin(); it != m_HeldKeys.end();) {
+        it->second.remainingTicks--;
+        if (it->second.remainingTicks <= 0) {
+            CKKEYBOARD key = it->first;
+            it = m_HeldKeys.erase(it);
+
+            // Mark key for release on next frame
+            m_KeysToRelease.insert(key);
+        } else {
+            ++it;
+        }
+    }
 
     // Clear one-frame presses
     m_PressedKeys.clear();

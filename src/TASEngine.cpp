@@ -1,8 +1,5 @@
 #include "TASEngine.h"
 
-#include <algorithm>
-#include <fstream>
-
 #include "BallanceTAS.h"
 #include "LuaApi.h"
 #include "LuaScheduler.h"
@@ -493,8 +490,12 @@ void TASEngine::SetupPlaybackCallbacks() {
 
                 if (m_Scheduler) {
                     m_Scheduler->Tick();
+                }
 
-                    if (m_Scheduler->IsRunning() && m_InputSystem) {
+                // Apply input system when needed
+                if (m_InputSystem) {
+                    bool shouldApply = m_Scheduler->IsRunning() || m_InputSystem->HasPendingReleases();
+                    if (shouldApply) {
                         auto *inputManager = static_cast<CKInputManager *>(man);
                         m_InputSystem->Apply(inputManager->GetKeyboardState());
                     }
@@ -618,7 +619,7 @@ void TASEngine::UnloadTAS() {
     if (m_Scheduler && m_Scheduler->IsRunning()) {
         m_Scheduler->Clear();
         if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys(); // Important cleanup step
+            m_InputSystem->ReleaseAllKeys();
         }
         m_Mod->GetLogger()->Info("TAS script unloaded and stopped.");
     }

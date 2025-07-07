@@ -93,6 +93,14 @@ public:
      */
     std::vector<std::string> GetAvailableKeys() const;
 
+    /**
+     * @brief Checks if there are keys that need to be released on the next Apply() call.
+     * @return True if there are pending key releases.
+     */
+    bool HasPendingReleases() const {
+        return !m_KeysToRelease.empty() || m_ForceReleaseAll;
+    }
+
     // --- Core Method for Hooking ---
 
     /**
@@ -128,7 +136,19 @@ private:
      * @param keyCode The key code to validate.
      * @return True if the key code is within valid range.
      */
-    static bool IsValidKeyCode(CKKEYBOARD keyCode) ;
+    static bool IsValidKeyCode(CKKEYBOARD keyCode);
+
+    /**
+     * @brief Backs up the original keyboard state before applying TAS input.
+     * @param keyboardState The current keyboard state buffer.
+     */
+    void BackupOriginalState(unsigned char *keyboardState);
+
+    /**
+     * @brief Restores keys to their original state when no longer controlled by TAS.
+     * @param keyboardState The keyboard state buffer to restore.
+     */
+    void RestoreOriginalState(unsigned char *keyboardState);
 
     // Represents a request to hold a key for a certain duration.
     struct HoldRequest {
@@ -151,4 +171,16 @@ private:
 
     // Track keys we controlled in the previous frame for clean releases
     std::set<CKKEYBOARD> m_PreviouslyControlledKeys;
+
+    // Keys that need to be explicitly released on the next Apply() call
+    std::set<CKKEYBOARD> m_KeysToRelease;
+
+    // Original state backup for proper restoration
+    std::map<CKKEYBOARD, unsigned char> m_OriginalKeyStates;
+
+    // Force release all keys flag (used when TAS stops)
+    bool m_ForceReleaseAll = false;
+
+    // Track if we're currently active (have any pending operations)
+    bool m_IsActive = false;
 };

@@ -60,10 +60,6 @@ void BallanceTAS::OnLoad() {
     m_StopKey->SetDefaultKey(CKKEY_F3);
 
     // --- Recording Configuration ---
-    m_DefaultAuthor = GetConfig()->GetProperty("Recording", "DefaultAuthor");
-    m_DefaultAuthor->SetComment("Default author name for recorded TAS projects");
-    m_DefaultAuthor->SetDefaultString("Player");
-
     m_RecordingMaxFrames = GetConfig()->GetProperty("Recording", "MaxFrames");
     m_RecordingMaxFrames->SetComment("Maximum frames to record (prevents memory issues)");
     m_RecordingMaxFrames->SetDefaultInteger(100000);
@@ -164,10 +160,6 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
     } else if (prop == m_RecordingMaxFrames && m_Initialized) {
         if (m_Engine && m_Engine->GetRecorder()) {
             m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
-        }
-    } else if (prop == m_DefaultAuthor && m_Initialized) {
-        if (m_Engine && m_Engine->GetRecorder()) {
-            m_Engine->GetRecorder()->SetDefaultAuthor(m_DefaultAuthor->GetString());
         }
     }
 
@@ -349,7 +341,6 @@ bool BallanceTAS::Initialize() {
 
         // Configure recording settings
         if (auto *recorder = m_Engine->GetRecorder()) {
-            recorder->SetDefaultAuthor(m_DefaultAuthor->GetString());
             recorder->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
             recorder->SetAutoGenerate(true); // Always auto-generate
         }

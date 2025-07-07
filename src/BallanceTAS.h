@@ -214,6 +214,5 @@ private:
     IProperty *m_OSDScale = nullptr;
 
     // --- Recording Configuration ---
-    IProperty *m_DefaultAuthor = nullptr;
     IProperty *m_RecordingMaxFrames = nullptr;
 };

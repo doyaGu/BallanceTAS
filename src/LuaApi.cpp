@@ -4,14 +4,14 @@
 #include <iomanip>
 
 #include "BallanceTAS.h"
-#include "LuaScheduler.h"
 #include "TASEngine.h"
+#include "LuaScheduler.h"
 #include "InputSystem.h"
 #include "EventManager.h"
 #include "GameInterface.h"
-#include "DevTools.h"
 #include "ProjectManager.h"
 #include "TASProject.h"
+#include "DevTools.h"
 
 // Helper function to format strings with variadic arguments
 std::string FormatString(const std::string &fmt, sol::variadic_args va) {

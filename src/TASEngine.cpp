@@ -204,6 +204,12 @@ void TASEngine::StopRecording() {
             m_Recorder->Stop(); // This will auto-generate if configured
         }
 
+        // Ensure InputSystem remains disabled after recording
+        if (m_InputSystem) {
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
+        }
+
         ClearCallbacks();
         SetRecording(false);
         SetRecordPending(false);
@@ -229,6 +235,12 @@ void TASEngine::StopRecording() {
         m_Mod->GetLogger()->Error("Exception stopping recording: %s", e.what());
         SetRecording(false);
         SetRecordPending(false);
+
+        // Ensure InputSystem is disabled even on error
+        if (m_InputSystem) {
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
+        }
     }
 }
 
@@ -291,6 +303,12 @@ void TASEngine::StopReplay() {
             m_Scheduler->Clear();
         }
 
+        // Disable InputSystem and clean up input state
+        if (m_InputSystem) {
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
+        }
+
         ClearCallbacks();
         SetPlaying(false);
         SetPlayPending(false);
@@ -316,6 +334,12 @@ void TASEngine::StopReplay() {
         m_Mod->GetLogger()->Error("Exception stopping replay: %s", e.what());
         SetPlaying(false);
         SetPlayPending(false);
+
+        // Ensure input control is disabled even on error
+        if (m_InputSystem) {
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
+        }
     }
 }
 
@@ -323,6 +347,12 @@ void TASEngine::StopReplayImmediate() {
     try {
         if (m_Scheduler) {
             m_Scheduler->Clear();
+        }
+
+        // Immediately disable InputSystem
+        if (m_InputSystem) {
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
         }
 
         SetPlaying(false);
@@ -359,6 +389,13 @@ void TASEngine::StartRecordingInternal() {
 
     if (m_GameInterface) {
         m_GameInterface->AcquireKeyBindings();
+    }
+
+    // Ensure InputSystem is DISABLED during recording
+    // We want to capture the user's actual input, not override it
+    if (m_InputSystem) {
+        m_InputSystem->SetEnabled(false);
+        m_InputSystem->ReleaseAllKeys(); // Start with clean state
     }
 
     if (m_Mod && m_Mod->GetBML()) {
@@ -411,6 +448,12 @@ void TASEngine::StartReplayInternal() {
 
     if (m_GameInterface) {
         m_GameInterface->AcquireKeyBindings();
+    }
+
+    // Enable InputSystem for deterministic replay
+    if (m_InputSystem) {
+        m_InputSystem->SetEnabled(true);
+        m_InputSystem->ReleaseAllKeys(); // Start with clean state
     }
 
     if (m_Mod && m_Mod->GetBML()) {
@@ -492,13 +535,10 @@ void TASEngine::SetupPlaybackCallbacks() {
                     m_Scheduler->Tick();
                 }
 
-                // Apply input system when needed
-                if (m_InputSystem) {
-                    bool shouldApply = m_Scheduler->IsRunning() || m_InputSystem->HasPendingReleases();
-                    if (shouldApply) {
-                        auto *inputManager = static_cast<CKInputManager *>(man);
-                        m_InputSystem->Apply(inputManager->GetKeyboardState());
-                    }
+                // Apply InputSystem when it's enabled
+                if (m_InputSystem && m_InputSystem->IsEnabled()) {
+                    auto *inputManager = static_cast<CKInputManager *>(man);
+                    m_InputSystem->Apply(inputManager->GetKeyboardState());
                 }
             } catch (const std::exception &e) {
                 if (m_Mod) {

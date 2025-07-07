@@ -4,21 +4,25 @@
 
 #include <string>
 #include <set>
-#include <map>
 #include <unordered_map>
 #include <vector>
 
 /**
  * @class InputSystem
- * @brief Manages a virtual keyboard state controlled by TAS scripts.
+ * @brief A minimal-state, preemptive input control system for TAS replay.
  *
- * This class receives high-level input commands from Lua (e.g., press, hold)
- * and maintains an internal representation of the desired keyboard state for each
- * upcoming frame. On each game tick, its Apply() method is called by a hook,
- * where it overwrites the game's native keyboard state buffer with its own,
- * thus achieving frame-perfect input injection.
+ * When enabled, this system takes complete control of keyboard input,
+ * overriding ALL physical keyboard input to ensure deterministic TAS playback.
+ * When disabled, the system does not interfere with input at all.
  *
- * Supports key combinations like "up right", "up,right", "up;right" for all APIs.
+ * The system maintains minimal state for timed key holds but has no complex
+ * frame-to-frame dependencies. All timing logic is self-contained within
+ * the Apply() method.
+ *
+ * Key behaviors:
+ * - ENABLED: Completely overrides ALL input during TAS replay
+ * - DISABLED: Does not touch keyboard state at all
+ * - MINIMAL STATE: Only tracks current key states and simple timers
  */
 class InputSystem {
 public:
@@ -32,44 +36,48 @@ public:
     // --- API for Lua Bindings ---
 
     /**
-     * @brief Simulates a key press for a single frame.
+     * @brief Immediately presses the specified key(s).
      * @param keyString The case-insensitive key name(s). Can be single key ("up")
      *                  or combination ("up right", "up,right", "up;right").
      */
-    void Press(const std::string &keyString);
+    void PressKeys(const std::string &keyString);
 
     /**
-     * @brief Simulates holding key(s) down for a specified number of frames.
-     * The keys are automatically released on the (duration_ticks + 1)-th frame.
-     * @param keyString The key name(s). Supports combinations.
-     * @param durationTicks The number of frames to hold the key(s).
+     * @brief Presses key(s) for exactly one frame, then automatically releases them.
+     * @param keyString The key name(s) to press for one frame.
      */
-    void Hold(const std::string &keyString, int durationTicks);
+    void PressKeysOneFrame(const std::string &keyString);
 
     /**
-     * @brief Simulates pressing key(s) down indefinitely.
-     * The keys will remain pressed until explicitly released with KeyUp.
-     * @param keyString The key name(s). Supports combinations.
+     * @brief Holds key(s) for a specified number of frames, then automatically releases them.
+     * @param keyString The key name(s) to hold.
+     * @param durationTicks The number of frames to hold the keys.
      */
-    void KeyDown(const std::string &keyString);
+    void HoldKeys(const std::string &keyString, int durationTicks);
 
     /**
-     * @brief Releases key(s) that were previously pressed with KeyDown.
+     * @brief Immediately releases the specified key(s).
      * @param keyString The key name(s). Supports combinations.
      */
-    void KeyUp(const std::string &keyString);
+    void ReleaseKeys(const std::string &keyString);
 
     /**
-     * @brief Immediately releases all keys currently held by the script.
-     * This is a crucial cleanup tool.
+     * @brief Immediately releases all keys currently pressed by the TAS system.
      */
     void ReleaseAllKeys();
 
     /**
-     * @brief Resets the entire input system state to default.
-     * Called when a TAS is unloaded.
+     * @brief Sets whether the InputSystem should take complete control of input.
+     * When enabled, the system completely overrides ALL keyboard input.
+     * @param enabled True to enable preemptive control (TAS replay mode).
      */
-    void Reset();
+    void SetEnabled(bool enabled) { m_Enabled = enabled; }
+
+    /**
+     * @brief Checks if preemptive control is currently enabled.
+     * @return True if InputSystem is overriding all input.
+     */
+    bool IsEnabled() const { return m_Enabled; }
 
     // --- Query Methods ---
 
@@ -81,11 +89,11 @@ public:
     bool IsValidKey(const std::string &key) const;
 
     /**
-     * @brief Checks if key(s) are currently being pressed by the system.
+     * @brief Checks if key(s) are currently being pressed by the TAS system.
      * @param keyString The key name(s) to check. For combinations, returns true if ALL keys are pressed.
-     * @return True if all specified keys are currently pressed.
+     * @return True if all specified keys are currently pressed by TAS.
      */
-    bool IsKeyPressed(const std::string &keyString) const;
+    bool AreKeysPressed(const std::string &keyString) const;
 
     /**
      * @brief Gets a list of all available key names.
@@ -93,19 +101,14 @@ public:
      */
     std::vector<std::string> GetAvailableKeys() const;
 
-    /**
-     * @brief Checks if there are keys that need to be released on the next Apply() call.
-     * @return True if there are pending key releases.
-     */
-    bool HasPendingReleases() const {
-        return !m_KeysToRelease.empty() || m_ForceReleaseAll;
-    }
-
     // --- Core Method for Hooking ---
 
     /**
-     * @brief Applies the virtual keyboard state to the game's actual keyboard buffer.
-     * This is the "synthesis" step, called by HookManager every frame.
+     * @brief Applies TAS input control to the game's keyboard buffer.
+     *
+     * When enabled, this method completely overrides ALL keyboard input
+     * with TAS-controlled input. When disabled, does nothing.
+     *
      * @param keyboardState A pointer to the game's keyboard state buffer.
      */
     void Apply(unsigned char *keyboardState);
@@ -138,49 +141,18 @@ private:
      */
     static bool IsValidKeyCode(CKKEYBOARD keyCode);
 
-    /**
-     * @brief Backs up the original keyboard state before applying TAS input.
-     * @param keyboardState The current keyboard state buffer.
-     */
-    void BackupOriginalState(unsigned char *keyboardState);
-
-    /**
-     * @brief Restores keys to their original state when no longer controlled by TAS.
-     * @param keyboardState The keyboard state buffer to restore.
-     */
-    void RestoreOriginalState(unsigned char *keyboardState);
-
-    // Represents a request to hold a key for a certain duration.
-    struct HoldRequest {
-        int remainingTicks;
-    };
-
     // A map from string key name to its corresponding BML key code.
     std::unordered_map<std::string, CKKEYBOARD> m_Keymap;
 
-    // --- Virtual Keyboard State ---
+    // Keys currently being pressed by the TAS system
+    std::set<CKKEYBOARD> m_CurrentlyPressed;
 
-    // Keys requested via tas.press(), active for only one 'Apply' call.
-    std::set<CKKEYBOARD> m_PressedKeys;
+    // Keys that should be pressed for exactly one frame
+    std::set<CKKEYBOARD> m_OneFrameKeys;
 
-    // Keys requested via tas.hold(), managed with a tick countdown.
-    std::map<CKKEYBOARD, HoldRequest> m_HeldKeys;
+    // Keys being held for a specific duration (key -> remaining ticks)
+    std::unordered_map<CKKEYBOARD, int> m_HeldKeys;
 
-    // Keys requested via tas.key_down(), managed manually by the script.
-    std::set<CKKEYBOARD> m_DownKeys;
-
-    // Track keys we controlled in the previous frame for clean releases
-    std::set<CKKEYBOARD> m_PreviouslyControlledKeys;
-
-    // Keys that need to be explicitly released on the next Apply() call
-    std::set<CKKEYBOARD> m_KeysToRelease;
-
-    // Original state backup for proper restoration
-    std::map<CKKEYBOARD, unsigned char> m_OriginalKeyStates;
-
-    // Force release all keys flag (used when TAS stops)
-    bool m_ForceReleaseAll = false;
-
-    // Track if we're currently active (have any pending operations)
-    bool m_IsActive = false;
+    // Whether the system should override ALL input
+    bool m_Enabled = false;
 };

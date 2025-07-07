@@ -131,7 +131,9 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
         if (keyString.empty()) {
             throw sol::error("press: key string cannot be empty");
         }
-        inputSystem->Press(keyString);
+
+        // Press keys for exactly one frame
+        inputSystem->PressKeysOneFrame(keyString);
     };
 
     // tas.hold(key_string, duration_ticks)
@@ -142,7 +144,11 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
         if (duration <= 0) {
             throw sol::error("hold: duration must be positive");
         }
-        inputSystem->Hold(keyString, duration);
+
+        // InputSystem handles the timing internally
+        inputSystem->HoldKeys(keyString, duration);
+
+        // Yield for the specified duration
         scheduler->YieldTicks(duration);
     });
 
@@ -151,7 +157,7 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
         if (keyString.empty()) {
             throw sol::error("key_down: key string cannot be empty");
         }
-        inputSystem->KeyDown(keyString);
+        inputSystem->PressKeys(keyString);
     };
 
     // tas.key_up(key_string)
@@ -159,7 +165,7 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
         if (keyString.empty()) {
             throw sol::error("key_up: key string cannot be empty");
         }
-        inputSystem->KeyUp(keyString);
+        inputSystem->ReleaseKeys(keyString);
     };
 
     // tas.release_all_keys()
@@ -172,7 +178,7 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
         if (keyString.empty()) {
             return false;
         }
-        return inputSystem->IsKeyPressed(keyString);
+        return inputSystem->AreKeysPressed(keyString);
     };
 }
 

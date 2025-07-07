@@ -99,6 +99,33 @@ bool ScriptGenerator::Generate(const std::vector<RawFrameData>& frames, const st
     return Generate(frames, options);
 }
 
+std::string ScriptGenerator::FindAvailableProjectName(const std::string& baseName) {
+    std::string projectDir = std::string(BML_TAS_PATH) + baseName;
+
+    // If the base name doesn't exist, use it
+    if (!fs::exists(projectDir)) {
+        return baseName;
+    }
+
+    // Try incrementing numbers until we find an available name
+    int counter = 1;
+    std::string availableName;
+
+    do {
+        availableName = baseName + "_" + std::to_string(counter);
+        projectDir = std::string(BML_TAS_PATH) + availableName;
+        counter++;
+
+        // Safety check to avoid infinite loop
+        if (counter > 1000) {
+            m_Mod->GetLogger()->Error("Could not find available project name after 1000 attempts.");
+            return baseName + "_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        }
+    } while (fs::exists(projectDir));
+
+    return availableName;
+}
+
 bool ScriptGenerator::Generate(const std::vector<RawFrameData>& frames, const GenerationOptions& options) {
     if (frames.empty()) {
         m_Mod->GetLogger()->Error("Cannot generate script from empty frame data.");
@@ -111,11 +138,23 @@ bool ScriptGenerator::Generate(const std::vector<RawFrameData>& frames, const Ge
 
     try {
         UpdateProgress(0.0f);
+
+        // Handle duplicate project names by finding an available name
+        std::string finalProjectName = FindAvailableProjectName(options.projectName);
+        if (finalProjectName != options.projectName) {
+            m_Mod->GetLogger()->Info("Project name '%s' already exists, using '%s' instead.",
+                                   options.projectName.c_str(), finalProjectName.c_str());
+        }
+
+        // Create a copy of options with the final project name
+        GenerationOptions finalOptions = options;
+        finalOptions.projectName = finalProjectName;
+
         m_Mod->GetLogger()->Info("Generating TAS script '%s' from %zu frames...",
-                                options.projectName.c_str(), frames.size());
+                                finalOptions.projectName.c_str(), frames.size());
 
         // --- Step 1: Create project directory ---
-        std::string projectDir = std::string(BML_TAS_PATH) + options.projectName;
+        std::string projectDir = std::string(BML_TAS_PATH) + finalOptions.projectName;
         if (!fs::create_directories(projectDir) && !fs::exists(projectDir)) {
             m_Mod->GetLogger()->Error("Failed to create project directory: %s", projectDir.c_str());
             return false;
@@ -125,25 +164,25 @@ bool ScriptGenerator::Generate(const std::vector<RawFrameData>& frames, const Ge
 
         // --- Step 2: Analyze and chunk the frame data ---
         m_Mod->GetLogger()->Info("Analyzing frame data...");
-        auto blocks = AnalyzeAndChunk(frames, options);
+        auto blocks = AnalyzeAndChunk(frames, finalOptions);
         m_LastStats.totalBlocks = blocks.size();
         UpdateProgress(0.3f);
 
         // --- Step 3: Optimize blocks ---
-        if (options.groupSimilarActions) {
+        if (finalOptions.groupSimilarActions) {
             m_Mod->GetLogger()->Info("Optimizing input blocks...");
-            blocks = OptimizeBlocks(blocks, options);
+            blocks = OptimizeBlocks(blocks, finalOptions);
             m_LastStats.optimizedBlocks = blocks.size();
         }
         UpdateProgress(0.5f);
 
         // --- Step 4: Generate Lua script ---
         m_Mod->GetLogger()->Info("Building Lua script...");
-        std::string scriptContent = BuildLuaScript(blocks, options);
+        std::string scriptContent = BuildLuaScript(blocks, finalOptions);
         UpdateProgress(0.7f);
 
         // --- Step 5: Generate manifest ---
-        std::string manifestContent = GenerateManifest(options);
+        std::string manifestContent = GenerateManifest(finalOptions);
         UpdateProgress(0.8f);
 
         // --- Step 6: Write files ---

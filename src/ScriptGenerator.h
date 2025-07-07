@@ -115,6 +115,13 @@ public:
 
 private:
     /**
+     * @brief Finds an available project name, handling duplicates by adding numeric suffixes.
+     * @param baseName The desired base name for the project.
+     * @return An available project name (may have numeric suffix if base name exists).
+     */
+    std::string FindAvailableProjectName(const std::string &baseName);
+
+    /**
      * @brief The first pass of the algorithm: analyze the frame sequence and
      *        group it into logical InputBlocks.
      * @param frames The raw frame data.

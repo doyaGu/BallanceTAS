@@ -315,6 +315,8 @@ void TASEngine::StopReplay() {
 
         // Use a safer timer approach
         if (m_Mod && m_Mod->GetBML()) {
+            InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());
+
             m_Mod->GetBML()->AddTimer(1ul, [this]() {
                 if (!m_ShuttingDown && m_GameInterface && m_Mod) {
                     try {
@@ -364,6 +366,8 @@ void TASEngine::StopReplayImmediate() {
         }
 
         if (m_Mod) {
+            InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());
+
             m_Mod->SetUIMode(0); // UIMode::Idle
             m_Mod->GetLogger()->Info("Replay stopped immediately.");
         }

@@ -113,6 +113,12 @@ public:
      */
     void Apply(unsigned char *keyboardState);
 
+    /**
+     * @brief Resets the game's keyboard state buffer.
+     * @param keyboardState The game's keyboard state buffer to reset.
+     */
+    static void Reset(unsigned char *keyboardState);
+
 private:
     /**
      * @brief Parses a key string into individual key names.

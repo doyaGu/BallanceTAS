@@ -308,7 +308,7 @@ void InputSystem::Apply(unsigned char *keyboardState) {
 
     // When enabled, we take complete control of ALL input
     // First, clear all keys to idle state
-    memset(keyboardState, KS_IDLE, 256);
+    Reset(keyboardState);
 
     // Combine all types of active keys for this frame
     std::set<CKKEYBOARD> allActiveKeys = m_CurrentlyPressed;
@@ -338,4 +338,8 @@ void InputSystem::Apply(unsigned char *keyboardState) {
 
     // Clear one-frame keys after applying them
     m_OneFrameKeys.clear();
+}
+
+void InputSystem::Reset(unsigned char *keyboardState) {
+    memset(keyboardState, KS_IDLE, 256);
 }

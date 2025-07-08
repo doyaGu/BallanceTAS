@@ -389,8 +389,8 @@ void TASEngine::StartRecordingInternal() {
     // Ensure InputSystem is DISABLED during recording
     // We want to capture the user's actual input, not override it
     if (m_InputSystem) {
-        m_InputSystem->SetEnabled(false);
         m_InputSystem->ReleaseAllKeys(); // Start with clean state
+        m_InputSystem->SetEnabled(false);
     }
 
     if (m_Mod && m_Mod->GetBML()) {
@@ -654,9 +654,6 @@ bool TASEngine::LoadTAS(const TASProject *project) {
 void TASEngine::UnloadTAS() {
     if (m_Scheduler && m_Scheduler->IsRunning()) {
         m_Scheduler->Clear();
-        if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
-        }
         m_Mod->GetLogger()->Info("TAS script unloaded and stopped.");
     }
 }

@@ -4,8 +4,6 @@
 
 #include <string>
 #include <vector>
-#include <set>
-#include <map>
 #include <sstream>
 #include <memory>
 
@@ -15,31 +13,46 @@ class TASEngine;
 class BallanceTAS;
 
 /**
+ * @enum KeyTransition
+ * @brief Represents a key state transition between frames.
+ */
+enum class KeyTransition {
+    NoChange,   // Key state didn't change
+    Pressed,    // Key was just pressed (IDLE -> PRESSED)
+    Released,   // Key was just released (PRESSED -> RELEASED/IDLE)
+    Continued   // Key continued being pressed (PRESSED -> PRESSED)
+};
+
+/**
+ * @struct KeyEvent
+ * @brief Represents a key state change at a specific frame.
+ */
+struct KeyEvent {
+    uint32_t frame = 0;
+    std::string key;
+    KeyTransition transition = KeyTransition::NoChange;
+
+    KeyEvent(uint32_t f, std::string k, KeyTransition t)
+        : frame(f), key(std::move(k)), transition(t) {}
+};
+
+/**
  * @struct InputBlock
- * @brief An intermediate representation of a contiguous block of frames
- *        where the combination of pressed keys remains constant.
+ * @brief A precise representation of input over time.
+ *        This tracks exact frame-by-frame changes.
  */
 struct InputBlock {
-    int startFrame = 0;
-    int duration = 0;               // Number of frames this block lasts
-    std::set<std::string> heldKeys; // The set of keys held down during this block
-    std::vector<GameEvent> events;  // Events that occurred during this block
+    uint32_t startFrame = 0;
+    uint32_t endFrame = 0;
+    std::vector<KeyEvent> keyEvents;     // All key transitions in this block
+    std::vector<GameEvent> gameEvents;   // Game events that occurred
 
     // Analysis metadata
-    float averageSpeed = 0.0f;           // Average ball speed during this block
-    bool hasSignificantMovement = false; // Whether this block represents meaningful action
+    float averageSpeed = 0.0f;
+    bool hasSignificantMovement = false;
 
-    bool IsEmpty() const {
-        return heldKeys.empty() && duration <= 0;
-    }
-
-    bool HasSingleKey() const {
-        return heldKeys.size() == 1;
-    }
-
-    std::string GetSingleKey() const {
-        return HasSingleKey() ? *heldKeys.begin() : "";
-    }
+    uint32_t GetDuration() const { return endFrame - startFrame + 1; }
+    bool IsEmpty() const { return keyEvents.empty() && endFrame == startFrame; }
 };
 
 /**
@@ -53,11 +66,8 @@ struct GenerationOptions {
     std::string description = "Auto-generated TAS script";
 
     // Generation preferences
-    bool optimizeShortWaits = true;  // Merge short wait periods
     bool addFrameComments = true;    // Add frame number comments
     bool addPhysicsComments = false; // Add speed/physics info in comments
-    bool groupSimilarActions = true; // Group similar input patterns
-    int minBlockDuration = 1;        // Minimum frames for a block to be significant
 
     // Output formatting
     int indentSize = 2;               // Spaces per indent level
@@ -69,10 +79,9 @@ struct GenerationOptions {
  * @class ScriptGenerator
  * @brief Analyzes a sequence of raw frame data and generates a structured Lua script.
  *
- * This class implements the intelligent script generation algorithm. It takes the
- * raw, frame-by-frame data from the Recorder, analyzes it to find patterns and
- * logical blocks of actions, and then uses this analysis to generate a clean,
- * readable, and efficient Lua script using the `tas` API.
+ * This class implements precise script generation that captures exact key press/release
+ * timing from the recorded input data. It generates explicit tas.key_down() and
+ * tas.key_up() commands to exactly reproduce the original input sequence.
  */
 class ScriptGenerator {
 public:
@@ -122,32 +131,33 @@ private:
     std::string FindAvailableProjectName(const std::string &baseName);
 
     /**
-     * @brief The first pass of the algorithm: analyze the frame sequence and
-     *        group it into logical InputBlocks.
+     * @brief Analyzes frame sequence and detects all key state transitions.
      * @param frames The raw frame data.
      * @param options Generation options.
      * @return A vector of InputBlocks.
      */
-    std::vector<InputBlock> AnalyzeAndChunk(const std::vector<RawFrameData> &frames,
-                                            const GenerationOptions &options);
+    std::vector<InputBlock> AnalyzeTiming(const std::vector<RawFrameData> &frames,
+                                              const GenerationOptions &options);
 
     /**
-     * @brief Optimize the input blocks by merging similar patterns.
-     * @param blocks The initial blocks to optimize.
-     * @param options Generation options.
-     * @return Optimized blocks.
+     * @brief Detects key state transitions between two consecutive frames.
+     * @param prevState Previous frame's input state.
+     * @param currentState Current frame's input state.
+     * @param frameIndex Current frame number.
+     * @return Vector of key events for this frame.
      */
-    std::vector<InputBlock> OptimizeBlocks(const std::vector<InputBlock> &blocks,
-                                           const GenerationOptions &options);
+    std::vector<KeyEvent> DetectKeyTransitions(const RawInputState &prevState,
+                                             const RawInputState &currentState,
+                                             uint32_t frameIndex);
 
     /**
-     * @brief The second pass: iterate through the blocks and generate Lua code for each.
-     * @param blocks The chunked input blocks.
+     * @brief Generates exact timing Lua script.
+     * @param blocks The analyzed input blocks.
      * @param options Generation options.
-     * @return A string containing the full, formatted Lua script.
+     * @return A string containing the script.
      */
-    std::string BuildLuaScript(const std::vector<InputBlock> &blocks,
-                               const GenerationOptions &options);
+    std::string BuildScript(const std::vector<InputBlock> &blocks,
+                                const GenerationOptions &options);
 
     /**
      * @brief Generate the manifest.lua file for the project.
@@ -168,11 +178,19 @@ private:
                             const std::string &manifestContent);
 
     /**
-     * @brief Convert RawInputState to a set of key strings.
-     * @param state The input state to convert.
-     * @return Set of key names that are pressed.
+     * @brief Get the string name for a key from the input state.
+     * @param keyIndex Index of the key in the RawInputState structure.
+     * @return String name of the key.
      */
-    std::set<std::string> GetHeldKeys(const RawInputState &state);
+    std::string GetKeyName(int keyIndex) const;
+
+    /**
+     * @brief Get the keyboard state value for a specific key from RawInputState.
+     * @param state The input state.
+     * @param keyIndex Index of the key.
+     * @return The keyboard state value (KS_IDLE, KS_PRESSED, etc.).
+     */
+    uint8_t GetKeyState(const RawInputState &state, int keyIndex) const;
 
     /**
      * @brief Update progress callback if set.
@@ -214,11 +232,15 @@ private:
     std::string m_LastGeneratedPath;
     std::function<void(float)> m_ProgressCallback;
 
+    // Key mapping for consistent naming
+    static const std::vector<std::string> KEY_NAMES;
+    static const int KEY_COUNT = 8; // Number of tracked keys
+
     // Statistics
     struct GenerationStats {
         size_t totalFrames = 0;
         size_t totalBlocks = 0;
-        size_t optimizedBlocks = 0;
+        size_t keyEvents = 0;
         size_t eventsProcessed = 0;
         double generationTime = 0.0;
     } m_LastStats;

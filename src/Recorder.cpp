@@ -27,10 +27,8 @@ Recorder::Recorder(TASEngine *engine)
     m_GenerationOptions->authorName = "Player";
     m_GenerationOptions->targetLevel = "Level_01";
     m_GenerationOptions->description = "Auto-generated TAS script";
-    m_GenerationOptions->optimizeShortWaits = true;
     m_GenerationOptions->addFrameComments = true;
     m_GenerationOptions->addPhysicsComments = false;
-    m_GenerationOptions->groupSimilarActions = true;
 }
 
 void Recorder::SetGenerationOptions(const GenerationOptions &options) {
@@ -225,25 +223,37 @@ void Recorder::OnGameEvent(const std::string &eventName, int eventData) {
 RawInputState Recorder::CaptureRealInput() const {
     auto *inputManager = m_BML->GetInputManager();
     if (!inputManager) {
+        m_Mod->GetLogger()->Warn("Input manager not found.");
         return {};
     }
 
-    // CRITICAL: Use 'oIsKeyDown' functions to get the original,
-    // un-synthesized keyboard state representing actual player input
+    auto *keyboardState = inputManager->GetKeyboardState();
+    if (!keyboardState) {
+        m_Mod->GetLogger()->Warn("Keyboard state not available.");
+        return {};
+    }
+
     RawInputState state;
 
-    try {
-        state.keyUp = inputManager->oIsKeyDown(CKKEY_UP);
-        state.keyDown = inputManager->oIsKeyDown(CKKEY_DOWN);
-        state.keyLeft = inputManager->oIsKeyDown(CKKEY_LEFT);
-        state.keyRight = inputManager->oIsKeyDown(CKKEY_RIGHT);
-        state.keyShift = inputManager->oIsKeyDown(CKKEY_LSHIFT) || inputManager->oIsKeyDown(CKKEY_RSHIFT);
-        state.keySpace = inputManager->oIsKeyDown(CKKEY_SPACE);
-        state.keyQ = inputManager->oIsKeyDown(CKKEY_Q);
-        state.keyEsc = inputManager->oIsKeyDown(CKKEY_ESCAPE);
-    } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Error capturing input state: %s", e.what());
-        return {}; // Return empty state on error
+    auto *g = m_Engine->GetGameInterface();
+    if (g) {
+        state.keyUp = keyboardState[g->RemapKey(CKKEY_UP)];
+        state.keyDown = keyboardState[g->RemapKey(CKKEY_DOWN)];
+        state.keyLeft = keyboardState[g->RemapKey(CKKEY_LEFT)];
+        state.keyRight = keyboardState[g->RemapKey(CKKEY_RIGHT)];
+        state.keyShift = keyboardState[g->RemapKey(CKKEY_LSHIFT)];
+        state.keySpace = keyboardState[g->RemapKey(CKKEY_SPACE)];
+        state.keyQ = keyboardState[g->RemapKey(CKKEY_Q)];
+        state.keyEsc = keyboardState[g->RemapKey(CKKEY_ESCAPE)];
+    } else {
+        state.keyUp = keyboardState[CKKEY_UP];
+        state.keyDown = keyboardState[CKKEY_DOWN];
+        state.keyLeft = keyboardState[CKKEY_LEFT];
+        state.keyRight = keyboardState[CKKEY_RIGHT];
+        state.keyShift = keyboardState[CKKEY_LSHIFT];
+        state.keySpace = keyboardState[CKKEY_SPACE];
+        state.keyQ = keyboardState[CKKEY_Q];
+        state.keyEsc = keyboardState[CKKEY_ESCAPE];
     }
 
     return state;

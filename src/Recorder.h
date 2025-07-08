@@ -1,9 +1,13 @@
 #pragma once
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 #include <string>
 #include <memory>
 #include <functional>
+
+#include <CKInputManager.h>
 
 // Forward declarations
 class TASEngine;
@@ -15,16 +19,17 @@ struct GenerationOptions;
 /**
  * @struct RawInputState
  * @brief A snapshot of the real keyboard's state for a single frame.
+ * Each field contains the raw keyboard state value (KS_IDLE, KS_PRESSED, KS_RELEASED).
  */
 struct RawInputState {
-    bool keyUp = false;
-    bool keyDown = false;
-    bool keyLeft = false;
-    bool keyRight = false;
-    bool keyShift = false;
-    bool keySpace = false;
-    bool keyQ = false;
-    bool keyEsc = false;
+    uint8_t keyUp = KS_IDLE;
+    uint8_t keyDown = KS_IDLE;
+    uint8_t keyLeft = KS_IDLE;
+    uint8_t keyRight = KS_IDLE;
+    uint8_t keyShift = KS_IDLE;
+    uint8_t keySpace = KS_IDLE;
+    uint8_t keyQ = KS_IDLE;
+    uint8_t keyEsc = KS_IDLE;
 
     bool operator==(const RawInputState &other) const {
         return keyUp == other.keyUp &&
@@ -41,9 +46,28 @@ struct RawInputState {
         return !(*this == other);
     }
 
-    bool HasAnyKey() const {
-        return keyUp || keyDown || keyLeft || keyRight ||
-            keyShift || keySpace || keyQ || keyEsc;
+    // Check if any key has the PRESSED bit set
+    bool HasAnyPressed() const {
+        return (keyUp & KS_PRESSED) ||
+               (keyDown & KS_PRESSED) ||
+               (keyLeft & KS_PRESSED) ||
+               (keyRight & KS_PRESSED) ||
+               (keyShift & KS_PRESSED) ||
+               (keySpace & KS_PRESSED) ||
+               (keyQ & KS_PRESSED) ||
+               (keyEsc & KS_PRESSED);
+    }
+
+    // Check if any key has the RELEASED bit set
+    bool HasAnyReleased() const {
+        return (keyUp & KS_RELEASED) ||
+               (keyDown & KS_RELEASED) ||
+               (keyLeft & KS_RELEASED) ||
+               (keyRight & KS_RELEASED) ||
+               (keyShift & KS_RELEASED) ||
+               (keySpace & KS_RELEASED) ||
+               (keyQ & KS_RELEASED) ||
+               (keyEsc & KS_RELEASED);
     }
 };
 
@@ -55,8 +79,8 @@ struct GameEvent {
     std::string eventName;
     int eventData = 0; // For events like checkpoint ID
 
-    GameEvent(const std::string &name, int data = 0)
-        : eventName(name), eventData(data) {}
+    explicit GameEvent(std::string name, int data = 0)
+        : eventName(std::move(name)), eventData(data) {}
 };
 
 /**

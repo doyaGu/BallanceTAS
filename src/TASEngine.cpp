@@ -471,19 +471,33 @@ void TASEngine::SetupPlaybackCallbacks() {
     CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
         if (!m_ShuttingDown) {
             try {
-                if (m_Scheduler) {
-                    m_Scheduler->Tick();
-                }
+                auto *inputManager = static_cast<CKInputManager *>(man);
+                 uint32_t currentTick = 0;
 
-                // Apply InputSystem when it's enabled
-                if (m_InputSystem && m_InputSystem->IsEnabled()) {
-                    auto *inputManager = static_cast<CKInputManager *>(man);
-                    m_InputSystem->Apply(inputManager->GetKeyboardState());
-                }
+                 if (m_GameInterface) {
+                     currentTick = m_GameInterface->GetCurrentTick();
+                 }
 
-                if (m_GameInterface) {
-                    m_GameInterface->IncrementCurrentTick();
-                }
+                 // STEP 1: Process Lua scheduler to execute script commands
+                 if (m_Scheduler) {
+                     m_Scheduler->Tick();
+                 }
+
+                 // STEP 2: Apply InputSystem changes
+                 if (m_InputSystem && m_InputSystem->IsEnabled()) {
+                     m_InputSystem->Apply(inputManager->GetKeyboardState(), currentTick);
+                 }
+
+                 // STEP 3: Increment frame counter for next iteration
+                 if (m_GameInterface) {
+                     m_GameInterface->IncrementCurrentTick();
+                 }
+
+                 // STEP 4: Prepare InputSystem for next frame
+                 // This happens at the end of the current frame processing
+                 if (m_InputSystem && m_InputSystem->IsEnabled()) {
+                     m_InputSystem->PrepareNextFrame();
+                 }
             } catch (const std::exception &e) {
                 if (m_Mod) {
                     m_Mod->GetLogger()->Error("Input callback error: %s", e.what());
@@ -511,10 +525,12 @@ void TASEngine::SetupRecordingCallbacks() {
         if (!m_ShuttingDown) {
             try {
                 if (IsRecording()) {
+                    // This captures the exact accumulated state that the game will see
                     if (m_Recorder) {
                         m_Recorder->Tick();
                     }
 
+                    // Increment frame counter for recording timeline
                     if (m_GameInterface) {
                         m_GameInterface->IncrementCurrentTick();
                     }

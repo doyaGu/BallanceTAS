@@ -122,10 +122,8 @@ private:
     int m_TargetLevelIndex = 0;
 
     // Generation options
-    bool m_OptimizeShortWaits = true;
     bool m_AddFrameComments = true;
     bool m_AddPhysicsComments = false;
-    bool m_GroupSimilarActions = true;
 
     // Level selection constants
     static constexpr const char *LEVEL_OPTIONS[] = {

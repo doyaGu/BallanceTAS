@@ -7,6 +7,38 @@
 #include <unordered_map>
 #include <vector>
 
+#include <CKInputManager.h>
+
+// Exact state representation
+struct KeyState {
+    uint8_t currentState = KS_IDLE;  // Current accumulated state
+    bool hadPressEvent = false;      // KS_PRESSED was added this frame
+    bool hadReleaseEvent = false;    // KS_RELEASED was added this frame
+    uint32_t timestamp = 0;          // Event timestamp
+
+    // Reset for new frame (mimics PostProcess cleanup)
+    void PrepareNextFrame() {
+        if (currentState & KS_RELEASED) {
+            currentState = KS_IDLE;
+        }
+        hadPressEvent = false;
+        hadReleaseEvent = false;
+    }
+
+    // Apply events (mimics PreProcess accumulation)
+    void ApplyPressEvent(uint32_t ts) {
+        currentState |= KS_PRESSED;
+        hadPressEvent = true;
+        timestamp = ts;
+    }
+
+    void ApplyReleaseEvent(uint32_t ts) {
+        currentState |= KS_RELEASED;
+        hadReleaseEvent = true;
+        timestamp = ts;
+    }
+};
+
 /**
  * @class InputSystem
  * @brief A minimal-state, preemptive input control system for TAS replay.
@@ -104,14 +136,15 @@ public:
     // --- Core Method for Hooking ---
 
     /**
-     * @brief Applies TAS input control to the game's keyboard buffer.
-     *
-     * When enabled, this method completely overrides ALL keyboard input
-     * with TAS-controlled input. When disabled, does nothing.
-     *
-     * @param keyboardState A pointer to the game's keyboard state buffer.
+     * @brief Applies TAS input by replicating DX8InputManager state transitions
+     * This now properly handles state accumulation and frame lifecycle
      */
-    void Apply(unsigned char *keyboardState);
+    void Apply(unsigned char *keyboardState, uint32_t currentTick);
+
+    /**
+     * @brief Prepares for next frame (mimics PostProcess cleanup)
+     */
+    void PrepareNextFrame();
 
     /**
      * @brief Resets the game's keyboard state buffer.
@@ -150,11 +183,11 @@ private:
     // A map from string key name to its corresponding BML key code.
     std::unordered_map<std::string, CKKEYBOARD> m_Keymap;
 
-    // Keys currently being pressed by the TAS system
-    std::set<CKKEYBOARD> m_CurrentlyPressed;
+    // State tracking
+    std::unordered_map<CKKEYBOARD, KeyState> m_KeyStates;
 
-    // Keys that should be pressed for exactly one frame
-    std::set<CKKEYBOARD> m_OneFrameKeys;
+    // Current frame tracking
+    uint32_t m_CurrentTick = 0;
 
     // Keys being held for a specific duration (key -> remaining ticks)
     std::unordered_map<CKKEYBOARD, int> m_HeldKeys;

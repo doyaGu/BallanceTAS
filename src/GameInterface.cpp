@@ -91,6 +91,18 @@ void GameInterface::SetPhysicsTimeFactor(float factor) {
     physicsTimeFactor = factor * 0.001f;
 }
 
+CKKEYBOARD GameInterface::RemapKey(CKKEYBOARD key) const {
+    switch (key) {
+        case CKKEY_UP: return m_KeyUp;
+        case CKKEY_DOWN: return m_KeyDown;
+        case CKKEY_LEFT: return m_KeyLeft;
+        case CKKEY_RIGHT: return m_KeyRight;
+        case CKKEY_LSHIFT: return m_KeyShift;
+        case CKKEY_SPACE: return m_KeySpace;
+        default: return key; // Return the original key if not remapped
+    }
+}
+
 CK3dEntity *GameInterface::GetBall() const {
     if (m_ActiveBallParam) {
         CKObject *obj = m_ActiveBallParam->GetValueObject();

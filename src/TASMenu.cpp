@@ -625,25 +625,12 @@ void TASRecordingPage::DrawGenerationOptions() {
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::SetNextItemWidth(menuSize.x * 0.6f);
-    ImGui::Checkbox("Optimize short waits", &m_OptimizeShortWaits);
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Merge brief wait periods for cleaner code");
-    }
 
     ImGui::SetCursorPosX(menuPos.x);
     ImGui::SetNextItemWidth(menuSize.x * 0.6f);
     ImGui::Checkbox("Add frame comments", &m_AddFrameComments);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Include frame numbers in generated comments");
-    }
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::SetNextItemWidth(menuSize.x * 0.6f);
-    ImGui::Checkbox("Group similar actions", &m_GroupSimilarActions);
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Combine similar input patterns");
     }
 
     ImGui::SetCursorPosX(menuPos.x);
@@ -703,10 +690,8 @@ void TASRecordingPage::StartRecording() {
         options.authorName = m_AuthorName;
         options.targetLevel = targetLevel;
         options.description = m_Description;
-        options.optimizeShortWaits = m_OptimizeShortWaits;
         options.addFrameComments = m_AddFrameComments;
         options.addPhysicsComments = m_AddPhysicsComments;
-        options.groupSimilarActions = m_GroupSimilarActions;
 
         // Set the generation options on the recorder
         recorder->SetGenerationOptions(options);
@@ -717,11 +702,9 @@ void TASRecordingPage::StartRecording() {
         engine->GetMod()->GetLogger()->Info("  Author: %s", m_AuthorName);
         engine->GetMod()->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
         engine->GetMod()->GetLogger()->Info("  Description: %s", m_Description);
-        engine->GetMod()->GetLogger()->Info("  Generation Options: optimizeWaits=%s, frameComments=%s, physicsComments=%s, groupActions=%s",
-                                            m_OptimizeShortWaits ? "true" : "false",
+        engine->GetMod()->GetLogger()->Info("  Generation Options: frameComments=%s, physicsComments=%s",
                                             m_AddFrameComments ? "true" : "false",
-                                            m_AddPhysicsComments ? "true" : "false",
-                                            m_GroupSimilarActions ? "true" : "false");
+                                            m_AddPhysicsComments ? "true" : "false");
         m_Menu->Close();
     } else {
         engine->GetMod()->GetLogger()->Error("Failed to setup recording.");

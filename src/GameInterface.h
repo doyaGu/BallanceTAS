@@ -39,6 +39,8 @@ public:
     void ResetPhysicsTime();
     void SetPhysicsTimeFactor(float factor = 1.0f);
 
+    CKKEYBOARD RemapKey(CKKEYBOARD key) const;
+
     // --- Object Access ---
 
     /**

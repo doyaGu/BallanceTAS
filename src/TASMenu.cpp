@@ -68,7 +68,7 @@ void TASMenu::Shutdown() {
 }
 
 bool TASMenu::IsOpen() const {
-    return m_CurrentPage != nullptr;
+    return m_CurrentPage != nullptr && m_CurrentPage->IsVisible();
 }
 
 void TASMenu::OnOpen() {

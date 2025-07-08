@@ -21,6 +21,15 @@ public:
     virtual bool IsComplete() = 0;
 };
 
+class ImmediateTask : public SchedulerTask {
+public:
+    ImmediateTask() = default;
+
+    bool IsComplete() override {
+        return true; // Immediate tasks are always complete
+    }
+};
+
 /**
  * @class TickWaitTask
  * @brief Task that completes after a specified number of ticks.
@@ -120,6 +129,18 @@ public:
      * @param func Lua function to run as coroutine.
      */
     void StartCoroutine(const sol::function &func);
+
+    /**
+     * @brief Adds a coroutine task to the scheduler.
+     * @param co Coroutine to add.
+     */
+    void AddCoroutineTask(const sol::coroutine &co);
+
+    /**
+     * @brief Adds a coroutine task from a Lua function.
+     * @param func Lua function to add as a coroutine task.
+     */
+    void AddCoroutineTask(const sol::function &func);
 
     /**
      * @brief The main update loop - processes all scheduled tasks.

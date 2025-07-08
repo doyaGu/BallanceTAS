@@ -522,12 +522,12 @@ void TASEngine::SetupPlaybackCallbacks() {
     CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
         if (!m_ShuttingDown) {
             try {
-                if (IsPlaying() && m_GameInterface) {
-                    m_GameInterface->IncrementCurrentTick();
-                }
-
                 if (m_Scheduler) {
                     m_Scheduler->Tick();
+                }
+
+                if (m_GameInterface) {
+                    m_GameInterface->IncrementCurrentTick();
                 }
 
                 // Apply InputSystem when it's enabled
@@ -568,11 +568,12 @@ void TASEngine::SetupRecordingCallbacks() {
         if (!m_ShuttingDown) {
             try {
                 if (IsRecording()) {
-                    if (m_GameInterface) {
-                        m_GameInterface->IncrementCurrentTick();
-                    }
                     if (m_Recorder) {
                         m_Recorder->Tick();
+                    }
+
+                    if (m_GameInterface) {
+                        m_GameInterface->IncrementCurrentTick();
                     }
                 }
             } catch (const std::exception &e) {
@@ -639,7 +640,7 @@ bool TASEngine::LoadTAS(const TASProject *project) {
         }
 
         if (m_Scheduler) {
-            m_Scheduler->StartCoroutine(mainFunc);
+            m_Scheduler->AddCoroutineTask(mainFunc);
         }
 
         m_Mod->GetLogger()->Info("TAS script '%s' loaded and started.", project->GetName().c_str());

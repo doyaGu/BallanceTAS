@@ -1,5 +1,7 @@
 #include "LuaScheduler.h"
 
+#include <utility>
+
 #include "TASEngine.h"
 #include "BallanceTAS.h"
 
@@ -35,6 +37,24 @@ void LuaScheduler::StartCoroutine(const sol::coroutine &co) {
 
 void LuaScheduler::StartCoroutine(const sol::function &func) {
     StartCoroutine(sol::coroutine(func));
+}
+
+void LuaScheduler::AddCoroutineTask(const sol::coroutine &co) {
+    // Create new thread for the coroutine
+    auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), co);
+
+    // Create an immediate task that will cause the coroutine to start on next tick
+    auto task = std::make_shared<ImmediateTask>();
+
+    // Add to task list
+    detail::SchedulerThreadTask threadTask;
+    threadTask.thread = thread;
+    threadTask.task = task;
+    m_Tasks.push_back(threadTask);
+}
+
+void LuaScheduler::AddCoroutineTask(const sol::function &func) {
+    AddCoroutineTask(sol::coroutine(func));
 }
 
 void LuaScheduler::Tick() {
@@ -141,6 +161,6 @@ void LuaScheduler::YieldCoroutines(const std::vector<sol::coroutine> &coroutines
 void LuaScheduler::Yield(std::shared_ptr<SchedulerTask> task) {
     detail::SchedulerThreadTask thread_task;
     thread_task.thread = m_CurrentThread;
-    thread_task.task = task;
+    thread_task.task = std::move(task);
     m_Tasks.push_back(thread_task);
 }

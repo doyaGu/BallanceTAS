@@ -152,12 +152,14 @@ private:
 
     /**
      * @brief Generates exact timing Lua script.
+     * @param frames The raw frame data.
      * @param blocks The analyzed input blocks.
      * @param options Generation options.
      * @return A string containing the script.
      */
-    std::string BuildScript(const std::vector<InputBlock> &blocks,
-                                const GenerationOptions &options);
+    std::string BuildScript(const std::vector<RawFrameData> &frames,
+                            const std::vector<InputBlock> &blocks,
+                            const GenerationOptions &options);
 
     /**
      * @brief Generate the manifest.lua file for the project.

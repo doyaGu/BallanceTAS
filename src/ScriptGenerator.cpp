@@ -185,7 +185,7 @@ bool ScriptGenerator::Generate(const std::vector<RawFrameData> &frames, const Ge
 
         // Generate script
         m_Mod->GetLogger()->Info("Building script...");
-        std::string scriptContent = BuildScript(blocks, finalOptions);
+        std::string scriptContent = BuildScript(frames, blocks, finalOptions);
         UpdateProgress(0.6f);
 
         // Generate manifest
@@ -237,10 +237,9 @@ std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<RawFram
         currentBlock.keyEvents.insert(currentBlock.keyEvents.end(), keyEvents.begin(), keyEvents.end());
         m_LastStats.keyEvents += keyEvents.size();
 
-        // FIXED: Add game events with proper frame association
-        // Events that occurred "at" this frame should be associated with this frame
+        // Properly preserve frame association for game events
         for (const auto &event : frame.events) {
-            currentBlock.gameEvents.push_back(event);
+            currentBlock.gameEvents.emplace_back(frame.frameIndex, event.eventName, event.eventData);
             m_LastStats.eventsProcessed++;
         }
 
@@ -250,42 +249,52 @@ std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<RawFram
             speedSamples++;
         }
 
-        // Update block end frame
+        // Update block end frame BEFORE checking for splits
         currentBlock.endFrame = frame.frameIndex;
 
-        // Check if we should start a new block
-        // FIXED: Use more intelligent block splitting that preserves event timing
+        // Check if we should start a new block (but not on the last frame)
         bool shouldStartNewBlock = false;
-
-        // Split blocks when we have significant changes or after many events
-        if (options.addSectionSeparators) {
+        if (i < frames.size() - 1 && options.addSectionSeparators) {
             // Start new block when we have accumulated enough events
             size_t totalEvents = currentBlock.keyEvents.size() + currentBlock.gameEvents.size();
             shouldStartNewBlock = (totalEvents > 25); // Adjustable threshold
+
+            // Also split on significant time gaps (optional)
+            if (!shouldStartNewBlock && i + 1 < frames.size()) {
+                uint32_t frameGap = frames[i + 1].frameIndex - frame.frameIndex;
+                shouldStartNewBlock = (frameGap > 30); // Split on gaps > 30 frames
+            }
         }
 
-        if (shouldStartNewBlock || i == frames.size() - 1) {
+        if (shouldStartNewBlock) {
             // Finalize current block
             if (speedSamples > 0) {
                 currentBlock.averageSpeed = totalSpeed / speedSamples;
                 currentBlock.hasSignificantMovement = currentBlock.averageSpeed > 1.0f;
             }
 
-            if (!currentBlock.IsEmpty() || i == frames.size() - 1) {
+            if (!currentBlock.IsEmpty()) {
                 blocks.push_back(currentBlock);
             }
 
-            // Start new block
-            if (i < frames.size() - 1) {
-                currentBlock = InputBlock{};
-                currentBlock.startFrame = frame.frameIndex + 1;
-                currentBlock.endFrame = frame.frameIndex + 1;
-                totalSpeed = 0.0f;
-                speedSamples = 0;
-            }
+            // Start new block from next frame
+            currentBlock = InputBlock{};
+            currentBlock.startFrame = frames[i + 1].frameIndex;
+            currentBlock.endFrame = frames[i + 1].frameIndex;
+            totalSpeed = 0.0f;
+            speedSamples = 0;
         }
 
         previousState = frame.inputState;
+    }
+
+    // Add the final block
+    if (!currentBlock.IsEmpty()) {
+        if (speedSamples > 0) {
+            currentBlock.averageSpeed = totalSpeed / speedSamples;
+            currentBlock.hasSignificantMovement = currentBlock.averageSpeed > 1.0f;
+        }
+        blocks.push_back(currentBlock);
     }
 
     return blocks;
@@ -347,7 +356,8 @@ std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState 
     return events;
 }
 
-std::string ScriptGenerator::BuildScript(const std::vector<InputBlock> &blocks,
+std::string ScriptGenerator::BuildScript(const std::vector<RawFrameData> &frames,
+                                         const std::vector<InputBlock> &blocks,
                                          const GenerationOptions &options) {
     LuaScriptBuilder builder(options);
 
@@ -369,7 +379,7 @@ std::string ScriptGenerator::BuildScript(const std::vector<InputBlock> &blocks,
     // Track currently pressed keys for validation and cleanup
     std::set<std::string> currentlyPressed;
 
-    // Collect ALL events (key events AND game events) and sort by frame
+    // Collect ALL events with frame associations
     std::vector<std::pair<uint32_t, std::variant<KeyEvent, GameEvent>>> allEvents;
 
     for (const auto &block : blocks) {
@@ -378,17 +388,21 @@ std::string ScriptGenerator::BuildScript(const std::vector<InputBlock> &blocks,
             allEvents.emplace_back(keyEvent.frame, keyEvent);
         }
 
-        // Add game events - FIXED: Now properly associating events with frames
+        // Add game events
         for (const auto &gameEvent : block.gameEvents) {
-            // Game events should be placed at the START of the block where they occurred
-            // This represents when the event was actually triggered during recording
-            allEvents.emplace_back(block.startFrame, gameEvent);
+            allEvents.emplace_back(gameEvent.frame, gameEvent);
         }
     }
 
     // Sort all events by frame number for chronological processing
     std::sort(allEvents.begin(), allEvents.end(),
               [](const auto &a, const auto &b) {
+                  // Handle events at the same frame: game events first, then key events
+                  if (a.first == b.first) {
+                      bool aIsGame = std::holds_alternative<GameEvent>(a.second);
+                      bool bIsGame = std::holds_alternative<GameEvent>(b.second);
+                      return aIsGame && !bIsGame; // Game events before key events
+                  }
                   return a.first < b.first;
               });
 
@@ -441,11 +455,11 @@ std::string ScriptGenerator::BuildScript(const std::vector<InputBlock> &blocks,
         } else if (std::holds_alternative<GameEvent>(event)) {
             const auto &gameEvent = std::get<GameEvent>(event);
 
-            // FIXED: Place game events as comments at the exact frame they occurred
+            // Game events placed at their exact frame
             if (options.addEventAnchors) {
                 builder.AddComment("GAME EVENT: " + gameEvent.eventName +
                     (gameEvent.eventData != 0 ? " (data: " + std::to_string(gameEvent.eventData) + ")" : "") +
-                    " at frame " + std::to_string(frameNumber));
+                    " at frame " + std::to_string(gameEvent.frame));
             }
         }
 
@@ -456,6 +470,34 @@ std::string ScriptGenerator::BuildScript(const std::vector<InputBlock> &blocks,
             builder.AddBlankLine();
             builder.AddComment("--- Section " + std::to_string((i + 1) / 20 + 1) + " ---");
             builder.AddBlankLine();
+        }
+    }
+
+    // Wait until the actual end of recording, then release remaining keys
+    if (!frames.empty()) {
+        // Find the true final frame from the original recording data
+        uint32_t finalRecordingFrame = frames.back().frameIndex;
+        
+        // Wait until the final frame if we haven't reached it yet
+        int64_t finalWait = finalRecordingFrame - lastFrame;
+        if (finalWait > 0) {
+            builder.AddBlankLine();
+            if (options.addFrameComments) {
+                builder.AddComment("Wait until end of recording (frame " + std::to_string(finalRecordingFrame) + ")");
+            }
+            builder.AddLine("tas.wait_ticks(" + std::to_string(finalWait) + ")");
+        }
+        
+        // Now release any keys that are still pressed
+        if (!currentlyPressed.empty()) {
+            builder.AddBlankLine();
+            builder.AddComment("Recording ended - release all remaining pressed keys");
+            for (const auto &key : currentlyPressed) {
+                if (options.addFrameComments) {
+                    builder.AddComment("Release " + key + " at end of recording (frame " + std::to_string(finalRecordingFrame) + ")");
+                }
+                builder.AddLine("tas.key_up(\"" + key + "\")");
+            }
         }
     }
 

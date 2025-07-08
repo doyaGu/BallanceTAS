@@ -76,11 +76,12 @@ struct RawInputState {
  * @brief A record of a significant game event that occurred on a specific frame.
  */
 struct GameEvent {
+    uint32_t frame = 0;
     std::string eventName;
     int eventData = 0; // For events like checkpoint ID
 
-    explicit GameEvent(std::string name, int data = 0)
-        : eventName(std::move(name)), eventData(data) {}
+    explicit GameEvent(uint32_t frameNum, std::string name, int data = 0)
+        : frame(frameNum), eventName(std::move(name)), eventData(data) {}
 };
 
 /**

@@ -211,8 +211,8 @@ void Recorder::OnGameEvent(const std::string &eventName, int eventData) {
     }
 
     try {
-        // Store event in pending list - it will be associated with the next frame
-        m_PendingEvents.emplace_back(eventName, eventData);
+        // Store event in pending list
+        m_PendingEvents.emplace_back(m_CurrentTick, eventName, eventData);
 
         m_Mod->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
                                  eventName.c_str(), eventData, m_CurrentTick);

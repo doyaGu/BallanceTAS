@@ -67,6 +67,10 @@ void TASMenu::Shutdown() {
     }
 }
 
+bool TASMenu::IsOpen() const {
+    return m_CurrentPage != nullptr;
+}
+
 void TASMenu::OnOpen() {
     if (!m_Engine || !m_Mod) return;
 

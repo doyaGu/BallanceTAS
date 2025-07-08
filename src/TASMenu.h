@@ -51,6 +51,7 @@ public:
 
     // State queries
     bool IsTASActive() const;
+    bool IsOpen() const;
 
     TASEngine *GetEngine() const { return m_Engine; }
 

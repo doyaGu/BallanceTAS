@@ -144,18 +144,7 @@ void UIManager::ToggleTASMenu() {
 }
 
 bool UIManager::IsTASMenuOpen() const {
-    if (!m_TASMenu) return false;
-
-    // Check if any TAS menu page is visible
-    auto *listPage = m_TASMenu->GetPage("TAS Projects");
-    auto *detailsPage = m_TASMenu->GetPage("TAS Details");
-    auto *recordPage = m_TASMenu->GetPage("Record New TAS");
-    auto *statusPage = m_TASMenu->GetPage("Recording Status");
-
-    return (listPage && listPage->IsVisible()) ||
-           (detailsPage && detailsPage->IsVisible()) ||
-           (recordPage && recordPage->IsVisible()) ||
-           (statusPage && statusPage->IsVisible());
+    return m_TASMenu && m_TASMenu->IsOpen();
 }
 
 // === Recording Control ===

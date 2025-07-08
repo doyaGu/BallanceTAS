@@ -37,13 +37,13 @@ static void *GetModuleBaseAddress(const char *modulePath) {
 static float (*ivp_rand)() = nullptr;
 static float (*ivp_rand_orig)() = nullptr;
 
-static float IVP_Rand() { return 0.5f; }
+static float IVP_Rand() { return 1.0f; }
 
 // qh_rand
 static int (*qh_rand)() = nullptr;
 static int (*qh_rand_orig)() = nullptr;
 
-static constexpr auto QH_RAND_MAX = 2147483646UL / 2UL;
+static constexpr auto QH_RAND_MAX = 2147483646UL;
 static int QH_Rand() { return QH_RAND_MAX; }
 
 // must_perform_movement_check

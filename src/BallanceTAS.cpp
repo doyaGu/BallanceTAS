@@ -499,11 +499,6 @@ void BallanceTAS::OnPostStartMenu() {
 }
 
 void BallanceTAS::OnExitGame() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("exit_game");
-        m_Engine->Stop();
-    }
-
     m_Level01 = nullptr;
 }
 

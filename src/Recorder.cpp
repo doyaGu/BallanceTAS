@@ -198,7 +198,7 @@ void Recorder::Tick() {
         frame.events = std::move(m_PendingEvents);
         m_PendingEvents.clear();
 
-        m_Frames.push_back(std::move(frame));
+        m_Frames.emplace_back(std::move(frame));
         m_CurrentTick++;
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Error during recording tick: %s", e.what());

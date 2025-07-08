@@ -151,6 +151,11 @@ void TASEngine::Start() {
         StartReplayInternal();
         return;
     }
+
+    if (m_GameInterface) {
+        m_GameInterface->ResetPhysicsTime();
+        m_GameInterface->SetCurrentTick(0);
+    }
 }
 
 void TASEngine::Stop() {

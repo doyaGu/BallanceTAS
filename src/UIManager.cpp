@@ -318,37 +318,42 @@ void UIManager::SetMode(UIMode mode) {
 void UIManager::UpdateHotkeys() {
     if (!m_Mod) return;
 
-    auto *inputManager = m_Mod->GetInputManager();
-    if (!inputManager) return;
+    // Handle stop key for both playback and recording
+    if (m_Engine->IsPlaying() || m_Engine->IsRecording()) {
+        if (ImGui::IsKeyPressed(m_StopHotkey)) {
+            m_Engine->Stop();
+            m_Mod->GetLogger()->Info("TAS stopped via stop hotkey.");
+        }
+    }
 
     // OSD hotkey handling using IsKeyToggled
-    if (inputManager->IsKeyToggled(m_OSDHotkey)) {
+    if (ImGui::IsKeyPressed(m_OSDHotkey)) {
         ToggleOSD();
     }
 
     // Panel-specific hotkeys (only when in-game and OSD is enabled)
     if (m_BML && m_BML->IsIngame() && m_OSDVisible) {
-        if (inputManager->IsKeyToggled(m_StatusPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_StatusPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Status);
         }
 
-        if (inputManager->IsKeyToggled(m_VelocityPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_VelocityPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Velocity);
         }
 
-        if (inputManager->IsKeyToggled(m_PositionPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_PositionPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Position);
         }
 
-        if (inputManager->IsKeyToggled(m_PhysicsPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_PhysicsPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Physics);
         }
 
-        if (inputManager->IsKeyToggled(m_KeysPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_KeysPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Keys);
         }
 
-        if (inputManager->IsKeyToggled(m_TrajectoryPlaneHotkey)) {
+        if (ImGui::IsKeyPressed(m_TrajectoryPlaneHotkey)) {
             CycleTrajectoryPlane();
         }
     }

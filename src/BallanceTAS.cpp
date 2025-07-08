@@ -161,6 +161,11 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
         if (m_Engine && m_Engine->GetRecorder()) {
             m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
         }
+    } else if (prop == m_StopKey) {
+        // Update the stop key for the UI manager
+        if (m_UIManager) {
+            m_UIManager->SetStopHotkey(m_StopKey->GetKey());
+        }
     }
 
     // Forward relevant config changes to the engine and UI if they're running.
@@ -330,6 +335,7 @@ bool BallanceTAS::Initialize() {
         if (!m_UIManager->Initialize()) {
             throw std::runtime_error("UIManager failed to initialize.");
         }
+        m_UIManager->SetStopHotkey(m_StopKey->GetKey());
 
         m_Initialized = true;
         GetLogger()->Info("BallanceTAS framework initialized successfully.");
@@ -432,14 +438,6 @@ void BallanceTAS::OnProcess() {
         // Process and render UI
         m_UIManager->Process();
         m_UIManager->Render();
-
-        // Handle stop key for both playback and recording
-        if (m_Engine->IsPlaying() || m_Engine->IsRecording()) {
-            if (m_InputManager && m_InputManager->oIsKeyPressed(m_StopKey->GetKey())) {
-                m_Engine->Stop();
-                GetLogger()->Info("TAS stopped via stop hotkey.");
-            }
-        }
     }
 }
 

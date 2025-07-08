@@ -198,40 +198,46 @@ public:
     // --- Configuration ---
 
     /**
+     * @brief Sets the hotkey for stopping TAS playback or recording.
+     * @param key The key code (default: CKKEY_F3).
+     */
+    void SetStopHotkey(CKKEYBOARD key) { m_StopHotkey = Bui::CKKeyToImGuiKey(key); }
+
+    /**
      * @brief Sets the hotkey for toggling the OSD.
      * @param key The key code (default: CKKEY_F11).
      */
-    void SetOSDHotkey(CKKEYBOARD key) { m_OSDHotkey = key; }
+    void SetOSDHotkey(CKKEYBOARD key) { m_OSDHotkey = Bui::CKKeyToImGuiKey(key); }
 
     /**
      * @brief Sets the hotkey for toggling the status panel.
      * @param key The key code (default: CKKEY_F5).
      */
-    void SetStatusPanelHotkey(CKKEYBOARD key) { m_StatusPanelHotkey = key; }
+    void SetStatusPanelHotkey(CKKEYBOARD key) { m_StatusPanelHotkey = Bui::CKKeyToImGuiKey(key); }
 
     /**
      * @brief Sets the hotkey for toggling the velocity panel.
      * @param key The key code (default: CKKEY_F6).
      */
-    void SetVelocityPanelHotkey(CKKEYBOARD key) { m_VelocityPanelHotkey = key; }
+    void SetVelocityPanelHotkey(CKKEYBOARD key) { m_VelocityPanelHotkey = Bui::CKKeyToImGuiKey(key); }
 
     /**
      * @brief Sets the hotkey for toggling the position panel.
      * @param key The key code (default: CKKEY_F7).
      */
-    void SetPositionPanelHotkey(CKKEYBOARD key) { m_PositionPanelHotkey = key; }
+    void SetPositionPanelHotkey(CKKEYBOARD key) { m_PositionPanelHotkey = Bui::CKKeyToImGuiKey(key); }
 
     /**
      * @brief Sets the hotkey for toggling the physics panel.
      * @param key The key code (default: CKKEY_F8).
      */
-    void SetPhysicsPanelHotkey(CKKEYBOARD key) { m_PhysicsPanelHotkey = key; }
+    void SetPhysicsPanelHotkey(CKKEYBOARD key) { m_PhysicsPanelHotkey = Bui::CKKeyToImGuiKey(key); }
 
     /**
      * @brief Sets the hotkey for cycling trajectory plane.
      * @param key The key code (default: CKKEY_F9).
      */
-    void SetTrajectoryPlaneHotkey(CKKEYBOARD key) { m_TrajectoryPlaneHotkey = key; }
+    void SetTrajectoryPlaneHotkey(CKKEYBOARD key) { m_TrajectoryPlaneHotkey = Bui::CKKeyToImGuiKey(key); }
 
 private:
     // --- Internal Methods ---
@@ -252,11 +258,12 @@ private:
     UIMode m_CurrentMode = UIMode::Idle;
 
     // --- Configuration ---
-    CKKEYBOARD m_OSDHotkey = CKKEY_F11;
-    CKKEYBOARD m_StatusPanelHotkey = CKKEY_F5;
-    CKKEYBOARD m_VelocityPanelHotkey = CKKEY_F6;
-    CKKEYBOARD m_PositionPanelHotkey = CKKEY_F7;
-    CKKEYBOARD m_PhysicsPanelHotkey = CKKEY_F8;
-    CKKEYBOARD m_KeysPanelHotkey = CKKEY_F4;
-    CKKEYBOARD m_TrajectoryPlaneHotkey = CKKEY_F9;
+    ImGuiKey m_StopHotkey = ImGuiKey_F3;
+    ImGuiKey m_OSDHotkey = ImGuiKey_F11;
+    ImGuiKey m_StatusPanelHotkey = ImGuiKey_F5;
+    ImGuiKey m_VelocityPanelHotkey = ImGuiKey_F6;
+    ImGuiKey m_PositionPanelHotkey = ImGuiKey_F7;
+    ImGuiKey m_PhysicsPanelHotkey = ImGuiKey_F8;
+    ImGuiKey m_KeysPanelHotkey = ImGuiKey_F4;
+    ImGuiKey m_TrajectoryPlaneHotkey = ImGuiKey_F9;
 };

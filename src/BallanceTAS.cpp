@@ -131,7 +131,6 @@ void BallanceTAS::OnUnload() {
     try {
         UnhookPhysicsRT();
         UnhookRandom();
-        MH_DisableHook(MH_ALL_HOOKS);
         MH_Uninitialize();
         GetLogger()->Info("Determinism hooks cleaned up.");
     } catch (const std::exception &e) {
@@ -298,16 +297,22 @@ void BallanceTAS::DisableGameHooks() {
     GetLogger()->Info("Disabling game hooks...");
 
     try {
+        // Clear callbacks first
+        CKTimeManagerHook::ClearPreCallbacks();
+        CKTimeManagerHook::ClearPostCallbacks();
+        CKInputManagerHook::ClearPreCallbacks();
+        CKInputManagerHook::ClearPostCallbacks();
+
+        // Then disable hooks
         CKTimeManagerHook::Disable();
         CKInputManagerHook::Disable();
+
         GetLogger()->Info("Game hooks disabled.");
     } catch (const std::exception &e) {
         GetLogger()->Error("Exception disabling hooks: %s", e.what());
     }
 
     m_GameHooksEnabled = false;
-    // NOTE: We don't call MH_DisableHook(MH_ALL_HOOKS) here because
-    // physics hooks should remain active for determinism
 }
 
 bool BallanceTAS::Initialize() {
@@ -375,6 +380,9 @@ void BallanceTAS::Shutdown() {
     GetLogger()->Info("Shutting down BallanceTAS framework...");
 
     try {
+        // Disable game hooks
+        DisableGameHooks();
+
         // Shutdown UI first
         if (m_UIManager) {
             m_UIManager->Shutdown();
@@ -386,9 +394,6 @@ void BallanceTAS::Shutdown() {
             m_Engine->Shutdown();
             m_Engine.reset();
         }
-
-        // Disable game hooks
-        DisableGameHooks();
 
         GetLogger()->Info("BallanceTAS framework shutdown complete.");
     } catch (const std::exception &e) {

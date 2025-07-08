@@ -319,11 +319,13 @@ void UIManager::UpdateHotkeys() {
     if (!m_Mod) return;
 
     // Handle stop key for both playback and recording
-    if (m_Engine->IsPlaying() || m_Engine->IsRecording()) {
-        if (ImGui::IsKeyPressed(m_StopHotkey)) {
-            m_Engine->Stop();
-            m_Mod->GetLogger()->Info("TAS stopped via stop hotkey.");
+    if (ImGui::IsKeyPressed(m_StopHotkey)) {
+        if (m_Engine->IsRecording()) {
+            StopRecording();
+        } else if (m_Engine->IsPlaying()) {
+            StopReplay();
         }
+        m_Mod->GetLogger()->Info("TAS stopped via stop hotkey.");
     }
 
     // OSD hotkey handling using IsKeyToggled

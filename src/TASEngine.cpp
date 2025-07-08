@@ -140,6 +140,12 @@ void TASEngine::Start() {
         return; // Already active or shutting down
     }
 
+    m_Mod->GetBML()->AddTimer(1ul, [this]() {
+        if (m_GameInterface) {
+            m_GameInterface->ResetPhysicsTime();
+        }
+    });
+
     // Check if we should start recording instead of playing
     if (IsPendingRecord()) {
         StartRecordingInternal();
@@ -150,11 +156,6 @@ void TASEngine::Start() {
     if (IsPendingPlay()) {
         StartReplayInternal();
         return;
-    }
-
-    if (m_GameInterface) {
-        m_GameInterface->ResetPhysicsTime();
-        m_GameInterface->SetCurrentTick(0);
     }
 }
 
@@ -173,6 +174,14 @@ void TASEngine::Stop() {
         if (m_Mod) {
             m_Mod->SetUIMode(0); // UIMode::Idle
         }
+    }
+
+    if (m_Mod) {
+        m_Mod->GetBML()->AddTimer(1ul, [this]() {
+            if (m_GameInterface) {
+                m_GameInterface->SetPhysicsTimeFactor();
+            }
+        });
     }
 }
 
@@ -204,47 +213,30 @@ void TASEngine::StopRecording() {
         return;
     }
 
+    if (!m_Mod) {
+        return;
+    }
+
     try {
         if (IsRecording() && m_Recorder) {
             m_Recorder->Stop(); // This will auto-generate if configured
         }
-
-        // Ensure InputSystem remains disabled after recording
-        if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
-            m_InputSystem->SetEnabled(false);
-        }
-
-        ClearCallbacks();
-        SetRecording(false);
-        SetRecordPending(false);
-
-        // Use a safer timer approach
-        if (m_Mod && m_Mod->GetBML()) {
-            m_Mod->GetBML()->AddTimer(1ul, [this]() {
-                if (!m_ShuttingDown && m_GameInterface && m_Mod) {
-                    try {
-                        m_Mod->SetUIMode(0); // UIMode::Idle
-                        m_Mod->GetLogger()->Info("Recording stopped.");
-                    } catch (const std::exception &e) {
-                        if (m_Mod && m_Mod->GetLogger()) {
-                            m_Mod->GetLogger()->Error("Exception during recording stop: %s", e.what());
-                        }
-                    }
-                }
-            });
-        }
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Exception stopping recording: %s", e.what());
-        SetRecording(false);
-        SetRecordPending(false);
-
-        // Ensure InputSystem is disabled even on error
-        if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
-            m_InputSystem->SetEnabled(false);
-        }
     }
+
+    // Ensure InputSystem remains disabled after recording
+    if (m_InputSystem) {
+        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->SetEnabled(false);
+    }
+
+    ClearCallbacks();
+    SetRecording(false);
+    SetRecordPending(false);
+
+    m_Mod->SetUIMode(0); // UIMode::Idle
+    m_Mod->GetLogger()->Info("Recording stopped.");
 }
 
 void TASEngine::StopRecordingImmediate() {
@@ -296,49 +288,32 @@ void TASEngine::StopReplay() {
         return;
     }
 
+    if (!m_Mod) {
+        return;
+    }
+
     try {
         if (m_Scheduler) {
             m_Scheduler->Clear();
         }
-
-        // Disable InputSystem and clean up input state
-        if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
-            m_InputSystem->SetEnabled(false);
-        }
-
-        ClearCallbacks();
-        SetPlaying(false);
-        SetPlayPending(false);
-
-        // Use a safer timer approach
-        if (m_Mod && m_Mod->GetBML()) {
-            InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());
-
-            m_Mod->GetBML()->AddTimer(1ul, [this]() {
-                if (!m_ShuttingDown && m_GameInterface && m_Mod) {
-                    try {
-                        m_Mod->SetUIMode(0); // UIMode::Idle
-                        m_Mod->GetLogger()->Info("Replay stopped.");
-                    } catch (const std::exception &e) {
-                        if (m_Mod && m_Mod->GetLogger()) {
-                            m_Mod->GetLogger()->Error("Exception during replay stop: %s", e.what());
-                        }
-                    }
-                }
-            });
-        }
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Exception stopping replay: %s", e.what());
-        SetPlaying(false);
-        SetPlayPending(false);
-
-        // Ensure input control is disabled even on error
-        if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
-            m_InputSystem->SetEnabled(false);
-        }
     }
+
+    // Disable InputSystem and clean up input state
+    if (m_InputSystem) {
+        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->SetEnabled(false);
+    }
+
+    ClearCallbacks();
+    SetPlaying(false);
+    SetPlayPending(false);
+
+    InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());
+
+    m_Mod->SetUIMode(0); // UIMode::Idle
+    m_Mod->GetLogger()->Info("Replay stopped.");
 }
 
 void TASEngine::StopReplayImmediate() {
@@ -384,6 +359,7 @@ void TASEngine::StartRecordingInternal() {
 
     if (m_GameInterface) {
         m_GameInterface->AcquireKeyBindings();
+        m_GameInterface->SetCurrentTick(0);
     }
 
     // Ensure InputSystem is DISABLED during recording
@@ -393,33 +369,22 @@ void TASEngine::StartRecordingInternal() {
         m_InputSystem->SetEnabled(false);
     }
 
-    if (m_Mod && m_Mod->GetBML()) {
-        m_Mod->GetBML()->AddTimer(1ul, [this]() {
-            if (!m_ShuttingDown) {
-                try {
-                    if (m_GameInterface) {
-                        m_GameInterface->ResetPhysicsTime();
-                        m_GameInterface->SetCurrentTick(0);
-                    }
+    try {
+        if (m_Recorder && !m_Recorder->IsRecording()) {
+            m_Recorder->Start();
+        }
+    } catch (const std::exception &e) {
+        if (m_Mod) {
+            m_Mod->GetLogger()->Error("Exception during recording start: %s", e.what());
+        }
+        Stop();
+    }
 
-                    if (m_Recorder && !m_Recorder->IsRecording()) {
-                        m_Recorder->Start();
-                    }
+    SetRecordPending(false);
+    SetRecording(true);
 
-                    SetRecordPending(false);
-                    SetRecording(true);
-
-                    if (m_Mod) {
-                        m_Mod->GetLogger()->Info("Started recording new TAS.");
-                    }
-                } catch (const std::exception &e) {
-                    if (m_Mod) {
-                        m_Mod->GetLogger()->Error("Exception during recording start: %s", e.what());
-                    }
-                    Stop();
-                }
-            }
-        });
+    if (m_Mod) {
+        m_Mod->GetLogger()->Info("Started recording new TAS.");
     }
 }
 
@@ -443,6 +408,7 @@ void TASEngine::StartReplayInternal() {
 
     if (m_GameInterface) {
         m_GameInterface->AcquireKeyBindings();
+        m_GameInterface->SetCurrentTick(0);
     }
 
     // Enable InputSystem for deterministic replay
@@ -451,38 +417,27 @@ void TASEngine::StartReplayInternal() {
         m_InputSystem->ReleaseAllKeys(); // Start with clean state
     }
 
-    if (m_Mod && m_Mod->GetBML()) {
-        m_Mod->GetBML()->AddTimer(1ul, [this, project]() {
-            if (!m_ShuttingDown) {
-                try {
-                    if (m_GameInterface) {
-                        m_GameInterface->ResetPhysicsTime();
-                        m_GameInterface->SetCurrentTick(0);
-                    }
-
-                    if (!LoadTAS(project)) {
-                        if (m_Mod) {
-                            m_Mod->GetLogger()->Error("Failed to load TAS project.");
-                        }
-                        Stop();
-                        return;
-                    }
-
-                    SetPlayPending(false);
-                    SetPlaying(true);
-
-                    if (m_Mod) {
-                        m_Mod->SetUIMode(1); // UIMode::Playing
-                        m_Mod->GetLogger()->Info("Started playing TAS project: %s", project->GetName().c_str());
-                    }
-                } catch (const std::exception &e) {
-                    if (m_Mod) {
-                        m_Mod->GetLogger()->Error("Exception during TAS start: %s", e.what());
-                    }
-                    Stop();
-                }
+    try {
+        if (!LoadTAS(project)) {
+            if (m_Mod) {
+                m_Mod->GetLogger()->Error("Failed to load TAS project.");
             }
-        });
+            Stop();
+            return;
+        }
+    } catch (const std::exception &e) {
+        if (m_Mod) {
+            m_Mod->GetLogger()->Error("Exception during TAS start: %s", e.what());
+        }
+        Stop();
+    }
+
+    SetPlayPending(false);
+    SetPlaying(true);
+
+    if (m_Mod) {
+        m_Mod->SetUIMode(1); // UIMode::Playing
+        m_Mod->GetLogger()->Info("Started playing TAS project: %s", project->GetName().c_str());
     }
 }
 
@@ -505,16 +460,10 @@ void TASEngine::SetupPlaybackCallbacks() {
 
     CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
         if (!m_ShuttingDown) {
-            try {
-                auto *timeManager = static_cast<CKTimeManager *>(man);
-                TASProject *project = m_ProjectManager->GetCurrentProject();
-                if (project && project->IsValid()) {
-                    timeManager->SetLastDeltaTime(project->GetDeltaTime());
-                }
-            } catch (const std::exception &e) {
-                if (m_Mod) {
-                    m_Mod->GetLogger()->Error("Time callback error: %s", e.what());
-                }
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            TASProject *project = m_ProjectManager->GetCurrentProject();
+            if (project && project->IsValid()) {
+                timeManager->SetLastDeltaTime(project->GetDeltaTime());
             }
         }
     });
@@ -526,14 +475,14 @@ void TASEngine::SetupPlaybackCallbacks() {
                     m_Scheduler->Tick();
                 }
 
-                if (m_GameInterface) {
-                    m_GameInterface->IncrementCurrentTick();
-                }
-
                 // Apply InputSystem when it's enabled
                 if (m_InputSystem && m_InputSystem->IsEnabled()) {
                     auto *inputManager = static_cast<CKInputManager *>(man);
                     m_InputSystem->Apply(inputManager->GetKeyboardState());
+                }
+
+                if (m_GameInterface) {
+                    m_GameInterface->IncrementCurrentTick();
                 }
             } catch (const std::exception &e) {
                 if (m_Mod) {
@@ -551,15 +500,9 @@ void TASEngine::SetupRecordingCallbacks() {
 
     CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
         if (!m_ShuttingDown) {
-            try {
-                auto *timeManager = static_cast<CKTimeManager *>(man);
-                if (IsRecording() && m_Recorder) {
-                    timeManager->SetLastDeltaTime(m_Recorder->GetDeltaTime());
-                }
-            } catch (const std::exception &e) {
-                if (m_Mod) {
-                    m_Mod->GetLogger()->Error("Time callback error: %s", e.what());
-                }
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            if (IsRecording() && m_Recorder) {
+                timeManager->SetLastDeltaTime(m_Recorder->GetDeltaTime());
             }
         }
     });

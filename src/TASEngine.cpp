@@ -219,8 +219,6 @@ void TASEngine::StopRecording() {
             m_Mod->GetBML()->AddTimer(1ul, [this]() {
                 if (!m_ShuttingDown && m_GameInterface && m_Mod) {
                     try {
-                        m_GameInterface->SetPhysicsTimeFactor();
-                        m_GameInterface->SetCurrentTick(0);
                         m_Mod->SetUIMode(0); // UIMode::Idle
                         m_Mod->GetLogger()->Info("Recording stopped.");
                     } catch (const std::exception &e) {
@@ -252,11 +250,6 @@ void TASEngine::StopRecordingImmediate() {
 
         SetRecording(false);
         SetRecordPending(false);
-
-        if (m_GameInterface) {
-            m_GameInterface->SetPhysicsTimeFactor();
-            m_GameInterface->SetCurrentTick(0);
-        }
 
         if (m_Mod) {
             m_Mod->SetUIMode(0); // UIMode::Idle
@@ -320,8 +313,6 @@ void TASEngine::StopReplay() {
             m_Mod->GetBML()->AddTimer(1ul, [this]() {
                 if (!m_ShuttingDown && m_GameInterface && m_Mod) {
                     try {
-                        m_GameInterface->SetPhysicsTimeFactor();
-                        m_GameInterface->SetCurrentTick(0);
                         m_Mod->SetUIMode(0); // UIMode::Idle
                         m_Mod->GetLogger()->Info("Replay stopped.");
                     } catch (const std::exception &e) {
@@ -359,11 +350,6 @@ void TASEngine::StopReplayImmediate() {
 
         SetPlaying(false);
         SetPlayPending(false);
-
-        if (m_GameInterface) {
-            m_GameInterface->SetPhysicsTimeFactor();
-            m_GameInterface->SetCurrentTick(0);
-        }
 
         if (m_Mod) {
             InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());

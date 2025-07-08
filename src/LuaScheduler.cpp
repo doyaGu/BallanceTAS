@@ -13,15 +13,25 @@ sol::state &LuaScheduler::GetLuaState() const {
 }
 
 void LuaScheduler::StartCoroutine(const sol::coroutine &co) {
-    // Create new thread and set as current
-    m_ThreadStack.push(std::make_shared<detail::SchedulerCothread>(GetLuaState(), co));
-    m_CurrentThread = m_ThreadStack.top();
+    // Create a new thread context for the coroutine
+    auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), co);
+
+    // Push it onto the stack to set the current execution context
+    m_ThreadStack.push(thread);
+    m_CurrentThread = thread;
 
     // Start the coroutine
     auto result = m_CurrentThread->coroutine();
 
-    // Reset current thread
-    m_ThreadStack.pop();
+    // The coroutine has either finished or yielded.
+    // If it did NOT yield, its execution is over, so we can pop it from the stack.
+    // If it DID yield, a task was already created by a YieldXxx function,
+    // and it remains on the stack as part of the execution context until it's done.
+    if (m_CurrentThread->coroutine.status() != sol::call_status::yielded) {
+        m_ThreadStack.pop();
+    }
+
+    // Reset current thread pointer to the top of the stack
     if (m_ThreadStack.empty()) {
         m_CurrentThread = nullptr;
     } else {

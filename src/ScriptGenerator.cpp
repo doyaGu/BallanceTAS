@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
+#include <thread>
 
 #include "TASEngine.h"
 #include "BallanceTAS.h"
@@ -98,12 +99,6 @@ ScriptGenerator::ScriptGenerator(TASEngine *engine)
     }
 }
 
-bool ScriptGenerator::Generate(const std::vector<RawFrameData> &frames, const std::string &projectName) {
-    GenerationOptions options;
-    options.projectName = projectName;
-    return Generate(frames, options);
-}
-
 std::string ScriptGenerator::FindAvailableProjectName(const std::string &baseName) {
     std::string projectDir = std::string(BML_TAS_PATH) + baseName;
 
@@ -129,6 +124,22 @@ std::string ScriptGenerator::FindAvailableProjectName(const std::string &baseNam
     } while (fs::exists(projectDir));
 
     return availableName;
+}
+
+void ScriptGenerator::GenerateAsync(const std::vector<RawFrameData> &frames, const GenerationOptions &options, const std::function<void(bool)>& onComplete) {
+    std::thread([this, frames, options, onComplete]() {
+        // The entire logic from the original Generate() method goes here.
+        // It's already well-contained and doesn't access shared state that needs protection.
+        bool success = Generate(frames, options); // Assuming you rename the original to a private method or just embed it.
+
+        // When done, notify the main thread.
+        // BML timers are a good way to get back onto the main thread safely.
+        m_Mod->GetBML()->AddTimer(1ul, [this, success, onComplete]() {
+            if (onComplete) {
+                onComplete(success);
+            }
+        });
+    }).detach(); // Detach the thread to let it run independently.
 }
 
 bool ScriptGenerator::Generate(const std::vector<RawFrameData> &frames, const GenerationOptions &options) {

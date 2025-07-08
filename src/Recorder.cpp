@@ -148,21 +148,22 @@ bool Recorder::GenerateScript() {
         m_Mod->GetLogger()->Info("Auto-generating TAS script: %s", options.projectName.c_str());
 
         // Generate the script
-        bool success = scriptGenerator->Generate(m_Frames, options);
-        if (!success) {
-            m_Mod->GetLogger()->Error("Failed to auto-generate script from recording.");
-            return false;
-        }
-
-        m_Mod->GetLogger()->Info("Recording auto-generated successfully: %s", options.projectName.c_str());
-
-        // Refresh projects in project manager
-        if (auto *projectManager = m_Engine->GetProjectManager()) {
-            projectManager->RefreshProjects();
-        }
+        scriptGenerator->GenerateAsync(
+            m_Frames, options,
+            [this, options](bool success) {
+                if (success) {
+                    m_Mod->GetLogger()->Info("Script auto-generated successfully: %s", options.projectName.c_str());
+                    // Refresh projects in project manager
+                    if (auto *projectManager = m_Engine->GetProjectManager()) {
+                        projectManager->RefreshProjects();
+                    }
+                } else {
+                    m_Mod->GetLogger()->Error(
+                        "Failed to auto-generate script: %s", options.projectName.c_str());
+                }
+            });
 
         return true;
-
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Exception during script auto-generation: %s", e.what());
         return false;

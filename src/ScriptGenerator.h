@@ -93,20 +93,20 @@ public:
     ScriptGenerator &operator=(const ScriptGenerator &) = delete;
 
     /**
+     * @brief Asynchronously generates a TAS script from the recorded frames.
+     * @param frames The raw frame data captured by the Recorder.
+     * @param options Configuration options for generation.
+     * @param onComplete Callback called when generation is complete.
+     */
+    void GenerateAsync(const std::vector<RawFrameData> &frames, const GenerationOptions &options, const std::function<void(bool)>& onComplete);
+
+    /**
      * @brief The main generation method.
      * @param frames The raw frame data captured by the Recorder.
      * @param options Configuration options for generation.
      * @return True if the script and project were generated successfully.
      */
     bool Generate(const std::vector<RawFrameData> &frames, const GenerationOptions &options = {});
-
-    /**
-     * @brief Generate with simple project name (uses default options).
-     * @param frames The raw frame data.
-     * @param projectName The name for the new TAS project.
-     * @return True if generation was successful.
-     */
-    bool Generate(const std::vector<RawFrameData> &frames, const std::string &projectName);
 
     /**
      * @brief Get the path of the last generated project.

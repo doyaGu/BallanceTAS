@@ -6,7 +6,11 @@
 #include "TASEngine.h"
 
 UIManager::UIManager(TASEngine *engine)
-    : m_Engine(engine), m_Mod(engine ? engine->GetMod() : nullptr), m_BML(m_Mod ? m_Mod->GetBML() : nullptr) {}
+    : m_Engine(engine), m_Mod(engine ? engine->GetMod() : nullptr), m_BML(m_Mod ? m_Mod->GetBML() : nullptr) {
+    if (!m_Engine || !m_Mod || !m_BML) {
+        throw std::runtime_error("UIManager requires valid TASEngine.");
+    }
+}
 
 UIManager::~UIManager() {
     Shutdown();
@@ -14,17 +18,8 @@ UIManager::~UIManager() {
 
 bool UIManager::Initialize() {
     if (m_Initialized) {
-        if (m_Mod && m_Mod->GetLogger()) {
-            m_Mod->GetLogger()->Warn("UIManager already initialized.");
-        }
+        m_Mod->GetLogger()->Warn("UIManager already initialized.");
         return true;
-    }
-
-    if (!m_Engine || !m_Mod || !m_BML) {
-        if (m_Mod && m_Mod->GetLogger()) {
-            m_Mod->GetLogger()->Error("UIManager missing required dependencies.");
-        }
-        return false;
     }
 
     m_Mod->GetLogger()->Info("Initializing UIManager...");

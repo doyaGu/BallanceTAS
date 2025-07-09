@@ -43,6 +43,13 @@ set(TAS_SOURCES
 		LuaApi_VxQuaternion.cpp
 		LuaApi_VxRect.cpp
 		LuaApi_VxVector.cpp
+		LuaApi_CKObject.cpp
+		LuaApi_CKSceneObject.cpp
+		LuaApi_CKBeObject.cpp
+		LuaApi_CKRenderObject.cpp
+		LuaApi_CK2dEntity.cpp
+		LuaApi_CK3dEntity.cpp
+		LuaApi_CKCamera.cpp
 
 		TASHook.cpp
 		physics_RT.cpp

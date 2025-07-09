@@ -31,6 +31,13 @@ private:
     static void RegisterVxQuaternion(sol::state &lua);
     static void RegisterVxRect(sol::state &lua);
     static void RegisterVxVector(sol::state &lua);
+    static void RegisterCKObject(sol::state &lua);
+    static void RegisterCKSceneObject(sol::state &lua);
+    static void RegisterCKBeObject(sol::state &lua);
+    static void RegisterCKRenderObject(sol::state &lua);
+    static void RegisterCK2dEntity(sol::state &lua);
+    static void RegisterCK3dEntity(sol::state &lua);
+    static void RegisterCKCamera(sol::state &lua);
 
     static void RegisterCoreApi(sol::table &tas, TASEngine *engine);
     static void RegisterInputApi(sol::table &tas, TASEngine *engine);

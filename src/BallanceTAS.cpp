@@ -62,7 +62,7 @@ void BallanceTAS::OnLoad() {
     // --- Recording Configuration ---
     m_RecordingMaxFrames = GetConfig()->GetProperty("Recording", "MaxFrames");
     m_RecordingMaxFrames->SetComment("Maximum frames to record (prevents memory issues)");
-    m_RecordingMaxFrames->SetDefaultInteger(100000);
+    m_RecordingMaxFrames->SetDefaultInteger(1000000);
 
     // --- OSD Panel Configuration ---
     m_ShowOSDStatus = GetConfig()->GetProperty("OSD", "ShowStatusPanel");

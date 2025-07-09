@@ -263,6 +263,6 @@ private:
     std::function<void(bool)> m_StatusCallback;
 
     // Performance tracking
-    size_t m_MaxFrames = 100000; // Limit to prevent memory issues
+    size_t m_MaxFrames = 1000000; // Limit to prevent memory issues
     bool m_WarnedMaxFrames = false;
 };

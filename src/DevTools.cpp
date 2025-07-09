@@ -52,3 +52,7 @@ void DevTools::SetVelocity(CK3dEntity *obj, const VxVector &velocity) {
         physObj->Wake(); // Ensure the object is awake after changing velocity
     }
 }
+
+void DevTools::SkipRenderForNextTick() {
+    m_BML->SkipRenderForNextTick();
+}

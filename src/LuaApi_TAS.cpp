@@ -336,9 +336,7 @@ void LuaApi::RegisterDevTools(sol::table &tas, TASEngine *engine) {
         dev_tools->SetVelocity(obj, vel);
     };
 
-    // Make tools table read-only as well
-    tools[sol::metatable_key][sol::meta_method::new_index] =
-        [](const sol::table &, sol::stack_object, sol::stack_object) {
-            throw sol::error("Cannot modify the 'tas.tools' table");
-        };
+    tools["skip_rendering"] = [dev_tools]() {
+        dev_tools->SkipRenderForNextTick();
+    };
 }

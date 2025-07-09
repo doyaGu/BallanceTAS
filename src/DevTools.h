@@ -17,7 +17,7 @@ class CKIpionManager;
  */
 class DevTools {
 public:
-    explicit DevTools(IBML* bml);
+    explicit DevTools(IBML *bml);
 
     // --- Control ---
 
@@ -42,11 +42,11 @@ public:
      */
     void SetTimeScale(float factor);
 
-    /**
-     * @brief Instantly moves a game object to a new position.
-     * @param obj The CK3dEntity to teleport.
-     * @param position The target world position.
-     */
+    // /**
+    //  * @brief Instantly moves a game object to a new position.
+    //  * @param obj The CK3dEntity to teleport.
+    //  * @param position The target world position.
+    //  */
     // void Teleport(CK3dEntity* obj, const VxVector& position);
 
     /**
@@ -54,10 +54,15 @@ public:
      * @param obj The CK3dEntity to modify.
      * @param velocity The new linear velocity.
      */
-    void SetVelocity(CK3dEntity* obj, const VxVector& velocity);
+    void SetVelocity(CK3dEntity *obj, const VxVector &velocity);
+
+    /**
+     * @brief Skips rendering for the next frame.
+     */
+    void SkipRenderForNextTick();
 
 private:
-    IBML* m_BML;
-    CKIpionManager* m_IpionManager;
+    IBML *m_BML;
+    CKIpionManager *m_IpionManager;
     bool m_Enabled = false;
 };

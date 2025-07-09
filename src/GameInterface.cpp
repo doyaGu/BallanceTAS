@@ -46,6 +46,10 @@ void GameInterface::SetActiveBall(CKParameter *param) {
     m_ActiveBallParam = param;
 }
 
+CKCamera *GameInterface::GetActiveCamera() {
+    return m_Mod->GetBML()->GetRenderContext()->GetAttachedCamera();
+}
+
 void GameInterface::ResetPhysicsTime() {
     // Reset physics time in order to sync with TAS records
     // IVP_Environment

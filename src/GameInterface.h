@@ -28,6 +28,8 @@ public:
 
     void SetActiveBall(CKParameter *param);
 
+    CKCamera *GetActiveCamera();
+
     void SetMapName(const std::string &name) { m_MapName = name; }
     const std::string &GetMapName() const { return m_MapName; }
 

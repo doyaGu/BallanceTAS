@@ -245,6 +245,20 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         }
         return sol::nil;
     };
+
+    // tas.get_active_camera()
+    tas["get_active_camera"] = [engine]() -> sol::object {
+        try {
+            auto *reader = engine->GetGameInterface();
+            CK3dEntity *camera = reader->GetActiveCamera();
+            if (camera) {
+                return sol::make_object(engine->GetLuaState(), camera);
+            }
+        } catch (const std::exception &) {
+            // Fall through to return nil
+        }
+        return sol::nil;
+    };
 }
 
 // ===================================================================

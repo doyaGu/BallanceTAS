@@ -95,7 +95,6 @@ struct RawFrameData {
 
     // Physics data for validation/debugging
     float ballSpeed = 0.0f;
-    bool isOnGround = false;
 };
 
 /**

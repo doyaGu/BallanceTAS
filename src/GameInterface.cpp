@@ -256,16 +256,6 @@ XObjectArray GameInterface::GetFloors(CK3dEntity *ent, float zoom, float maxHeig
     return floors;
 }
 
-bool GameInterface::IsOnGround() const {
-    CK3dEntity *ball = GetBall();
-    if (!ball || !m_IpionManager) return false;
-
-    auto floors = GetFloors(ball);
-    if (floors.Size() == 0) return false;
-
-    return true;
-}
-
 void GameInterface::PrintMessage(const char *message) const {
     m_Mod->GetBML()->SendIngameMessage(message);
 }

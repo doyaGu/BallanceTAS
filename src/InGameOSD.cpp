@@ -197,13 +197,6 @@ void InGameOSD::DrawStatusPanel() {
     // Frame and level info
     ImGui::Text("Frame: %d", m_Engine->GetGameInterface()->GetCurrentTick());
 
-    // Ground contact indicator
-    if (m_PhysicsData.isValid) {
-        ImGui::SameLine();
-        ImVec4 groundColor = m_PhysicsData.isOnGround ? ImVec4(0.2f, 1.0f, 0.2f, 1.0f) : ImVec4(1.0f, 0.4f, 0.4f, 1.0f);
-        ImGui::TextColored(groundColor, m_PhysicsData.isOnGround ? "[GROUND]" : "[AIR]");
-    }
-
     ImGui::PopStyleVar();
 }
 
@@ -509,11 +502,6 @@ void InGameOSD::UpdatePhysicsData() {
         m_PhysicsData.angularSpeed = angularVelocity.Magnitude();
         m_PhysicsData.mass = ball->GetMass();
         m_PhysicsData.isValid = true;
-
-        // Check ground contact
-        if (m_Engine && m_Engine->GetGameInterface()) {
-            m_PhysicsData.isOnGround = m_Engine->GetGameInterface()->IsOnGround();
-        }
     } catch (...) {
         m_PhysicsData.isValid = false;
     }

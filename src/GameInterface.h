@@ -3,14 +3,9 @@
 #include <BML/BMLAll.h>
 #include <sol/sol.hpp>
 
-#include <string>
+class CKIpionManager;
 
 class BallanceTAS;
-// Forward declarations of game/engine types
-class CK3dEntity;
-struct VxVector;
-struct VxQuaternion;
-class CKIpionManager;
 
 /**
  * @class GameInterface
@@ -108,12 +103,6 @@ public:
     int GetCurrentSector() const;
 
     XObjectArray GetFloors(CK3dEntity *ent, float zoom = 2.0f, float maxHeight = 100.0f) const;
-
-    /**
-     * @brief Checks if the player ball is currently on the ground.
-     * @return True if the ball is on a surface, false if it's airborne.
-     */
-    bool IsOnGround() const;
 
     void PrintMessage(const char *message) const;
 

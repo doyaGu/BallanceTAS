@@ -207,7 +207,6 @@ private:
         float angularSpeed = 0.0f;
         float mass = 0.0f;
         bool isValid = false;
-        bool isOnGround = false;
     } m_PhysicsData;
 
     // --- Physics History for Graphs ---

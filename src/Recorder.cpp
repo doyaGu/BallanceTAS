@@ -270,12 +270,10 @@ void Recorder::CapturePhysicsData(RawFrameData &frameData) const {
         if (ball) {
             VxVector velocity = gameInterface->GetVelocity(ball);
             frameData.ballSpeed = velocity.Magnitude();
-            frameData.isOnGround = gameInterface->IsOnGround();
         }
     } catch (const std::exception &) {
         // Don't log physics capture errors as they're non-critical
         frameData.ballSpeed = 0.0f;
-        frameData.isOnGround = false;
     }
 }
 

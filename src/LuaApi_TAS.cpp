@@ -245,16 +245,6 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         }
         return sol::nil;
     };
-
-    // tas.is_on_ground()
-    tas["is_on_ground"] = [engine]() -> bool {
-        try {
-            auto *reader = engine->GetGameInterface();
-            return reader->IsOnGround();
-        } catch (const std::exception &) {
-            return false;
-        }
-    };
 }
 
 // ===================================================================

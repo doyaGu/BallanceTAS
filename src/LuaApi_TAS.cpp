@@ -196,6 +196,44 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         return engine->GetGameInterface()->IsExplosionDisabled();
     };
 
+    // tas.is_paused()
+    tas["is_paused"] = [engine]() -> bool {
+        auto *mod = engine->GetMod();
+        if (!mod || !mod->GetBML()) {
+            return false;
+        }
+
+        return mod->GetBML()->IsPaused();
+    };
+
+    // tas.is_playing()
+    tas["is_playing"] = [engine]() -> bool {
+        auto *mod = engine->GetMod();
+        if (!mod || !mod->GetBML()) {
+            return false;
+        }
+        return mod->GetBML()->IsPlaying();
+    };
+
+    // tas.get_sr_score()
+    tas["get_sr_score"] = [engine]() -> float {
+        auto *mod = engine->GetMod();
+        if (!mod || !mod->GetBML()) {
+            return false;
+        }
+
+        return mod->GetBML()->GetSRScore();
+    };
+
+    // tas.get_hs_score()
+    tas["get_hs_score"] = [engine]() -> int {
+        auto *mod = engine->GetMod();
+        if (!mod || !mod->GetBML()) {
+            return false;
+        }
+
+        return mod->GetBML()->GetHSScore();
+    };
 
     // tas.get_object(name)
     tas["get_object"] = [engine](const std::string &name) -> sol::object {

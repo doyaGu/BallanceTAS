@@ -583,8 +583,34 @@ bool TASEngine::LoadTAS(const TASProject *project) {
     UnloadTAS(); // Ensure no other script is running
 
     try {
+        std::string executionPath;
+
+        // For zip projects, we need to prepare them for execution (extract if needed)
+        if (project->IsZipProject()) {
+            executionPath = m_ProjectManager->PrepareProjectForExecution(const_cast<TASProject *>(project));
+            if (executionPath.empty()) {
+                m_Mod->GetLogger()->Error("Failed to prepare zip project for execution: %s",
+                                          project->GetName().c_str());
+                return false;
+            }
+
+            // Update the project's execution base path for script resolution
+            const_cast<TASProject *>(project)->SetExecutionBasePath(executionPath);
+
+            m_Mod->GetLogger()->Info("Zip project prepared for execution: %s -> %s",
+                                     project->GetPath().c_str(), executionPath.c_str());
+        } else {
+            // For directory projects, use the project path directly
+            executionPath = project->GetPath();
+        }
+
+        // Get the entry script path for execution
+        std::string entryScriptPath = project->GetEntryScriptPath(executionPath);
+
+        m_Mod->GetLogger()->Info("Loading TAS script: %s", entryScriptPath.c_str());
+
         // Load and execute the main script file in the Lua VM
-        auto result = m_LuaState.safe_script_file(project->GetEntryScriptPath(), &sol::script_pass_on_error);
+        auto result = m_LuaState.safe_script_file(entryScriptPath, &sol::script_pass_on_error);
         if (!result.valid()) {
             sol::error err = result;
             m_Mod->GetLogger()->Error("Failed to execute script: %s", err.what());
@@ -614,6 +640,15 @@ void TASEngine::UnloadTAS() {
     if (m_Scheduler && m_Scheduler->IsRunning()) {
         m_Scheduler->Clear();
         m_Mod->GetLogger()->Info("TAS script unloaded and stopped.");
+    }
+
+    // Clean up temporary directories for zip projects if current project is being unloaded
+    if (m_ProjectManager) {
+        TASProject *currentProject = m_ProjectManager->GetCurrentProject();
+        if (currentProject && currentProject->IsZipProject()) {
+            m_ProjectManager->CleanupProjectTempDirectory(currentProject);
+            currentProject->SetExecutionBasePath(""); // Clear execution base path
+        }
     }
 }
 

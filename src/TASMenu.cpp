@@ -346,14 +346,20 @@ bool TASListPage::OnDrawEntry(size_t index, bool *v) {
     auto &project = projects[index];
 
     // Visual indicator for invalid projects
-    if (!project->IsValid()) {
+    bool isInvalid = !project->IsValid();
+    if (isInvalid) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.2f, 0.2f, 0.6f));
+    } else if (project->IsZipProject()) {
+        // Different color for zip projects
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.9f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.6f, 0.6f));
     }
 
-    bool clicked = Bui::LevelButton(project->GetName().c_str(), v);
+    const std::string &displayName = project->GetName();
+    bool clicked = Bui::LevelButton(displayName.c_str(), v);
 
-    if (!project->IsValid()) {
+    if (isInvalid || project->IsZipProject()) {
         ImGui::PopStyleColor(2);
     }
 
@@ -418,6 +424,19 @@ void TASDetailsPage::DrawProjectInfo() {
         Page::WrappedText(m_TextBuf, menuSize.x);
     }
 
+    // Project type indicator
+    if (project->IsZipProject()) {
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.9f, 1.0f, 1.0f));
+        Page::WrappedText("Type: ZIP Archive", menuSize.x);
+        ImGui::PopStyleColor();
+    } else {
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+        Page::WrappedText("Type: Directory", menuSize.x);
+        ImGui::PopStyleColor();
+    }
+
     // Target Level
     if (!project->GetTargetLevel().empty()) {
         snprintf(m_TextBuf, sizeof(m_TextBuf), "Target Level: %s", project->GetTargetLevel().c_str());
@@ -443,6 +462,13 @@ void TASDetailsPage::DrawProjectInfo() {
         ImGui::SetCursorPosX(menuPos.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.6f, 1.0f));
         Page::WrappedText("Warning: This project has validation issues.", menuSize.x);
+        ImGui::PopStyleColor();
+    } else if (project->IsZipProject()) {
+        ImGui::NewLine();
+
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+        Page::WrappedText("Note: Zip projects will be extracted to a temporary directory.", menuSize.x, 0.9f);
         ImGui::PopStyleColor();
     }
 }
@@ -560,8 +586,6 @@ void TASRecordingPage::OnDraw() {
         !engine->IsPendingPlay() && !engine->IsPendingRecord();
 
     if (!canRecord) {
-
-
         ImGui::SetCursorPosX(menuPos.x);
         ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
 

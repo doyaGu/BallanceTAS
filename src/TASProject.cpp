@@ -26,7 +26,28 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     }
 }
 
-std::string TASProject::GetEntryScriptPath() const {
-    // A simple path join. A more robust solution would use a filesystem library.
-    return m_ProjectPath + "/" + m_EntryScript;
+std::string TASProject::GetEntryScriptPath(const std::string &executionBasePath) const {
+    return GetProjectFilePath(m_EntryScript, executionBasePath);
+}
+
+std::string TASProject::GetProjectFilePath(const std::string &fileName, const std::string &executionBasePath) const {
+    std::string basePath;
+
+    if (!executionBasePath.empty()) {
+        // Use provided execution base path (for zip projects)
+        basePath = executionBasePath;
+    } else if (!m_ExecutionBasePath.empty()) {
+        // Use stored execution base path
+        basePath = m_ExecutionBasePath;
+    } else {
+        // Use original project path (for directory projects)
+        basePath = m_ProjectPath;
+    }
+
+    // Handle path separator properly
+    if (!basePath.empty() && basePath.back() != '\\' && basePath.back() != '/') {
+        basePath += "\\";
+    }
+
+    return basePath + fileName;
 }

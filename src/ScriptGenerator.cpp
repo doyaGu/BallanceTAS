@@ -140,18 +140,15 @@ void ScriptGenerator::GenerateAsync(const std::vector<FrameData> &frames,
                                     const GenerationOptions &options,
                                     const std::function<void(bool)> &onComplete) {
     std::thread([this, frames, options, onComplete]() {
-        // The entire logic from the original Generate() method goes here.
-        // It's already well-contained and doesn't access shared state that needs protection.
-        bool success = Generate(frames, options); // Assuming you rename the original to a private method or just embed it.
+        bool success = Generate(frames, options);
 
         // When done, notify the main thread.
-        // BML timers are a good way to get back onto the main thread safely.
         m_Mod->GetBML()->AddTimer(1ul, [this, success, onComplete]() {
             if (onComplete) {
                 onComplete(success);
             }
         });
-    }).detach(); // Detach the thread to let it run independently.
+    }).detach();
 }
 
 bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const GenerationOptions &options) {
@@ -215,9 +212,9 @@ bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const Gener
 
         m_Mod->GetLogger()->Info("Script generation completed successfully!");
         m_Mod->GetLogger()->Info("  Project: %s", projectDir.c_str());
-        m_Mod->GetLogger()->Info("  Frames: %zu -> %zu key events",
-                                 m_LastStats.totalFrames, m_LastStats.keyEvents);
-        m_Mod->GetLogger()->Info("  Time: %.2fs", m_LastStats.generationTime);
+        m_Mod->GetLogger()->Info("  Blocks: %zu", m_LastStats.totalBlocks);
+        m_Mod->GetLogger()->Info("  Key events: %zu", m_LastStats.keyEvents);
+        m_Mod->GetLogger()->Info("  Generation time: %.2fs", m_LastStats.generationTime);
 
         return true;
     } catch (const std::exception &e) {
@@ -448,7 +445,7 @@ std::string ScriptGenerator::BuildScript(const std::vector<FrameData> &frames,
         if (std::holds_alternative<KeyEvent>(event)) {
             const auto &keyEvent = std::get<KeyEvent>(event);
 
-            // Generate key command
+            // Generate key command based on transition type
             if (keyEvent.transition == KeyTransition::Pressed) {
                 currentlyPressed.insert(keyEvent.key);
 
@@ -499,7 +496,7 @@ std::string ScriptGenerator::BuildScript(const std::vector<FrameData> &frames,
             }
             builder.AddLine("tas.wait_ticks(" + std::to_string(finalWait) + ")");
         }
-        
+
         // Now release any keys that are still pressed
         if (!currentlyPressed.empty()) {
             builder.AddBlankLine();
@@ -540,6 +537,7 @@ std::string ScriptGenerator::GenerateManifest(const GenerationOptions &options) 
     }() << "\",\n";
     ss << "  key_events = " << m_LastStats.keyEvents << ",\n";
     ss << "  total_frames = " << m_LastStats.totalFrames << ",\n";
+    ss << "  blocks = " << m_LastStats.totalBlocks << "\n";
     ss << "}\n";
 
     return ss.str();

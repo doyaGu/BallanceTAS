@@ -44,8 +44,8 @@ struct KeyEvent {
 struct InputBlock {
     size_t startFrame = 0;
     size_t endFrame = 0;
-    std::vector<KeyEvent> keyEvents;     // All key transitions in this block
-    std::vector<GameEvent> gameEvents;   // Game events that occurred
+    std::vector<KeyEvent> keyEvents;   // All key transitions in this block
+    std::vector<GameEvent> gameEvents; // Game events that occurred
 
     // Analysis metadata
     float averageSpeed = 0.0f;
@@ -153,7 +153,7 @@ private:
                                                size_t frameIndex);
 
     /**
-     * @brief Generates exact timing Lua script.
+     * @brief Generates the main script with structure and comments.
      * @param frames The raw frame data.
      * @param blocks The analyzed input blocks.
      * @param options Generation options.

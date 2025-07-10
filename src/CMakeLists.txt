@@ -46,10 +46,20 @@ set(TAS_SOURCES
 		LuaApi_CKObject.cpp
 		LuaApi_CKSceneObject.cpp
 		LuaApi_CKBeObject.cpp
+		LuaApi_CKScene.cpp
+		LuaApi_CKLevel.cpp
+		LuaApi_CKGroup.cpp
+		LuaApi_CKMaterial.cpp
+		LuaApi_CKTexture.cpp
+		LuaApi_CKMesh.cpp
 		LuaApi_CKRenderObject.cpp
 		LuaApi_CK2dEntity.cpp
 		LuaApi_CK3dEntity.cpp
 		LuaApi_CKCamera.cpp
+		LuaApi_CKTargetCamera.cpp
+		LuaApi_CKPlace.cpp
+		LuaApi_CKLight.cpp
+		LuaApi_CKTargetLight.cpp
 
 		TASHook.cpp
 		physics_RT.cpp

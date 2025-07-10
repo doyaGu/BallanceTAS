@@ -3,7 +3,7 @@
 #include <BML/BMLAll.h>
 #include <sol/sol.hpp>
 
-class CKIpionManager;
+#include <physics_RT.h>
 
 class BallanceTAS;
 
@@ -44,7 +44,7 @@ public:
      * @brief Gets the CK3dEntity for the currently controlled ball.
      * @return A pointer to the ball's entity, or nullptr if not found.
      */
-    CK3dEntity *GetBall() const;
+    CK3dEntity *GetActiveBall() const;
 
     /**
      * @brief Gets a game object by its name.
@@ -52,6 +52,13 @@ public:
      * @return A pointer to the entity, or nullptr if not found.
      */
     CK3dEntity *GetObjectByName(const std::string &name) const;
+
+    /**
+     * @brief Gets the PhysicsObject for a given CK3dEntity.
+     * @param entity A pointer to the CK3dEntity.
+     * @return A pointer to the PhysicsObject, or nullptr if not found.
+     */
+    PhysicsObject *GetPhysicsObject(CK3dEntity *entity) const;
 
     // In the future, we might add GetObjectByID if needed.
 

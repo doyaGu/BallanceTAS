@@ -186,13 +186,16 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
 // ===================================================================
 
 void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
-    // tas.get_ball()
-    tas["get_ball"] = [engine]() -> sol::object {
+    // tas.get_object(name)
+    tas["get_object"] = [engine](const std::string &name) -> sol::object {
+        if (name.empty()) {
+            return sol::nil;
+        }
         try {
-            auto *reader = engine->GetGameInterface();
-            CK3dEntity *ball = reader->GetBall();
-            if (ball) {
-                return sol::make_object(engine->GetLuaState(), ball);
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *obj = g->GetObjectByName(name);
+            if (obj) {
+                return sol::make_object(engine->GetLuaState(), obj);
             }
         } catch (const std::exception &) {
             // Fall through to return nil
@@ -200,16 +203,30 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         return sol::nil;
     };
 
-    // tas.get_object(name)
-    tas["get_object"] = [engine](const std::string &name) -> sol::object {
-        if (name.empty()) {
+    // tas.get_physics_object(entity)
+    tas["get_physics_object"] = [engine](CK3dEntity *entity) -> sol::object {
+        if (!entity) {
             return sol::nil;
         }
         try {
-            auto *reader = engine->GetGameInterface();
-            CK3dEntity *obj = reader->GetObjectByName(name);
+            auto *g = engine->GetGameInterface();
+            PhysicsObject *obj = g->GetPhysicsObject(entity);
             if (obj) {
                 return sol::make_object(engine->GetLuaState(), obj);
+            }
+        } catch (const std::exception &) {
+            // Fall through to return nil
+        }
+        return sol::nil;
+    };
+
+    // tas.get_ball()
+    tas["get_ball"] = [engine]() -> sol::object {
+        try {
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *ball = g->GetActiveBall();
+            if (ball) {
+                return sol::make_object(engine->GetLuaState(), ball);
             }
         } catch (const std::exception &) {
             // Fall through to return nil
@@ -220,10 +237,10 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_ball_position()
     tas["get_ball_position"] = [engine]() -> sol::object {
         try {
-            auto *reader = engine->GetGameInterface();
-            CK3dEntity *ball = reader->GetBall();
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
-                return sol::make_object(engine->GetLuaState(), reader->GetPosition(ball));
+                return sol::make_object(engine->GetLuaState(), g->GetPosition(ball));
             }
         } catch (const std::exception &) {
             // Fall through to return nil
@@ -234,10 +251,10 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_ball_velocity()
     tas["get_ball_velocity"] = [engine]() -> sol::object {
         try {
-            auto *reader = engine->GetGameInterface();
-            CK3dEntity *ball = reader->GetBall();
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
-                return sol::make_object(engine->GetLuaState(), reader->GetVelocity(ball));
+                return sol::make_object(engine->GetLuaState(), g->GetVelocity(ball));
             }
         } catch (const std::exception &) {
             // Fall through to return nil
@@ -248,8 +265,8 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_active_camera()
     tas["get_active_camera"] = [engine]() -> sol::object {
         try {
-            auto *reader = engine->GetGameInterface();
-            CK3dEntity *camera = reader->GetActiveCamera();
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *camera = g->GetActiveCamera();
             if (camera) {
                 return sol::make_object(engine->GetLuaState(), camera);
             }

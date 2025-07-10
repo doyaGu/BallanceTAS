@@ -58,6 +58,7 @@ set(TAS_SOURCES
 		LuaApi_CKPlace.cpp
 		LuaApi_CKLight.cpp
 		LuaApi_CKTargetLight.cpp
+		LuaApi_PhysicsObject.cpp
 
 		TASHook.cpp
 		physics_RT.cpp

@@ -42,4 +42,6 @@ void LuaApi::RegisterDataTypes(sol::state &lua) {
     RegisterCKPlace(lua);
     RegisterCKLight(lua);
     RegisterCKTargetLight(lua);
+
+    RegisterPhysicsObject(lua);
 }

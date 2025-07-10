@@ -74,6 +74,7 @@ private:
     // static void RegisterCK3dObject(sol::state &lua);
     // static void RegisterCKCurve(sol::state &lua);
     // static void RegisterCKGrid(sol::state &lua);
+    static void RegisterPhysicsObject(sol::state &lua);
 
     static void RegisterCoreApi(sol::table &tas, TASEngine *engine);
     static void RegisterInputApi(sol::table &tas, TASEngine *engine);

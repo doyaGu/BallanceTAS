@@ -107,7 +107,7 @@ CKKEYBOARD GameInterface::RemapKey(CKKEYBOARD key) const {
     }
 }
 
-CK3dEntity *GameInterface::GetBall() const {
+CK3dEntity *GameInterface::GetActiveBall() const {
     if (m_ActiveBallParam) {
         CKObject *obj = m_ActiveBallParam->GetValueObject();
         return static_cast<CK3dEntity *>(obj);
@@ -117,6 +117,10 @@ CK3dEntity *GameInterface::GetBall() const {
 
 CK3dEntity *GameInterface::GetObjectByName(const std::string &name) const {
     return m_Mod->GetBML()->Get3dEntityByName(name.c_str());
+}
+
+PhysicsObject *GameInterface::GetPhysicsObject(CK3dEntity *entity) const {
+    return m_IpionManager ? m_IpionManager->GetPhysicsObject(entity) : nullptr;
 }
 
 VxVector GameInterface::GetPosition(CK3dEntity *obj) const {

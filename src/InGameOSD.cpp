@@ -543,12 +543,12 @@ PhysicsObject *InGameOSD::GetBallPhysicsObject() {
     auto *context = m_Mod->GetBML()->GetCKContext();
     if (!context) return nullptr;
 
-    auto *physicsManager = static_cast<CKIpionManager *>(context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148)));
-    if (!physicsManager) return nullptr;
+    auto *gameInterface = m_Engine->GetGameInterface();
+    if (!gameInterface) return nullptr;
 
-    auto *ball = m_Engine->GetGameInterface()->GetBall();
+    auto *ball = gameInterface->GetActiveBall();
     if (ball) {
-        auto *physicsObj = physicsManager->GetPhysicsObject(ball);
+        auto *physicsObj = gameInterface->GetPhysicsObject(ball);
         if (physicsObj) {
             return physicsObj;
         }

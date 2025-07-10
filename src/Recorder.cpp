@@ -267,7 +267,7 @@ void Recorder::CapturePhysicsData(FrameData &frameData) const {
         if (!gameInterface) return;
 
         // Get ball entity
-        auto *ball = gameInterface->GetBall();
+        auto *ball = gameInterface->GetActiveBall();
         if (!ball) return;
 
         PhysicsData &physics = frameData.physics;

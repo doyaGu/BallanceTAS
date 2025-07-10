@@ -211,6 +211,7 @@ private:
         void Unindent();
         void AddLine(const std::string &line);
         void AddComment(const std::string &comment);
+        void AddBlockComment(const std::string &comment);
         void AddBlankLine();
         void AddSeparator(const std::string &title = "");
         void AddMainFunction();

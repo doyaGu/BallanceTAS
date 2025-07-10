@@ -17,10 +17,10 @@ class BallanceTAS;
  * @brief Represents a key state transition between frames.
  */
 enum class KeyTransition {
-    NoChange,   // Key state didn't change
-    Pressed,    // Key was just pressed (IDLE -> PRESSED)
-    Released,   // Key was just released (PRESSED -> RELEASED/IDLE)
-    Continued   // Key continued being pressed (PRESSED -> PRESSED)
+    NoChange,          // Key state didn't change
+    Pressed,           // Key was just pressed (IDLE -> PRESSED)
+    Released,          // Key was just released (PRESSED -> RELEASED/IDLE)
+    PressedAndReleased // Key was pressed and released in the same frame
 };
 
 /**

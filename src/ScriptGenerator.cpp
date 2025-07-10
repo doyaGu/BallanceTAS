@@ -323,42 +323,32 @@ std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState 
             continue;
         }
 
-        KeyTransition transition = KeyTransition::NoChange;
-
-        // Handle all possible state transitions
-        // Previous state analysis
+        // Analyze the bit flags properly
         bool wasPrevPressed = (prevKeyState & KS_PRESSED) != 0;
-        bool wasPrevReleased = (prevKeyState & KS_RELEASED) != 0;
-        bool wasPrevIdle = (prevKeyState == KS_IDLE);
-
-        // Current state analysis
         bool isCurrentPressed = (currentKeyState & KS_PRESSED) != 0;
         bool isCurrentReleased = (currentKeyState & KS_RELEASED) != 0;
-        bool isCurrentIdle = (currentKeyState == KS_IDLE);
 
-        // Detect meaningful transitions
-        if (!wasPrevPressed && isCurrentPressed) {
-            // Key was just pressed (IDLE -> PRESSED or RELEASED -> PRESSED)
+        KeyTransition transition = KeyTransition::NoChange;
+
+        // Check for the special case: pressed and released in the same frame
+        if (isCurrentPressed && isCurrentReleased) {
+            // Key was pressed and released in the same frame
+            // This happens when the key was pressed and released within a single frame
+            transition = KeyTransition::PressedAndReleased;
+        } else if (!wasPrevPressed && isCurrentPressed) {
+            // Check for key press transition
+            // Key went from not-pressed to pressed
             transition = KeyTransition::Pressed;
-        } else if (wasPrevPressed && (isCurrentReleased || isCurrentIdle)) {
-            // Key was just released (PRESSED -> RELEASED or PRESSED -> IDLE)
+        } else if (wasPrevPressed && isCurrentReleased) {
+            // Check for key release transition
+            // Key went from pressed to released
+            // Note: this handles both PRESSED -> RELEASED and PRESSED -> IDLE transitions
             transition = KeyTransition::Released;
-        } else if (wasPrevPressed && isCurrentPressed) {
-            // Key continued being pressed (usually filtered out)
-            transition = KeyTransition::Continued;
         }
 
-        // Only add events for press/release transitions
-        if (transition == KeyTransition::Pressed || transition == KeyTransition::Released) {
+        // Only add events for meaningful transitions
+        if (transition != KeyTransition::NoChange) {
             events.emplace_back(frameIndex, GetKeyName(keyIdx), transition);
-
-            // Debug logging for verification
-#ifdef _DEBUG
-            const char* transitionName = (transition == KeyTransition::Pressed) ? "PRESSED" : "RELEASED";
-            m_Mod->GetLogger()->Info("Key transition: %s %s at frame %d (prev=0x%02X, curr=0x%02X)",
-                                   GetKeyName(keyIdx).c_str(), transitionName, frameIndex,
-                                   prevKeyState, currentKeyState);
-#endif
         }
     }
 
@@ -460,6 +450,16 @@ std::string ScriptGenerator::BuildScript(const std::vector<FrameData> &frames,
                     builder.AddComment("Release " + keyEvent.key + " at frame " + std::to_string(keyEvent.frame));
                 }
                 builder.AddLine("tas.key_up(\"" + keyEvent.key + "\")");
+            } else if (keyEvent.transition == KeyTransition::PressedAndReleased) {
+                // Key was pressed and released in the same frame
+                // Use tas.press() for single-frame press/release
+                if (options.addFrameComments) {
+                    builder.AddComment(
+                        "Press and release " + keyEvent.key + " in single frame " + std::to_string(keyEvent.frame));
+                }
+                builder.AddLine("tas.press(\"" + keyEvent.key + "\")");
+
+                // Don't track this in currentlyPressed since it's immediately released
             }
         } else if (std::holds_alternative<GameEvent>(event)) {
             const auto &gameEvent = std::get<GameEvent>(event);

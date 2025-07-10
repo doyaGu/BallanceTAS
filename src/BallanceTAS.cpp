@@ -102,6 +102,12 @@ void BallanceTAS::OnLoad() {
 
     InitPhysicsMethodPointers();
 
+    // Initialize MinHook
+    MH_STATUS status = MH_Initialize();
+    if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
+        GetLogger()->Error("MinHook failed to initialize: %s", MH_StatusToString(status));
+    }
+
     // --- 2. Always initialize determinism hooks early ---
     // These must be enabled regardless of user settings for fair gameplay
     if (!InitializeDeterminismHooks()) {
@@ -123,14 +129,9 @@ void BallanceTAS::OnUnload() {
     Shutdown();
 
     // Clean up determinism hooks too
-    try {
-        UnhookPhysicsRT();
-        UnhookRandom();
-        MH_Uninitialize();
-        GetLogger()->Info("Determinism hooks cleaned up.");
-    } catch (const std::exception &e) {
-        GetLogger()->Error("Exception cleaning up determinism hooks: %s", e.what());
-    }
+    DisableDeterminismHooks();
+
+    MH_Uninitialize();
 }
 
 void BallanceTAS::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
@@ -146,10 +147,10 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
             Shutdown();
         }
     } else if (prop == m_ShowOSDStatus || prop == m_ShowOSDVelocity ||
-    prop == m_ShowOSDPosition || prop == m_ShowOSDPhysics ||
-    prop == m_ShowOSDKeys ||
-    prop == m_OSDPositionX || prop == m_OSDPositionY ||
-    prop == m_OSDOpacity || prop == m_OSDScale) {
+               prop == m_ShowOSDPosition || prop == m_ShowOSDPhysics ||
+               prop == m_ShowOSDKeys ||
+               prop == m_OSDPositionX || prop == m_OSDPositionY ||
+               prop == m_OSDOpacity || prop == m_OSDScale) {
         UpdateOSDPanelConfig();
     } else if (prop == m_RecordingMaxFrames && m_Initialized) {
         if (m_Engine && m_Engine->GetRecorder()) {
@@ -171,8 +172,8 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
 }
 
 void BallanceTAS::OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                              CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                              XObjectArray *objArray, CKObject *masterObj) {
+                               CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
+                               XObjectArray *objArray, CKObject *masterObj) {
     if (m_Initialized && m_Engine) {
         if (!strcmp(filename, "3D Entities\\Gameplay.nmo")) {
             m_Engine->GetGameInterface()->AcquireGameplayInfo();
@@ -212,13 +213,6 @@ void BallanceTAS::OnLoadScript(const char *filename, CKBehavior *script) {
 bool BallanceTAS::InitializeDeterminismHooks() {
     GetLogger()->Info("Initializing determinism hooks...");
 
-    // Initialize MinHook if not already done
-    MH_STATUS status = MH_Initialize();
-    if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
-        GetLogger()->Error("MinHook failed to initialize: %d", status);
-        return false;
-    }
-
     // Always hook physics for determinism
     if (!HookPhysicsRT()) {
         GetLogger()->Error("Failed to hook physics engine for determinism!");
@@ -243,7 +237,7 @@ bool BallanceTAS::InitializeGameHooks() {
 
     GetLogger()->Info("Enabling game hooks...");
 
-    CKContext* context = GetBML()->GetCKContext();
+    CKContext *context = GetBML()->GetCKContext();
     if (!context) {
         GetLogger()->Error("Could not get CKContext to find managers.");
         return false;

@@ -147,11 +147,17 @@ public:
 
 private:
     /**
-     * @brief Initializes determinism hooks that are always active for fair gameplay.
+     * @brief Initializes determinism hooks.
      * Called during OnLoad() regardless of user settings.
      * @return True if hooks were initialized successfully.
      */
     bool InitializeDeterminismHooks();
+
+    /**
+     * @brief Unhooks determinism hooks.
+     * Called during OnUnload() to clean up.
+     */
+    void DisableDeterminismHooks();
 
     /**
      * @brief Initializes the game hooks for TAS functionality.

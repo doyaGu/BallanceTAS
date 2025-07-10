@@ -85,16 +85,34 @@ struct GameEvent {
 };
 
 /**
- * @struct RawFrameData
+ * @struct PhysicsData
+ * @brief Comprehensive physics data for better analysis and partitioning.
+ */
+struct PhysicsData {
+    // Position and movement
+    VxVector position = VxVector(0, 0, 0);
+    VxVector velocity = VxVector(0, 0, 0);
+    VxVector angularVelocity = VxVector(0, 0, 0);
+
+    // Derived values
+    float speed = 0.0f;
+    float angularSpeed = 0.0f;
+};
+
+/**
+ * @struct FrameData
  * @brief The core data unit for the recorder, storing all relevant information for one frame.
  */
-struct RawFrameData {
+struct FrameData {
     size_t frameIndex = 0;
     RawInputState inputState;
     std::vector<GameEvent> events;
 
-    // Physics data for validation/debugging
-    float ballSpeed = 0.0f;
+    // Physics data
+    PhysicsData physics;
+
+    // Frame timing
+    float deltaTime = 0.0f;
 };
 
 /**
@@ -102,7 +120,7 @@ struct RawFrameData {
  * @brief Captures player input and game events on a per-frame basis.
  *
  * During a recording session, the Recorder's Tick() method is called every frame.
- * It captures the real (un-synthesized) player input and any significant game
+ * It captures the real (unsynthesized) player input and any significant game
  * events that occurred, storing them in a sequence of RawFrameData. This sequence
  * is later used by the ScriptGenerator to create a Lua script.
  *
@@ -128,7 +146,7 @@ public:
      * If auto-generation is enabled, automatically generates a TAS script.
      * @return A vector of RawFrameData representing the entire recording.
      */
-    std::vector<RawFrameData> Stop();
+    std::vector<FrameData> Stop();
 
     /**
      * @brief Captures the data for the current frame. Called by TASEngine::Tick().
@@ -230,10 +248,10 @@ private:
     RawInputState CaptureRealInput() const;
 
     /**
-     * @brief Captures additional physics data for debugging/validation.
+     * @brief Captures comprehensive physics data for analysis.
      * @param frameData The frame data to populate with physics info.
      */
-    void CapturePhysicsData(RawFrameData &frameData) const;
+    void CapturePhysicsData(FrameData &frameData) const;
 
     /**
      * @brief Notifies UI/callbacks about recording state changes.
@@ -251,12 +269,12 @@ private:
     size_t m_CurrentTick = 0;
 
     // Configuration
-    bool m_AutoGenerateOnStop = true;  // Auto-generate by default
+    bool m_AutoGenerateOnStop = true; // Auto-generate by default
     float m_DeltaTime = 1 / 132.0f * 1000;
     std::unique_ptr<GenerationOptions> m_GenerationOptions;
 
     // Recorded data
-    std::vector<RawFrameData> m_Frames;
+    std::vector<FrameData> m_Frames;
     std::vector<GameEvent> m_PendingEvents; // Events waiting to be assigned to a frame
 
     // Callbacks

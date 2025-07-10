@@ -98,7 +98,9 @@ public:
      * @param options Configuration options for generation.
      * @param onComplete Callback called when generation is complete.
      */
-    void GenerateAsync(const std::vector<RawFrameData> &frames, const GenerationOptions &options, const std::function<void(bool)>& onComplete);
+    void GenerateAsync(const std::vector<FrameData> &frames,
+                       const GenerationOptions &options,
+                       const std::function<void(bool)> &onComplete);
 
     /**
      * @brief The main generation method.
@@ -106,7 +108,7 @@ public:
      * @param options Configuration options for generation.
      * @return True if the script and project were generated successfully.
      */
-    bool Generate(const std::vector<RawFrameData> &frames, const GenerationOptions &options = {});
+    bool Generate(const std::vector<FrameData> &frames, const GenerationOptions &options = {});
 
     /**
      * @brief Get the path of the last generated project.
@@ -136,8 +138,8 @@ private:
      * @param options Generation options.
      * @return A vector of InputBlocks.
      */
-    std::vector<InputBlock> AnalyzeTiming(const std::vector<RawFrameData> &frames,
-                                              const GenerationOptions &options);
+    std::vector<InputBlock> AnalyzeTiming(const std::vector<FrameData> &frames,
+                                          const GenerationOptions &options);
 
     /**
      * @brief Detects key state transitions between two consecutive frames.
@@ -157,7 +159,7 @@ private:
      * @param options Generation options.
      * @return A string containing the script.
      */
-    std::string BuildScript(const std::vector<RawFrameData> &frames,
+    std::string BuildScript(const std::vector<FrameData> &frames,
                             const std::vector<InputBlock> &blocks,
                             const GenerationOptions &options);
 

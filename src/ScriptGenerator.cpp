@@ -136,7 +136,9 @@ std::string ScriptGenerator::FindAvailableProjectName(const std::string &baseNam
     return availableName;
 }
 
-void ScriptGenerator::GenerateAsync(const std::vector<RawFrameData> &frames, const GenerationOptions &options, const std::function<void(bool)>& onComplete) {
+void ScriptGenerator::GenerateAsync(const std::vector<FrameData> &frames,
+                                    const GenerationOptions &options,
+                                    const std::function<void(bool)> &onComplete) {
     std::thread([this, frames, options, onComplete]() {
         // The entire logic from the original Generate() method goes here.
         // It's already well-contained and doesn't access shared state that needs protection.
@@ -152,7 +154,7 @@ void ScriptGenerator::GenerateAsync(const std::vector<RawFrameData> &frames, con
     }).detach(); // Detach the thread to let it run independently.
 }
 
-bool ScriptGenerator::Generate(const std::vector<RawFrameData> &frames, const GenerationOptions &options) {
+bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const GenerationOptions &options) {
     if (frames.empty()) {
         m_Mod->GetLogger()->Error("Cannot generate script from empty frame data.");
         return false;
@@ -224,7 +226,7 @@ bool ScriptGenerator::Generate(const std::vector<RawFrameData> &frames, const Ge
     }
 }
 
-std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<RawFrameData> &frames,
+std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<FrameData> &frames,
                                                        const GenerationOptions &options) {
     std::vector<InputBlock> blocks;
     if (frames.empty()) return blocks;
@@ -254,8 +256,8 @@ std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<RawFram
         }
 
         // Track physics data
-        if (frame.ballSpeed > 0.0f) {
-            totalSpeed += frame.ballSpeed;
+        if (frame.physics.speed > 0.0f) {
+            totalSpeed += frame.physics.speed;
             speedSamples++;
         }
 
@@ -366,7 +368,7 @@ std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState 
     return events;
 }
 
-std::string ScriptGenerator::BuildScript(const std::vector<RawFrameData> &frames,
+std::string ScriptGenerator::BuildScript(const std::vector<FrameData> &frames,
                                          const std::vector<InputBlock> &blocks,
                                          const GenerationOptions &options) {
     LuaScriptBuilder builder(options);

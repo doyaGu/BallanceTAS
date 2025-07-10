@@ -58,7 +58,7 @@ void Recorder::Start() {
     m_Mod->GetLogger()->Info("Recording started at frame %d", m_CurrentTick);
 }
 
-std::vector<RawFrameData> Recorder::Stop() {
+std::vector<FrameData> Recorder::Stop() {
     if (!m_IsRecording) {
         m_Mod->GetLogger()->Warn("Recorder is not currently recording.");
         return {};
@@ -186,11 +186,12 @@ void Recorder::Tick() {
     }
 
     try {
-        RawFrameData frame;
+        FrameData frame;
         frame.frameIndex = m_CurrentTick;
+        frame.deltaTime = m_DeltaTime;
         frame.inputState = CaptureRealInput();
 
-        // Capture physics data for validation
+        // Capture physics data
         CapturePhysicsData(frame);
 
         // Assign any events that were fired since the last tick to this frame
@@ -260,20 +261,28 @@ RawInputState Recorder::CaptureRealInput() const {
     return state;
 }
 
-void Recorder::CapturePhysicsData(RawFrameData &frameData) const {
+void Recorder::CapturePhysicsData(FrameData &frameData) const {
     try {
         auto *gameInterface = m_Engine->GetGameInterface();
         if (!gameInterface) return;
 
-        // Get ball velocity for validation/debugging
+        // Get ball entity
         auto *ball = gameInterface->GetBall();
-        if (ball) {
-            VxVector velocity = gameInterface->GetVelocity(ball);
-            frameData.ballSpeed = velocity.Magnitude();
-        }
+        if (!ball) return;
+
+        PhysicsData &physics = frameData.physics;
+
+        // Basic position and velocity
+        physics.position = gameInterface->GetPosition(ball);
+        physics.velocity = gameInterface->GetVelocity(ball);
+        physics.angularVelocity = gameInterface->GetAngularVelocity(ball);
+
+        // Derived values
+        physics.speed = physics.velocity.Magnitude();
+        physics.angularSpeed = physics.angularVelocity.Magnitude();
     } catch (const std::exception &) {
         // Don't log physics capture errors as they're non-critical
-        frameData.ballSpeed = 0.0f;
+        frameData.physics = PhysicsData{}; // Reset to defaults
     }
 }
 

@@ -184,7 +184,7 @@ bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const Gener
             return false;
         }
         m_LastGeneratedPath = projectDir;
-        UpdateProgress(0.2f);
+        UpdateProgress(0.1f);
 
         // Analyze timing
         m_Mod->GetLogger()->Info("Analyzing frame data...");
@@ -195,11 +195,11 @@ bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const Gener
         // Generate script
         m_Mod->GetLogger()->Info("Building script...");
         std::string scriptContent = BuildScript(frames, blocks, finalOptions);
-        UpdateProgress(0.6f);
+        UpdateProgress(0.7f);
 
         // Generate manifest
         std::string manifestContent = GenerateManifest(finalOptions);
-        UpdateProgress(0.8f);
+        UpdateProgress(0.9f);
 
         // Write files
         if (!CreateProjectFiles(projectDir, scriptContent, manifestContent)) {

@@ -173,7 +173,7 @@ void TASEngine::Stop() {
         }
     }
 
-    if (m_Mod) {
+    if (m_Mod && !m_Mod->IsLegacyMode()) {
         m_Mod->GetBML()->AddTimer(1ul, [this]() {
             if (m_GameInterface) {
                 m_GameInterface->SetPhysicsTimeFactor();

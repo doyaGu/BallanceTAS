@@ -186,6 +186,17 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
 // ===================================================================
 
 void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
+    // tas.is_legacy_mode()
+    tas["is_legacy_mode"] = [engine]() -> bool {
+        return engine->GetGameInterface()->IsLegacyMode();
+    };
+
+    // tas.is_explosion_disabled()
+    tas["is_explosion_disabled"] = [engine]() -> bool {
+        return engine->GetGameInterface()->IsExplosionDisabled();
+    };
+
+
     // tas.get_object(name)
     tas["get_object"] = [engine](const std::string &name) -> sol::object {
         if (name.empty()) {

@@ -173,6 +173,14 @@ bool GameInterface::IsSleeping(CK3dEntity *obj) const {
     return ipionObj->m_RealObject->get_core()->movement_state >= IVP_MT_CALM;
 }
 
+bool GameInterface::IsLegacyMode() const {
+    return m_Mod->IsLegacyMode();
+}
+
+bool GameInterface::IsExplosionDisabled() const {
+    return m_Mod->IsExplosionDisabled();
+}
+
 unsigned int GameInterface::GetCurrentTick() const {
     return m_CurrentTick;
 }

@@ -40,7 +40,7 @@ BallanceTAS::~BallanceTAS() {
 void BallanceTAS::OnLoad() {
     // --- 1. Initialize Configuration ---
     // This is the primary switch for the TAS framework.
-    m_Enabled = GetConfig()->GetProperty("TAS", "EnableFramework");
+    m_Enabled = GetConfig()->GetProperty("TAS", "Enable");
     m_Enabled->SetComment("Enables TAS features (determinism hooks always active for fair gameplay).");
     m_Enabled->SetDefaultBoolean(true);
 

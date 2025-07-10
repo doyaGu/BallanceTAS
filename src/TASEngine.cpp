@@ -6,7 +6,6 @@
 #include "ProjectManager.h"
 #include "InputSystem.h"
 #include "GameInterface.h"
-#include "DevTools.h"
 #include "EventManager.h"
 #include "TASHook.h"
 #include "TASProject.h"
@@ -51,7 +50,6 @@ bool TASEngine::Initialize() {
         m_InputSystem = std::make_unique<InputSystem>();
         m_GameInterface = std::make_unique<GameInterface>(m_Mod);
         m_Scheduler = std::make_unique<LuaScheduler>(this);
-        m_DevTools = std::make_unique<DevTools>(m_Mod->GetBML());
         m_EventManager = std::make_unique<EventManager>(*m_Scheduler);
 
         // Initialize recording subsystems
@@ -124,7 +122,6 @@ void TASEngine::Shutdown() {
         m_ScriptGenerator.reset();
         m_Recorder.reset();
         m_EventManager.reset();
-        m_DevTools.reset();
         m_Scheduler.reset();
         m_GameInterface.reset();
         m_InputSystem.reset();
@@ -648,22 +645,6 @@ void TASEngine::UnloadTAS() {
         if (currentProject && currentProject->IsZipProject()) {
             m_ProjectManager->CleanupProjectTempDirectory(currentProject);
             currentProject->SetExecutionBasePath(""); // Clear execution base path
-        }
-    }
-}
-
-void TASEngine::SetDeveloperMode(bool enabled) {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    if (m_DevTools) {
-        m_DevTools->SetEnabled(enabled);
-        // Re-register APIs to add/remove the tas.tools table
-        try {
-            LuaApi::Register(this);
-        } catch (const std::exception &e) {
-            m_Mod->GetLogger()->Error("Failed to re-register Lua APIs: %s", e.what());
         }
     }
 }

@@ -11,7 +11,6 @@
 #include "GameInterface.h"
 #include "ProjectManager.h"
 #include "TASProject.h"
-#include "DevTools.h"
 
 // Helper function to format strings with variadic arguments
 std::string FormatString(const std::string &fmt, sol::variadic_args va) {
@@ -312,45 +311,11 @@ void LuaApi::RegisterDebugApi(sol::table &tas, TASEngine *engine) {
         std::string error_message = message.value_or("Assertion failed!");
         throw sol::error(error_message);
     };
-}
 
-// ===================================================================
-//  Section 7: Developer Tools API Registration (Gated)
-// ===================================================================
-
-void LuaApi::RegisterDevTools(sol::table &tas, TASEngine *engine) {
-    auto *dev_tools = engine->GetDevTools();
-
-    if (!dev_tools || !dev_tools->IsEnabled()) {
-        tas["tools"] = sol::nil;
-        return;
-    }
-
-    engine->GetMod()->GetLogger()->Warn("[TAS] Developer mode is enabled. tas.tools API is available.");
-
-    sol::table tools = engine->GetLuaState().create_table();
-    tas["tools"] = tools;
-
-    // tas.tools.set_timescale(factor)
-    tools["set_timescale"] = [dev_tools](float factor) {
-        if (factor <= 0.0f) {
-            throw sol::error("set_timescale: factor must be positive");
+    tas["skip_rendering"] = [engine]() {
+        auto *mod = engine->GetMod();
+        if (mod) {
+            mod->GetBML()->SkipRenderForNextTick();
         }
-        if (factor > 10.0f) {
-            throw sol::error("set_timescale: factor cannot exceed 10.0");
-        }
-        dev_tools->SetTimeScale(factor);
-    };
-
-    // tas.tools.set_velocity(game_object, velocity_vec3)
-    tools["set_velocity"] = [dev_tools](CK3dEntity *obj, const VxVector &vel) {
-        if (!obj) {
-            throw sol::error("set_velocity: game object is null");
-        }
-        dev_tools->SetVelocity(obj, vel);
-    };
-
-    tools["skip_rendering"] = [dev_tools]() {
-        dev_tools->SkipRenderForNextTick();
     };
 }

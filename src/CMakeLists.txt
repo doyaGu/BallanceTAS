@@ -6,8 +6,7 @@ set(TAS_PRIVATE_HEADERS
 		InputSystem.h
 		EventManager.h
 		GameInterface.h
-		DevTools.h
-		ProjectManager.h
+        ProjectManager.h
 		TASProject.h
 		Recorder.h
 		ScriptGenerator.h
@@ -29,8 +28,7 @@ set(TAS_SOURCES
 		InputSystem.cpp
 		EventManager.cpp
 		GameInterface.cpp
-		DevTools.cpp
-		ProjectManager.cpp
+        ProjectManager.cpp
 		TASProject.cpp
 		Recorder.cpp
 		ScriptGenerator.cpp

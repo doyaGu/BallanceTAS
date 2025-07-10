@@ -44,11 +44,6 @@ void BallanceTAS::OnLoad() {
     m_Enabled->SetComment("Enables TAS features (determinism hooks always active for fair gameplay).");
     m_Enabled->SetDefaultBoolean(true);
 
-    // Developer mode for debugging tools.
-    m_EnableDeveloperMode = GetConfig()->GetProperty("TAS", "EnableDeveloperMode");
-    m_EnableDeveloperMode->SetComment("Enables developer/debug APIs like tas.tools.teleport. Requires restart.");
-    m_EnableDeveloperMode->SetDefaultBoolean(false);
-
     // UI visibility control.
     m_ShowOSD = GetConfig()->GetProperty("OSD", "ShowInGameOSD");
     m_ShowOSD->SetComment("Controls the visibility of the in-game On-Screen Display.");
@@ -169,9 +164,6 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
 
     // Forward relevant config changes to the engine and UI if they're running.
     if (m_Initialized) {
-        if (prop == m_EnableDeveloperMode && m_Engine) {
-            m_Engine->SetDeveloperMode(m_EnableDeveloperMode->GetBoolean());
-        }
         if (prop == m_ShowOSD) {
             SetOSDVisible(m_ShowOSD->GetBoolean());
         }
@@ -346,7 +338,6 @@ bool BallanceTAS::Initialize() {
         GetLogger()->Info("BallanceTAS framework initialized successfully.");
 
         // Sync initial config states
-        m_Engine->SetDeveloperMode(m_EnableDeveloperMode->GetBoolean());
         SetOSDVisible(m_ShowOSD->GetBoolean());
         UpdateOSDPanelConfig();
 

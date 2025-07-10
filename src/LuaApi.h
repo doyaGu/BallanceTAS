@@ -80,5 +80,4 @@ private:
     static void RegisterWorldQueryApi(sol::table &tas, TASEngine *engine);
     static void RegisterConcurrencyApi(sol::table &tas, TASEngine *engine);
     static void RegisterDebugApi(sol::table &tas, TASEngine *engine);
-    static void RegisterDevTools(sol::table &tas, TASEngine *engine);
 };

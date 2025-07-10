@@ -13,7 +13,6 @@ class ProjectManager;
 class LuaScheduler;
 class InputSystem;
 class GameInterface;
-class DevTools;
 class EventManager;
 
 // Recording subsystems
@@ -119,8 +118,6 @@ public:
 
     // --- State & Configuration Setters ---
 
-    void SetDeveloperMode(bool enabled);
-
     // --- Subsystem Accessors ---
     // These are used by other parts of the framework (e.g., LuaApi) to get handles
     // to the necessary systems.
@@ -133,7 +130,6 @@ public:
     LuaScheduler *GetScheduler() const { return m_Scheduler.get(); }
     InputSystem *GetInputSystem() const { return m_InputSystem.get(); }
     GameInterface *GetGameInterface() const { return m_GameInterface.get(); }
-    DevTools *GetDevTools() const { return m_DevTools.get(); }
     EventManager *GetEventManager() const { return m_EventManager.get(); }
 
     // Recording subsystem accessors
@@ -239,7 +235,6 @@ private:
     std::unique_ptr<LuaScheduler> m_Scheduler;
     std::unique_ptr<InputSystem> m_InputSystem;
     std::unique_ptr<GameInterface> m_GameInterface;
-    std::unique_ptr<DevTools> m_DevTools;
 
     // --- Recording Modules ---
     std::unique_ptr<Recorder> m_Recorder;

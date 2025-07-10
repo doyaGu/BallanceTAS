@@ -199,7 +199,6 @@ private:
     // --- Configuration Properties ---
     // These pointers are owned by BML's config manager.
     IProperty *m_Enabled = nullptr;
-    IProperty *m_EnableDeveloperMode = nullptr;
     IProperty *m_ShowOSD = nullptr;
     IProperty *m_StopKey = nullptr;
 

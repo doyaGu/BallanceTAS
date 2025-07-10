@@ -76,11 +76,11 @@ struct RawInputState {
  * @brief A record of a significant game event that occurred on a specific frame.
  */
 struct GameEvent {
-    uint32_t frame = 0;
+    size_t frame = 0;
     std::string eventName;
     int eventData = 0; // For events like checkpoint ID
 
-    explicit GameEvent(uint32_t frameNum, std::string name, int data = 0)
+    explicit GameEvent(size_t frameNum, std::string name, int data = 0)
         : frame(frameNum), eventName(std::move(name)), eventData(data) {}
 };
 
@@ -89,7 +89,7 @@ struct GameEvent {
  * @brief The core data unit for the recorder, storing all relevant information for one frame.
  */
 struct RawFrameData {
-    uint32_t frameIndex = 0;
+    size_t frameIndex = 0;
     RawInputState inputState;
     std::vector<GameEvent> events;
 
@@ -152,7 +152,7 @@ public:
      * @brief Gets the current frame count since recording started.
      * @return Current frame index.
      */
-    uint32_t GetCurrentFrame() const { return m_CurrentTick; }
+    size_t GetCurrentFrame() const { return m_CurrentTick; }
 
     /**
      * @brief Gets the total number of frames recorded.
@@ -248,7 +248,7 @@ private:
 
     // Recording state
     bool m_IsRecording = false;
-    uint32_t m_CurrentTick = 0;
+    size_t m_CurrentTick = 0;
 
     // Configuration
     bool m_AutoGenerateOnStop = true;  // Auto-generate by default

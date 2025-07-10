@@ -472,7 +472,7 @@ void TASEngine::SetupPlaybackCallbacks() {
         if (!m_ShuttingDown) {
             try {
                 auto *inputManager = static_cast<CKInputManager *>(man);
-                 uint32_t currentTick = 0;
+                 size_t currentTick = 0;
 
                  if (m_GameInterface) {
                      currentTick = m_GameInterface->GetCurrentTick();

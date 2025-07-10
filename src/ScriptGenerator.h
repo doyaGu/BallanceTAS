@@ -28,11 +28,11 @@ enum class KeyTransition {
  * @brief Represents a key state change at a specific frame.
  */
 struct KeyEvent {
-    uint32_t frame = 0;
+    size_t frame = 0;
     std::string key;
     KeyTransition transition = KeyTransition::NoChange;
 
-    KeyEvent(uint32_t f, std::string k, KeyTransition t)
+    KeyEvent(size_t f, std::string k, KeyTransition t)
         : frame(f), key(std::move(k)), transition(t) {}
 };
 
@@ -42,8 +42,8 @@ struct KeyEvent {
  *        This tracks exact frame-by-frame changes.
  */
 struct InputBlock {
-    uint32_t startFrame = 0;
-    uint32_t endFrame = 0;
+    size_t startFrame = 0;
+    size_t endFrame = 0;
     std::vector<KeyEvent> keyEvents;     // All key transitions in this block
     std::vector<GameEvent> gameEvents;   // Game events that occurred
 
@@ -51,7 +51,7 @@ struct InputBlock {
     float averageSpeed = 0.0f;
     bool hasSignificantMovement = false;
 
-    uint32_t GetDuration() const { return endFrame - startFrame + 1; }
+    size_t GetDuration() const { return endFrame - startFrame + 1; }
     bool IsEmpty() const { return keyEvents.empty() && endFrame == startFrame; }
 };
 
@@ -147,8 +147,8 @@ private:
      * @return Vector of key events for this frame.
      */
     std::vector<KeyEvent> DetectKeyTransitions(const RawInputState &prevState,
-                                             const RawInputState &currentState,
-                                             uint32_t frameIndex);
+                                               const RawInputState &currentState,
+                                               size_t frameIndex);
 
     /**
      * @brief Generates exact timing Lua script.

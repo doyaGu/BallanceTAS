@@ -271,7 +271,7 @@ std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<RawFram
 
             // Also split on significant time gaps (optional)
             if (!shouldStartNewBlock && i + 1 < frames.size()) {
-                uint32_t frameGap = frames[i + 1].frameIndex - frame.frameIndex;
+                size_t frameGap = frames[i + 1].frameIndex - frame.frameIndex;
                 shouldStartNewBlock = (frameGap > 30); // Split on gaps > 30 frames
             }
         }
@@ -312,7 +312,7 @@ std::vector<InputBlock> ScriptGenerator::AnalyzeTiming(const std::vector<RawFram
 
 std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState &prevState,
                                                             const RawInputState &currentState,
-                                                            uint32_t frameIndex) {
+                                                            size_t frameIndex) {
     std::vector<KeyEvent> events;
 
     for (int keyIdx = 0; keyIdx < KEY_COUNT; ++keyIdx) {
@@ -390,7 +390,7 @@ std::string ScriptGenerator::BuildScript(const std::vector<RawFrameData> &frames
     std::set<std::string> currentlyPressed;
 
     // Collect ALL events with frame associations
-    std::vector<std::pair<uint32_t, std::variant<KeyEvent, GameEvent>>> allEvents;
+    std::vector<std::pair<size_t, std::variant<KeyEvent, GameEvent>>> allEvents;
 
     for (const auto &block : blocks) {
         // Add key events
@@ -416,11 +416,11 @@ std::string ScriptGenerator::BuildScript(const std::vector<RawFrameData> &frames
                   return a.first < b.first;
               });
 
-    uint32_t lastFrame = 0;
+    size_t lastFrame = 0;
 
     // Wait to the first frame if it's not 0
     if (!allEvents.empty() && allEvents[0].first > 0) {
-        uint32_t initialWait = allEvents[0].first;
+        size_t initialWait = allEvents[0].first;
         if (options.addFrameComments) {
             builder.AddComment("Wait " + std::to_string(initialWait) + " frames to start");
         }
@@ -486,8 +486,8 @@ std::string ScriptGenerator::BuildScript(const std::vector<RawFrameData> &frames
     // Wait until the actual end of recording, then release remaining keys
     if (!frames.empty()) {
         // Find the true final frame from the original recording data
-        uint32_t finalRecordingFrame = frames.back().frameIndex;
-        
+        size_t finalRecordingFrame = frames.back().frameIndex;
+
         // Wait until the final frame if we haven't reached it yet
         int64_t finalWait = finalRecordingFrame - lastFrame;
         if (finalWait > 0) {

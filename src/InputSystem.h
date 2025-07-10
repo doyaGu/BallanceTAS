@@ -14,7 +14,7 @@ struct KeyState {
     uint8_t currentState = KS_IDLE;  // Current accumulated state
     bool hadPressEvent = false;      // KS_PRESSED was added this frame
     bool hadReleaseEvent = false;    // KS_RELEASED was added this frame
-    uint32_t timestamp = 0;          // Event timestamp
+    size_t timestamp = 0;            // Event timestamp
 
     // Reset for new frame (mimics PostProcess cleanup)
     void PrepareNextFrame() {
@@ -26,13 +26,13 @@ struct KeyState {
     }
 
     // Apply events (mimics PreProcess accumulation)
-    void ApplyPressEvent(uint32_t ts) {
+    void ApplyPressEvent(size_t ts) {
         currentState |= KS_PRESSED;
         hadPressEvent = true;
         timestamp = ts;
     }
 
-    void ApplyReleaseEvent(uint32_t ts) {
+    void ApplyReleaseEvent(size_t ts) {
         currentState |= KS_RELEASED;
         hadReleaseEvent = true;
         timestamp = ts;
@@ -139,7 +139,7 @@ public:
      * @brief Applies TAS input by replicating DX8InputManager state transitions
      * This now properly handles state accumulation and frame lifecycle
      */
-    void Apply(unsigned char *keyboardState, uint32_t currentTick);
+    void Apply(unsigned char *keyboardState, size_t currentTick);
 
     /**
      * @brief Prepares for next frame (mimics PostProcess cleanup)
@@ -187,7 +187,7 @@ private:
     std::unordered_map<CKKEYBOARD, KeyState> m_KeyStates;
 
     // Current frame tracking
-    uint32_t m_CurrentTick = 0;
+    size_t m_CurrentTick = 0;
 
     // Keys being held for a specific duration (key -> remaining ticks)
     std::unordered_map<CKKEYBOARD, int> m_HeldKeys;

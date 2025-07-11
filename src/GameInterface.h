@@ -11,17 +11,15 @@ class BallanceTAS;
 
 /**
  * @class GameInterface
- * @brief Provides a safe, read-only interface to query game world state.
+ * @brief Provides an interface to access game objects and their properties in Ballance.
  *
- * This class serves as the backend for all `tas.get_*` API calls. It encapsulates
- * the logic for finding game objects and reading their properties (position,
- * velocity, etc.), abstracting away the underlying BML calls and memory layouts.
+ * This class serves as the backend for all game object queries and manipulations.
  */
 class GameInterface {
 public:
     explicit GameInterface(BallanceTAS *mod);
 
-    // GameReader is not copyable or movable
+    // GameInterface is not copyable or movable
     GameInterface(const GameInterface &) = delete;
     GameInterface &operator=(const GameInterface &) = delete;
 

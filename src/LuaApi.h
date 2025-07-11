@@ -10,7 +10,7 @@ class TASEngine;
  *
  * This class provides a centralized location for all sol2 bindings. It creates
  * the global 'tas' table and populates it with functions that call into the
- * various subsystems of the TASEngine (InputSystem, GameReader, etc.).
+ * various subsystems of the TASEngine.
  */
 class LuaApi {
 public:

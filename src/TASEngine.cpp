@@ -50,7 +50,7 @@ bool TASEngine::Initialize() {
         m_InputSystem = std::make_unique<InputSystem>();
         m_GameInterface = std::make_unique<GameInterface>(m_Mod);
         m_Scheduler = std::make_unique<LuaScheduler>(this);
-        m_EventManager = std::make_unique<EventManager>(*m_Scheduler);
+        m_EventManager = std::make_unique<EventManager>(this);
 
         // Initialize recording subsystems
         m_Recorder = std::make_unique<Recorder>(this);

@@ -150,27 +150,23 @@ public:
 
     /**
      * @brief Captures the data for the current frame. Called by TASEngine::Tick().
+     * @param currentTick The current game tick/frame index.
      */
-    void Tick();
+    void Tick(size_t &currentTick);
 
     /**
      * @brief A callback for the TASEngine to notify the recorder of a game event.
+     * @param currentTick The current game tick/frame index.
      * @param eventName The name of the event that occurred.
      * @param eventData Optional data associated with the event.
      */
-    void OnGameEvent(const std::string &eventName, int eventData = 0);
+    void OnGameEvent(size_t currentTick, const std::string &eventName, int eventData = 0);
 
     /**
      * @brief Checks if the recorder is currently recording.
      * @return True if recording is active.
      */
     bool IsRecording() const { return m_IsRecording; }
-
-    /**
-     * @brief Gets the current frame count since recording started.
-     * @return Current frame index.
-     */
-    size_t GetCurrentFrame() const { return m_CurrentTick; }
 
     /**
      * @brief Gets the total number of frames recorded.
@@ -266,7 +262,6 @@ private:
 
     // Recording state
     bool m_IsRecording = false;
-    size_t m_CurrentTick = 0;
 
     // Configuration
     bool m_AutoGenerateOnStop = true; // Auto-generate by default
@@ -283,4 +278,12 @@ private:
     // Performance tracking
     size_t m_MaxFrames = 1000000; // Limit to prevent memory issues
     bool m_WarnedMaxFrames = false;
+
+    // Cached remapped keys (acquired once when playback starts)
+    CKKEYBOARD m_KeyUp = CKKEY_UP;
+    CKKEYBOARD m_KeyDown = CKKEY_DOWN;
+    CKKEYBOARD m_KeyLeft = CKKEY_LEFT;
+    CKKEYBOARD m_KeyRight = CKKEY_RIGHT;
+    CKKEYBOARD m_KeyShift = CKKEY_LSHIFT;
+    CKKEYBOARD m_KeySpace = CKKEY_SPACE;
 };

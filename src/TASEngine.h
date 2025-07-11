@@ -10,10 +10,13 @@ class TASProject;
 // Forward declarations of our subsystems and managers
 class BallanceTAS;
 class ProjectManager;
-class LuaScheduler;
 class InputSystem;
 class GameInterface;
 class EventManager;
+
+// Script and record execution subsystems
+class ScriptExecutor;
+class RecordPlayer;
 
 // Recording subsystems
 class Recorder;
@@ -29,12 +32,27 @@ typedef enum TASState {
 } TASState;
 
 /**
+ * @enum PlaybackType
+ * @brief The type of playback currently active.
+ */
+enum class PlaybackType {
+    None,     // No playback active
+    Script,   // Lua script playback via ScriptExecutor
+    Record    // Binary record playback via RecordPlayer
+};
+
+/**
  * @class TASEngine
- * @brief The central coordinator and execution engine of the BallanceTAS framework.
+ * @brief The central coordinator for the BallanceTAS framework.
  *
- * TASEngine owns and manages the lifecycle of all core TAS subsystems. It holds the main
- * Lua VM instance and orchestrates the flow of data and control between the game,
- * the hooks, and the Lua scripts.
+ * TASEngine now serves as a coordinator between different execution modes:
+ * - Script-based TAS (via ScriptExecutor)
+ * - Record-based TAS (via RecordPlayer)
+ * - Recording (via Recorder)
+ *
+ * It provides a unified interface for starting/stopping TAS operations regardless
+ * of the underlying implementation, while managing the lifecycle and state of
+ * all subsystems.
  */
 class TASEngine {
 public:
@@ -52,6 +70,24 @@ public:
     bool IsPendingRecord() const { return (m_State & TAS_RECORD_PENDING) != 0; }
     bool IsIdle() const { return m_State == TAS_IDLE; }
     bool IsShuttingDown() const { return m_ShuttingDown; }
+
+    /**
+     * @brief Gets the current playback type.
+     * @return The type of playback currently active.
+     */
+    PlaybackType GetPlaybackType() const { return m_PlaybackType; }
+
+    /**
+     * @brief Checks if script playback is active.
+     * @return True if playing a script-based TAS.
+     */
+    bool IsPlayingScript() const { return GetPlaybackType() == PlaybackType::Script; }
+
+    /**
+     * @brief Checks if record playback is active.
+     * @return True if playing a record-based TAS.
+     */
+    bool IsPlayingRecord() const { return GetPlaybackType() == PlaybackType::Record; }
 
     /**
      * @brief Initializes all subsystems.
@@ -103,34 +139,43 @@ public:
      */
     size_t GetRecordingFrameCount() const;
 
-    // === Replay Control ===
+    // === Unified Replay Control ===
 
     /**
      * @brief Sets up replay to start when next level loads.
+     * Automatically chooses ScriptExecutor or RecordPlayer based on project type.
      * @return True if replay mode was set successfully.
      */
     bool StartReplay();
 
     /**
-     * @brief Stops replay.
+     * @brief Stops replay (works for both script and record playback).
      */
     void StopReplay();
-
-    // --- State & Configuration Setters ---
 
     // --- Subsystem Accessors ---
     // These are used by other parts of the framework (e.g., LuaApi) to get handles
     // to the necessary systems.
 
     BallanceTAS *GetMod() const { return m_Mod; }
-    sol::state &GetLuaState() { return m_LuaState; }
-    const sol::state &GetLuaState() const { return m_LuaState; }
+
+    // For Lua API compatibility, delegate to ScriptExecutor
+    sol::state &GetLuaState();
+    const sol::state &GetLuaState() const;
 
     ProjectManager *GetProjectManager() const { return m_ProjectManager.get(); }
-    LuaScheduler *GetScheduler() const { return m_Scheduler.get(); }
     InputSystem *GetInputSystem() const { return m_InputSystem.get(); }
     GameInterface *GetGameInterface() const { return m_GameInterface.get(); }
     EventManager *GetEventManager() const { return m_EventManager.get(); }
+
+    // Script execution subsystem
+    ScriptExecutor *GetScriptExecutor() const { return m_ScriptExecutor.get(); }
+
+    // Record playback subsystem
+    RecordPlayer *GetRecordPlayer() const { return m_RecordPlayer.get(); }
+
+    // For Lua API compatibility, delegate to ScriptExecutor
+    class LuaScheduler *GetScheduler() const;
 
     // Recording subsystem accessors
     Recorder *GetRecorder() const { return m_Recorder.get(); }
@@ -148,6 +193,7 @@ private:
 
     /**
      * @brief Internal method to start replay when level loads.
+     * Chooses appropriate executor based on project type.
      */
     void StartReplayInternal();
 
@@ -173,21 +219,21 @@ private:
     void SetupRecordingCallbacks();
 
     /**
-     * @brief Sets up callbacks for playback mode.
+     * @brief Sets up callbacks for script playback mode.
      */
-    void SetupPlaybackCallbacks();
+    void SetupScriptPlaybackCallbacks();
 
     /**
-     * @brief Loads a TAS project and prepares it for execution.
-     * @param project The TAS project to load, containing metadata and scripts.
-     * @return True if the project was loaded successfully, false otherwise.
+     * @brief Sets up callbacks for record playback mode.
      */
-    bool LoadTAS(const TASProject *project);
+    void SetupRecordPlaybackCallbacks();
 
     /**
-     * @brief Unloads the currently active TAS, stopping execution and cleaning up.
+     * @brief Determines the appropriate playback type for a project.
+     * @param project The project to analyze.
+     * @return The playback type to use.
      */
-    void UnloadTAS();
+    PlaybackType DeterminePlaybackType(const TASProject *project) const;
 
     // State setters (used internally and by callbacks)
     void SetPlayPending(bool pending) {
@@ -205,6 +251,7 @@ private:
             m_State &= ~(TAS_RECORDING | TAS_RECORD_PENDING); // Can't play and record simultaneously
         } else {
             m_State &= ~TAS_PLAYING;
+            m_PlaybackType = PlaybackType::None;
         }
     }
 
@@ -228,17 +275,17 @@ private:
 
     BallanceTAS *m_Mod;
 
-    // The single, master Lua virtual machine for all TAS scripts.
-    sol::state m_LuaState;
-
     // --- Managers ---
     std::unique_ptr<ProjectManager> m_ProjectManager;
     std::unique_ptr<EventManager> m_EventManager;
 
     // --- Core Logic Modules ---
-    std::unique_ptr<LuaScheduler> m_Scheduler;
     std::unique_ptr<InputSystem> m_InputSystem;
     std::unique_ptr<GameInterface> m_GameInterface;
+
+    // --- Execution Modules ---
+    std::unique_ptr<ScriptExecutor> m_ScriptExecutor;
+    std::unique_ptr<RecordPlayer> m_RecordPlayer;
 
     // --- Recording Modules ---
     std::unique_ptr<Recorder> m_Recorder;
@@ -246,6 +293,7 @@ private:
 
     // --- State ---
     uint32_t m_State = TAS_IDLE;
+    PlaybackType m_PlaybackType = PlaybackType::None;
     std::atomic<bool> m_ShuttingDown;
     size_t m_CurrentTick = 0;
 };

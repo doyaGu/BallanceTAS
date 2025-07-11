@@ -44,16 +44,21 @@ void Recorder::Start() {
     // Clear previous data
     m_Frames.clear();
     m_PendingEvents.clear();
-    m_CurrentTick = 0;
     m_WarnedMaxFrames = false;
 
-    // Get starting frame from game interface
-    m_CurrentTick = m_Engine->GetCurrentTick();
+    // Acquire remapped keys from game interface
+    auto *gameInterface = m_Engine->GetGameInterface();
+    if (gameInterface) {
+        m_KeyUp = gameInterface->RemapKey(CKKEY_UP);
+        m_KeyDown = gameInterface->RemapKey(CKKEY_DOWN);
+        m_KeyLeft = gameInterface->RemapKey(CKKEY_LEFT);
+        m_KeyRight = gameInterface->RemapKey(CKKEY_RIGHT);
+        m_KeyShift = gameInterface->RemapKey(CKKEY_LSHIFT);
+        m_KeySpace = gameInterface->RemapKey(CKKEY_SPACE);
+    }
 
     m_IsRecording = true;
     NotifyStatusChange(true);
-
-    m_Mod->GetLogger()->Info("Recording started at frame %d", m_CurrentTick);
 }
 
 std::vector<FrameData> Recorder::Stop() {
@@ -75,9 +80,6 @@ std::vector<FrameData> Recorder::Stop() {
         );
         m_PendingEvents.clear();
     }
-
-    m_Mod->GetLogger()->Info("Recording stopped. Captured %zu frames over %d ticks.",
-                             m_Frames.size(), m_CurrentTick);
 
     // Auto-generate script if we have frames
     if (!m_Frames.empty() && m_AutoGenerateOnStop) {
@@ -168,7 +170,7 @@ bool Recorder::GenerateScript() {
     }
 }
 
-void Recorder::Tick() {
+void Recorder::Tick(size_t &currentTick) {
     if (!m_IsRecording) {
         return;
     }
@@ -185,7 +187,7 @@ void Recorder::Tick() {
 
     try {
         FrameData frame;
-        frame.frameIndex = m_CurrentTick;
+        frame.frameIndex = currentTick;
         frame.deltaTime = m_DeltaTime;
         frame.inputState = CaptureRealInput();
 
@@ -197,24 +199,24 @@ void Recorder::Tick() {
         m_PendingEvents.clear();
 
         m_Frames.emplace_back(std::move(frame));
-        m_CurrentTick++;
+        ++currentTick;
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Error during recording tick: %s", e.what());
         Stop(); // Stop recording on error to prevent corruption
     }
 }
 
-void Recorder::OnGameEvent(const std::string &eventName, int eventData) {
+void Recorder::OnGameEvent(size_t currentTick, const std::string &eventName, int eventData) {
     if (!m_IsRecording) {
         return;
     }
 
     try {
         // Store event in pending list
-        m_PendingEvents.emplace_back(m_CurrentTick, eventName, eventData);
+        m_PendingEvents.emplace_back(currentTick, eventName, eventData);
 
         m_Mod->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
-                                 eventName.c_str(), eventData, m_CurrentTick);
+                                 eventName.c_str(), eventData, currentTick);
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Error recording game event: %s", e.what());
     }
@@ -235,26 +237,14 @@ RawInputState Recorder::CaptureRealInput() const {
 
     RawInputState state;
 
-    auto *g = m_Engine->GetGameInterface();
-    if (g) {
-        state.keyUp = keyboardState[g->RemapKey(CKKEY_UP)];
-        state.keyDown = keyboardState[g->RemapKey(CKKEY_DOWN)];
-        state.keyLeft = keyboardState[g->RemapKey(CKKEY_LEFT)];
-        state.keyRight = keyboardState[g->RemapKey(CKKEY_RIGHT)];
-        state.keyShift = keyboardState[g->RemapKey(CKKEY_LSHIFT)];
-        state.keySpace = keyboardState[g->RemapKey(CKKEY_SPACE)];
-        state.keyQ = keyboardState[g->RemapKey(CKKEY_Q)];
-        state.keyEsc = keyboardState[g->RemapKey(CKKEY_ESCAPE)];
-    } else {
-        state.keyUp = keyboardState[CKKEY_UP];
-        state.keyDown = keyboardState[CKKEY_DOWN];
-        state.keyLeft = keyboardState[CKKEY_LEFT];
-        state.keyRight = keyboardState[CKKEY_RIGHT];
-        state.keyShift = keyboardState[CKKEY_LSHIFT];
-        state.keySpace = keyboardState[CKKEY_SPACE];
-        state.keyQ = keyboardState[CKKEY_Q];
-        state.keyEsc = keyboardState[CKKEY_ESCAPE];
-    }
+    state.keyUp = keyboardState[m_KeyUp];
+    state.keyDown = keyboardState[m_KeyDown];
+    state.keyLeft = keyboardState[m_KeyLeft];
+    state.keyRight = keyboardState[m_KeyRight];
+    state.keyShift = keyboardState[m_KeyShift];
+    state.keySpace = keyboardState[m_KeySpace];
+    state.keyQ = keyboardState[CKKEY_Q];
+    state.keyEsc = keyboardState[CKKEY_ESCAPE];
 
     return state;
 }

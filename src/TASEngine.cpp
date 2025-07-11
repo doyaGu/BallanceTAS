@@ -1,8 +1,6 @@
 #include "TASEngine.h"
 
 #include "BallanceTAS.h"
-#include "LuaApi.h"
-#include "LuaScheduler.h"
 #include "ProjectManager.h"
 #include "InputSystem.h"
 #include "GameInterface.h"
@@ -11,6 +9,8 @@
 #include "TASProject.h"
 #include "Recorder.h"
 #include "ScriptGenerator.h"
+#include "ScriptExecutor.h"
+#include "RecordPlayer.h"
 
 TASEngine::TASEngine(BallanceTAS *mod) : m_Mod(mod), m_ShuttingDown(false) {}
 
@@ -27,57 +27,44 @@ bool TASEngine::Initialize() {
         return false;
     }
 
-    // 1. Initialize Lua State
-    try {
-        m_LuaState.open_libraries(
-            sol::lib::base,
-            sol::lib::package,
-            sol::lib::coroutine,
-            sol::lib::string,
-            sol::lib::os,
-            sol::lib::math,
-            sol::lib::table,
-            sol::lib::debug,
-            sol::lib::io // Potentially restrict this for security later
-        );
-    } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Failed to initialize Lua state: %s", e.what());
-        return false;
-    }
-
-    // 2. Create Core Subsystems (order can be important)
+    // 1. Create Core Subsystems
     try {
         m_InputSystem = std::make_unique<InputSystem>();
         m_GameInterface = std::make_unique<GameInterface>(m_Mod);
-        m_Scheduler = std::make_unique<LuaScheduler>(this);
         m_EventManager = std::make_unique<EventManager>(this);
 
         // Initialize recording subsystems
         m_Recorder = std::make_unique<Recorder>(this);
         m_ScriptGenerator = std::make_unique<ScriptGenerator>(this);
+
+        // Initialize execution subsystems
+        m_ScriptExecutor = std::make_unique<ScriptExecutor>(this);
+        m_RecordPlayer = std::make_unique<RecordPlayer>(this);
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Failed to initialize core subsystems: %s", e.what());
         return false;
     }
 
-    // 3. Register Lua APIs
-    // Pass 'this' to give the API layer access to all subsystems.
+    // 2. Initialize execution subsystems
     try {
-        LuaApi::Register(this);
+        if (!m_ScriptExecutor->Initialize()) {
+            m_Mod->GetLogger()->Error("Failed to initialize ScriptExecutor.");
+            return false;
+        }
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Failed to register Lua APIs: %s", e.what());
+        m_Mod->GetLogger()->Error("Failed to initialize execution subsystems: %s", e.what());
         return false;
     }
 
-    // 4. Initialize Project Manager
+    // 3. Initialize Project Manager (needs ScriptExecutor's Lua state)
     try {
-        m_ProjectManager = std::make_unique<ProjectManager>(m_Mod, m_LuaState);
+        m_ProjectManager = std::make_unique<ProjectManager>(m_Mod, GetLuaState());
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Failed to initialize project manager: %s", e.what());
         return false;
     }
 
-    // 5. Set up recording callbacks
+    // 4. Set up recording callbacks
     if (m_Recorder) {
         m_Recorder->SetStatusCallback([this](bool isRecording) {
             if (m_ShuttingDown) return;
@@ -121,8 +108,15 @@ void TASEngine::Shutdown() {
         m_ProjectManager.reset();
         m_ScriptGenerator.reset();
         m_Recorder.reset();
+
+        // Shutdown execution subsystems
+        if (m_ScriptExecutor) {
+            m_ScriptExecutor->Shutdown();
+            m_ScriptExecutor.reset();
+        }
+        m_RecordPlayer.reset();
+
         m_EventManager.reset();
-        m_Scheduler.reset();
         m_GameInterface.reset();
         m_InputSystem.reset();
 
@@ -168,6 +162,7 @@ void TASEngine::Stop() {
     } else {
         // Stop any pending operations
         m_State = TAS_IDLE;
+        m_PlaybackType = PlaybackType::None;
         if (m_Mod) {
             m_Mod->SetUIMode(0); // UIMode::Idle
         }
@@ -256,7 +251,14 @@ void TASEngine::StopRecordingImmediate() {
     }
 }
 
-// === Replay Control ===
+size_t TASEngine::GetRecordingFrameCount() const {
+    if (!IsRecording() || !m_Recorder) {
+        return 0;
+    }
+    return m_Recorder->GetTotalFrames();
+}
+
+// === Unified Replay Control ===
 
 bool TASEngine::StartReplay() {
     if (m_ShuttingDown || IsPlaying() || IsRecording() || IsPendingRecord()) {
@@ -267,6 +269,12 @@ bool TASEngine::StartReplay() {
     TASProject *project = m_ProjectManager->GetCurrentProject();
     if (!project || !project->IsValid()) {
         m_Mod->GetLogger()->Error("No valid TAS project selected.");
+        return false;
+    }
+
+    // Check compatibility for record projects
+    if (project->IsRecordProject() && !m_Mod->IsLegacyMode()) {
+        m_Mod->GetLogger()->Error("Record playback requires legacy mode to be enabled.");
         return false;
     }
 
@@ -290,44 +298,51 @@ void TASEngine::StopReplay() {
     }
 
     try {
-        if (m_Scheduler) {
-            m_Scheduler->Clear();
+        // Stop the appropriate executor
+        if (m_PlaybackType == PlaybackType::Script && m_ScriptExecutor) {
+            m_ScriptExecutor->Stop();
+        } else if (m_PlaybackType == PlaybackType::Record && m_RecordPlayer) {
+            m_RecordPlayer->Stop();
         }
     } catch (const std::exception &e) {
         m_Mod->GetLogger()->Error("Exception stopping replay: %s", e.what());
     }
 
-    // Disable InputSystem and clean up input state
+    // Clean up input state based on playback type
     if (m_InputSystem) {
-        m_InputSystem->ReleaseAllKeys();
-        m_InputSystem->SetEnabled(false);
+        if (m_PlaybackType == PlaybackType::Script) {
+            // For script playback, InputSystem was enabled - disable it and clean up
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
+        }
+        // For record playback, InputSystem was already disabled, but ensure keys are clean
+        // RecordPlayer handles its own keyboard state cleanup
     }
 
     ClearCallbacks();
     SetPlaying(false);
     SetPlayPending(false);
 
-    InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());
+    // Reset keyboard state to ensure clean state
+    if (m_Mod->GetInputManager() && m_Mod->GetInputManager()->GetKeyboardState()) {
+        memset(m_Mod->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+    }
 
     m_Mod->SetUIMode(0); // UIMode::Idle
     m_Mod->GetLogger()->Info("Replay stopped.");
 }
 
-size_t TASEngine::GetCurrentTick() const {
-    return m_CurrentTick;
-}
-
-void TASEngine::SetCurrentTick(size_t tick) {
-    m_CurrentTick = tick;
-}
-
 void TASEngine::StopReplayImmediate() {
     try {
-        if (m_Scheduler) {
-            m_Scheduler->Clear();
+        // Stop both executors
+        if (m_ScriptExecutor) {
+            m_ScriptExecutor->Stop();
+        }
+        if (m_RecordPlayer) {
+            m_RecordPlayer->Stop();
         }
 
-        // Immediately disable InputSystem
+        // Immediately disable InputSystem and clean up
         if (m_InputSystem) {
             m_InputSystem->ReleaseAllKeys();
             m_InputSystem->SetEnabled(false);
@@ -337,7 +352,10 @@ void TASEngine::StopReplayImmediate() {
         SetPlayPending(false);
 
         if (m_Mod) {
-            InputSystem::Reset(m_Mod->GetInputManager()->GetKeyboardState());
+            // Reset keyboard state to ensure clean state
+            if (m_Mod->GetInputManager() && m_Mod->GetInputManager()->GetKeyboardState()) {
+                memset(m_Mod->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+            }
 
             m_Mod->SetUIMode(0); // UIMode::Idle
             m_Mod->GetLogger()->Info("Replay stopped immediately.");
@@ -406,11 +424,23 @@ void TASEngine::StartReplayInternal() {
         return;
     }
 
+    // Determine playback type
+    PlaybackType playbackType = DeterminePlaybackType(project);
+    if (playbackType == PlaybackType::None) {
+        m_Mod->GetLogger()->Error("Unable to determine playback type for project: %s", project->GetName().c_str());
+        Stop();
+        return;
+    }
+
     // Clear any existing callbacks first to prevent duplicates
     ClearCallbacks();
 
-    // Set up callbacks for playback mode
-    SetupPlaybackCallbacks();
+    // Set up appropriate callbacks based on playback type
+    if (playbackType == PlaybackType::Script) {
+        SetupScriptPlaybackCallbacks();
+    } else if (playbackType == PlaybackType::Record) {
+        SetupRecordPlaybackCallbacks();
+    }
 
     SetCurrentTick(0);
 
@@ -418,16 +448,32 @@ void TASEngine::StartReplayInternal() {
         m_GameInterface->AcquireKeyBindings();
     }
 
-    // Enable InputSystem for deterministic replay
+    // Handle InputSystem differently for different playback types
     if (m_InputSystem) {
-        m_InputSystem->SetEnabled(true);
-        m_InputSystem->ReleaseAllKeys(); // Start with clean state
+        if (playbackType == PlaybackType::Script) {
+            // For script playback, enable InputSystem for deterministic replay
+            m_InputSystem->SetEnabled(true);
+            m_InputSystem->ReleaseAllKeys(); // Start with clean state
+        } else if (playbackType == PlaybackType::Record) {
+            // For record playback, DISABLE InputSystem completely
+            // Record playback applies input directly to keyboard state buffer
+            m_InputSystem->SetEnabled(false);
+            m_InputSystem->ReleaseAllKeys(); // Ensure clean state
+        }
     }
 
     try {
-        if (!LoadTAS(project)) {
+        bool success = false;
+
+        if (playbackType == PlaybackType::Script && m_ScriptExecutor) {
+            success = m_ScriptExecutor->LoadAndExecute(project);
+        } else if (playbackType == PlaybackType::Record && m_RecordPlayer) {
+            success = m_RecordPlayer->LoadAndPlay(project);
+        }
+
+        if (!success) {
             if (m_Mod) {
-                m_Mod->GetLogger()->Error("Failed to load TAS project.");
+                m_Mod->GetLogger()->Error("Failed to start TAS project playback.");
             }
             Stop();
             return;
@@ -437,75 +483,46 @@ void TASEngine::StartReplayInternal() {
             m_Mod->GetLogger()->Error("Exception during TAS start: %s", e.what());
         }
         Stop();
+        return;
     }
 
     SetPlayPending(false);
     SetPlaying(true);
+    m_PlaybackType = playbackType;
 
     if (m_Mod) {
         m_Mod->SetUIMode(1); // UIMode::Playing
-        m_Mod->GetLogger()->Info("Started playing TAS project: %s", project->GetName().c_str());
+        m_Mod->GetLogger()->Info("Started playing TAS project: %s (%s mode)",
+                                 project->GetName().c_str(),
+                                 playbackType == PlaybackType::Script ? "Script" : "Record");
     }
 }
 
-size_t TASEngine::GetRecordingFrameCount() const {
-    if (!IsRecording() || !m_Recorder) {
-        return 0;
+PlaybackType TASEngine::DeterminePlaybackType(const TASProject *project) const {
+    if (!project || !project->IsValid()) {
+        return PlaybackType::None;
     }
-    return m_Recorder->GetTotalFrames();
+
+    if (project->IsScriptProject()) {
+        return PlaybackType::Script;
+    } else if (project->IsRecordProject()) {
+        return PlaybackType::Record;
+    }
+
+    return PlaybackType::None;
+}
+
+size_t TASEngine::GetCurrentTick() const {
+    return m_CurrentTick;
+}
+
+void TASEngine::SetCurrentTick(size_t tick) {
+    m_CurrentTick = tick;
 }
 
 void TASEngine::ClearCallbacks() {
     CKTimeManagerHook::ClearPostCallbacks();
     CKInputManagerHook::ClearPostCallbacks();
-}
-
-void TASEngine::SetupPlaybackCallbacks() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown) {
-            auto *timeManager = static_cast<CKTimeManager *>(man);
-            TASProject *project = m_ProjectManager->GetCurrentProject();
-            if (project && project->IsValid()) {
-                timeManager->SetLastDeltaTime(project->GetDeltaTime());
-            }
-        }
-    });
-
-    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown) {
-            try {
-                auto *inputManager = static_cast<CKInputManager *>(man);
-                 size_t currentTick = GetCurrentTick();
-
-                 // STEP 1: Process Lua scheduler to execute script commands
-                 if (m_Scheduler) {
-                     m_Scheduler->Tick();
-                 }
-
-                 // STEP 2: Apply InputSystem changes
-                 if (m_InputSystem && m_InputSystem->IsEnabled()) {
-                     m_InputSystem->Apply(inputManager->GetKeyboardState(), currentTick);
-                 }
-
-                 // STEP 3: Increment frame counter for next iteration
-                 IncrementCurrentTick();
-
-                 // STEP 4: Prepare InputSystem for next frame
-                 // This happens at the end of the current frame processing
-                 if (m_InputSystem && m_InputSystem->IsEnabled()) {
-                     m_InputSystem->PrepareNextFrame();
-                 }
-            } catch (const std::exception &e) {
-                if (m_Mod) {
-                    m_Mod->GetLogger()->Error("Input callback error: %s", e.what());
-                }
-            }
-        }
-    });
 }
 
 void TASEngine::SetupRecordingCallbacks() {
@@ -528,15 +545,95 @@ void TASEngine::SetupRecordingCallbacks() {
                 if (IsRecording()) {
                     // This captures the exact accumulated state that the game will see
                     if (m_Recorder) {
-                        m_Recorder->Tick();
+                        m_Recorder->Tick(m_CurrentTick);
                     }
-
-                    // Increment frame counter for recording timeline
-                    IncrementCurrentTick();
                 }
             } catch (const std::exception &e) {
                 if (m_Mod) {
                     m_Mod->GetLogger()->Error("Recording callback error: %s", e.what());
+                }
+            }
+        }
+    });
+}
+
+void TASEngine::SetupScriptPlaybackCallbacks() {
+    if (m_ShuttingDown) {
+        return;
+    }
+
+    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!m_ShuttingDown) {
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            TASProject *project = m_ProjectManager->GetCurrentProject();
+            if (project && project->IsValid()) {
+                timeManager->SetLastDeltaTime(project->GetDeltaTime());
+            }
+        }
+    });
+
+    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!m_ShuttingDown) {
+            try {
+                size_t currentTick = GetCurrentTick();
+
+                // STEP 1: Process script execution
+                if (m_ScriptExecutor) {
+                    m_ScriptExecutor->Tick();
+                }
+
+                // STEP 2: Apply InputSystem changes
+                if (m_InputSystem && m_InputSystem->IsEnabled()) {
+                    auto *inputManager = static_cast<CKInputManager *>(man);
+                    m_InputSystem->Apply(inputManager->GetKeyboardState(), currentTick);
+                }
+
+                // STEP 3: Increment frame counter for next iteration
+                IncrementCurrentTick();
+
+                // STEP 4: Prepare InputSystem for next frame
+                if (m_InputSystem && m_InputSystem->IsEnabled()) {
+                    m_InputSystem->PrepareNextFrame();
+                }
+            } catch (const std::exception &e) {
+                if (m_Mod) {
+                    m_Mod->GetLogger()->Error("Script playback callback error: %s", e.what());
+                }
+            }
+        }
+    });
+}
+
+void TASEngine::SetupRecordPlaybackCallbacks() {
+    if (m_ShuttingDown) {
+        return;
+    }
+
+    // TimeManager callback: Set delta time from record data
+    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!m_ShuttingDown && m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            // Set delta time from the current frame in the record
+            float deltaTime = m_RecordPlayer->GetFrameDeltaTime(m_CurrentTick);
+            timeManager->SetLastDeltaTime(deltaTime);
+        }
+    });
+
+    // InputManager callback: Apply keyboard state and advance frame
+    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!m_ShuttingDown && m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
+            try {
+                auto *inputManager = static_cast<CKInputManager *>(man);
+
+                // This will apply the current frame's input and advance to the next frame
+                m_RecordPlayer->Tick(m_CurrentTick, inputManager->GetKeyboardState());
+            } catch (const std::exception &e) {
+                if (m_Mod) {
+                    m_Mod->GetLogger()->Error("Record playback callback error: %s", e.what());
+                }
+                // Stop on error
+                if (m_RecordPlayer) {
+                    m_RecordPlayer->Stop();
                 }
             }
         }
@@ -549,8 +646,9 @@ void TASEngine::OnGameEvent(const std::string &eventName, Args... args) {
         return;
     }
 
-    if (m_EventManager) {
-        m_EventManager->FireEvent(eventName, args...);
+    // Forward to script executor for script-based events
+    if (m_ScriptExecutor) {
+        m_ScriptExecutor->FireGameEvent(eventName, args...);
     }
 
     // Forward to recorder if recording
@@ -559,12 +657,12 @@ void TASEngine::OnGameEvent(const std::string &eventName, Args... args) {
             // If there are arguments, pass the first one as event data
             auto firstArg = std::get<0>(std::make_tuple(args...));
             if constexpr (std::is_convertible_v<decltype(firstArg), int>) {
-                m_Recorder->OnGameEvent(eventName, static_cast<int>(firstArg));
+                m_Recorder->OnGameEvent(m_CurrentTick, eventName, static_cast<int>(firstArg));
             } else {
-                m_Recorder->OnGameEvent(eventName, 0);
+                m_Recorder->OnGameEvent(m_CurrentTick, eventName, 0);
             }
         } else {
-            m_Recorder->OnGameEvent(eventName, 0);
+            m_Recorder->OnGameEvent(m_CurrentTick, eventName, 0);
         }
     }
 }
@@ -573,80 +671,25 @@ void TASEngine::OnGameEvent(const std::string &eventName, Args... args) {
 template void TASEngine::OnGameEvent(const std::string &);
 template void TASEngine::OnGameEvent(const std::string &, int);
 
-bool TASEngine::LoadTAS(const TASProject *project) {
-    if (m_ShuttingDown || !project || !project->IsValid()) {
-        m_Mod->GetLogger()->Error("Invalid TAS project provided or shutting down.");
-        return false;
+// === Lua API Compatibility Delegates ===
+
+sol::state &TASEngine::GetLuaState() {
+    if (!m_ScriptExecutor) {
+        throw std::runtime_error("ScriptExecutor not initialized");
     }
-
-    UnloadTAS(); // Ensure no other script is running
-
-    try {
-        std::string executionPath;
-
-        // For zip projects, we need to prepare them for execution (extract if needed)
-        if (project->IsZipProject()) {
-            executionPath = m_ProjectManager->PrepareProjectForExecution(const_cast<TASProject *>(project));
-            if (executionPath.empty()) {
-                m_Mod->GetLogger()->Error("Failed to prepare zip project for execution: %s",
-                                          project->GetName().c_str());
-                return false;
-            }
-
-            // Update the project's execution base path for script resolution
-            const_cast<TASProject *>(project)->SetExecutionBasePath(executionPath);
-
-            m_Mod->GetLogger()->Info("Zip project prepared for execution: %s -> %s",
-                                     project->GetPath().c_str(), executionPath.c_str());
-        } else {
-            // For directory projects, use the project path directly
-            executionPath = project->GetPath();
-        }
-
-        // Get the entry script path for execution
-        std::string entryScriptPath = project->GetEntryScriptPath(executionPath);
-
-        m_Mod->GetLogger()->Info("Loading TAS script: %s", entryScriptPath.c_str());
-
-        // Load and execute the main script file in the Lua VM
-        auto result = m_LuaState.safe_script_file(entryScriptPath, &sol::script_pass_on_error);
-        if (!result.valid()) {
-            sol::error err = result;
-            m_Mod->GetLogger()->Error("Failed to execute script: %s", err.what());
-            return false;
-        }
-
-        // The script should define a global 'main' function
-        sol::function mainFunc = m_LuaState["main"];
-        if (!mainFunc.valid()) {
-            m_Mod->GetLogger()->Error("'main' function not found in entry script.");
-            return false;
-        }
-
-        if (m_Scheduler) {
-            m_Scheduler->AddCoroutineTask(mainFunc);
-        }
-
-        m_Mod->GetLogger()->Info("TAS script '%s' loaded and started.", project->GetName().c_str());
-        return true;
-    } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Exception loading TAS: %s", e.what());
-        return false;
-    }
+    return m_ScriptExecutor->GetLuaState();
 }
 
-void TASEngine::UnloadTAS() {
-    if (m_Scheduler && m_Scheduler->IsRunning()) {
-        m_Scheduler->Clear();
-        m_Mod->GetLogger()->Info("TAS script unloaded and stopped.");
+const sol::state &TASEngine::GetLuaState() const {
+    if (!m_ScriptExecutor) {
+        throw std::runtime_error("ScriptExecutor not initialized");
     }
+    return m_ScriptExecutor->GetLuaState();
+}
 
-    // Clean up temporary directories for zip projects if current project is being unloaded
-    if (m_ProjectManager) {
-        TASProject *currentProject = m_ProjectManager->GetCurrentProject();
-        if (currentProject && currentProject->IsZipProject()) {
-            m_ProjectManager->CleanupProjectTempDirectory(currentProject);
-            currentProject->SetExecutionBasePath(""); // Clear execution base path
-        }
+LuaScheduler *TASEngine::GetScheduler() const {
+    if (!m_ScriptExecutor) {
+        return nullptr;
     }
+    return m_ScriptExecutor->GetScheduler();
 }

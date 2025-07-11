@@ -335,9 +335,13 @@ void TASListPage::DrawMainButtons() {
 }
 
 bool TASListPage::OnDrawEntry(size_t index, bool *v) {
-    if (!m_Menu || !m_Menu->GetEngine()) return false;
+    if (!m_Menu) return false;
 
-    auto *projectManager = m_Menu->GetEngine()->GetProjectManager();
+    auto *engine = m_Menu->GetEngine();
+    if (!engine || !engine->GetProjectManager())
+        return false;
+
+    auto *projectManager = engine->GetProjectManager();
     const auto &projects = projectManager->GetProjects();
 
     if (index >= projects.size())
@@ -345,23 +349,37 @@ bool TASListPage::OnDrawEntry(size_t index, bool *v) {
 
     auto &project = projects[index];
 
-    // Visual indicator for invalid projects
+    bool currentLegacyMode = engine->GetMod()->IsLegacyMode();
+
+    bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
     bool isInvalid = !project->IsValid();
+
+    // Visual indicator for invalid projects
     if (isInvalid) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.2f, 0.2f, 0.6f));
+    } else if (!isCompatible) {
+        // Incompatible projects - orange/yellow
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.5f, 0.2f, 0.6f));
+    } else if (project->IsRecordProject()) {
+        // Record projects - purple/magenta
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.3f, 0.6f, 0.6f));
     } else if (project->IsZipProject()) {
-        // Different color for zip projects
+        // Zip script projects - blue
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.9f, 1.0f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.4f, 0.6f, 0.6f));
+    } else {
+        // Regular script projects - default colors
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 0.6f));
     }
 
     const std::string &displayName = project->GetName();
     bool clicked = Bui::LevelButton(displayName.c_str(), v);
 
-    if (isInvalid || project->IsZipProject()) {
-        ImGui::PopStyleColor(2);
-    }
+    ImGui::PopStyleColor(2);
 
     if (clicked) {
         m_Menu->SetCurrentProject(project.get());
@@ -425,15 +443,18 @@ void TASDetailsPage::DrawProjectInfo() {
     }
 
     // Project type indicator
-    if (project->IsZipProject()) {
-        ImGui::SetCursorPosX(menuPos.x);
+    ImGui::SetCursorPosX(menuPos.x);
+    if (project->IsRecordProject()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 1.0f, 1.0f));
+        Page::WrappedText("Type: Record (.tas)", menuSize.x);
+        ImGui::PopStyleColor();
+    } else if (project->IsZipProject()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.9f, 1.0f, 1.0f));
-        Page::WrappedText("Type: ZIP Archive", menuSize.x);
+        Page::WrappedText("Type: Script (Archive)", menuSize.x);
         ImGui::PopStyleColor();
     } else {
-        ImGui::SetCursorPosX(menuPos.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-        Page::WrappedText("Type: Directory", menuSize.x);
+        Page::WrappedText("Type: Script (Directory)", menuSize.x);
         ImGui::PopStyleColor();
     }
 
@@ -455,6 +476,54 @@ void TASDetailsPage::DrawProjectInfo() {
     ImGui::SetCursorPosX(menuPos.x);
     Page::WrappedText(project->GetDescription().c_str(), menuSize.x);
 
+    // Show requirements and recommendations
+    auto requirements = project->GetRequirements();
+    auto recommendations = project->GetRecommendations();
+
+    // Get current BML settings for compatibility check
+    bool currentLegacyMode = m_Menu->GetEngine()->GetMod()->IsLegacyMode();
+    bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
+
+    if (!requirements.empty()) {
+        ImGui::NewLine();
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.9f, 0.7f, 1.0f));
+        Page::WrappedText("Requirements:", menuSize.x, 1.1f);
+        ImGui::PopStyleColor();
+
+        for (const auto &requirement : requirements) {
+            ImGui::SetCursorPosX(menuPos.x);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
+            Page::WrappedText(requirement.c_str(), menuSize.x);
+            ImGui::PopStyleColor();
+        }
+    }
+
+    if (!recommendations.empty()) {
+        ImGui::NewLine();
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 0.7f, 1.0f));
+        Page::WrappedText("Recommendations:", menuSize.x, 1.1f);
+        ImGui::PopStyleColor();
+
+        for (const auto &recommendation : recommendations) {
+            ImGui::SetCursorPosX(menuPos.x);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+            Page::WrappedText(recommendation.c_str(), menuSize.x);
+            ImGui::PopStyleColor();
+        }
+    }
+
+    // Compatibility status
+    if (!isCompatible) {
+        ImGui::NewLine();
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.6f, 1.0f));
+        std::string compatMsg = project->GetCompatibilityMessage(currentLegacyMode);
+        Page::WrappedText(compatMsg.c_str(), menuSize.x);
+        ImGui::PopStyleColor();
+    }
+
     // Validation status
     if (!project->IsValid()) {
         ImGui::NewLine();
@@ -469,6 +538,16 @@ void TASDetailsPage::DrawProjectInfo() {
         ImGui::SetCursorPosX(menuPos.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
         Page::WrappedText("Note: Zip projects will be extracted to a temporary directory.", menuSize.x, 0.9f);
+        ImGui::PopStyleColor();
+    }
+
+    // Special note for record projects
+    if (project->IsRecordProject()) {
+        ImGui::NewLine();
+
+        ImGui::SetCursorPosX(menuPos.x);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.7f, 1.0f));
+        Page::WrappedText("Note: Record projects (.tas files) can only be played in legacy mode.", menuSize.x, 0.9f);
         ImGui::PopStyleColor();
     }
 }

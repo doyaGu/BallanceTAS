@@ -8,9 +8,11 @@ set(TAS_PRIVATE_HEADERS
 		GameInterface.h
         ProjectManager.h
 		TASProject.h
+		ScriptExecutor.h
+		LuaScheduler.h
+		RecordPlayer.h
 		Recorder.h
 		ScriptGenerator.h
-		LuaScheduler.h
 
 		LuaApi.h
 
@@ -30,9 +32,11 @@ set(TAS_SOURCES
 		GameInterface.cpp
         ProjectManager.cpp
 		TASProject.cpp
+		ScriptExecutor.cpp
+		LuaScheduler.cpp
+		RecordPlayer.cpp
 		Recorder.cpp
 		ScriptGenerator.cpp
-		LuaScheduler.cpp
 
 		LuaApi.cpp
 		LuaApi_TAS.cpp

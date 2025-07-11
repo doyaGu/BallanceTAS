@@ -47,11 +47,12 @@ void ProjectManager::RefreshProjects() {
 
     int directoryProjects = 0;
     int zipProjects = 0;
+    int recordProjects = 0;
 
     try {
         for (const auto &entry : fs::directory_iterator(m_TASRootPath)) {
             if (entry.is_directory()) {
-                // Traditional directory-based project
+                // Traditional directory-based script project
                 std::string projectPath = NormalizePath(entry.path().string());
                 std::string manifestPath = projectPath + "\\manifest.lua";
                 if (fs::exists(manifestPath) && ValidateProjectStructure(projectPath)) {
@@ -62,12 +63,12 @@ void ProjectManager::RefreshProjects() {
                     }
                 }
             } else if (entry.is_regular_file()) {
-                // Check for zip files
                 std::string filePath = NormalizePath(entry.path().string());
                 std::string extension = entry.path().extension().string();
-                std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+                std::transform(extension.begin(), extension.end(), extension.begin(), tolower);
 
                 if (extension == ".zip") {
+                    // Zip-based script project
                     if (ValidateZipProject(filePath)) {
                         auto project = LoadZipProject(filePath);
                         if (project && project->IsValid()) {
@@ -76,6 +77,13 @@ void ProjectManager::RefreshProjects() {
                         }
                     } else {
                         m_Mod->GetLogger()->Warn("Invalid zip project structure: %s", filePath.c_str());
+                    }
+                } else if (extension == ".tas") {
+                    // Binary record project
+                    auto project = LoadRecordProject(filePath);
+                    if (project && project->IsValid()) {
+                        m_Projects.push_back(std::move(project));
+                        recordProjects++;
                     }
                 }
             }
@@ -89,8 +97,8 @@ void ProjectManager::RefreshProjects() {
         return a->GetName() < b->GetName();
     });
 
-    m_Mod->GetLogger()->Info("Found %d valid TAS projects (%d directories, %d zip files).",
-                             static_cast<int>(m_Projects.size()), directoryProjects, zipProjects);
+    m_Mod->GetLogger()->Info("Found %d valid TAS projects (%d directories, %d zip files, %d record files).",
+                             static_cast<int>(m_Projects.size()), directoryProjects, zipProjects, recordProjects);
 }
 
 std::unique_ptr<TASProject> ProjectManager::LoadDirectoryProject(const std::string &projectPath) {
@@ -154,12 +162,39 @@ std::unique_ptr<TASProject> ProjectManager::LoadZipProject(const std::string &zi
     }
 }
 
+std::unique_ptr<TASProject> ProjectManager::LoadRecordProject(const std::string &recordPath) {
+    m_Mod->GetLogger()->Info("Loading record project: %s", recordPath.c_str());
+
+    try {
+        auto project = std::make_unique<TASProject>(recordPath);
+
+        if (project->IsValid()) {
+            m_Mod->GetLogger()->Info("Record project loaded: %s (%zu frames)",
+                                     project->GetName().c_str(),
+                                     project->IsValid() ? 0 : 0); // We could parse frame count here if needed
+            return project;
+        } else {
+            m_Mod->GetLogger()->Warn("Invalid record project: %s", recordPath.c_str());
+            return nullptr;
+        }
+    } catch (const std::exception &e) {
+        m_Mod->GetLogger()->Error("Exception loading record project %s: %s", recordPath.c_str(), e.what());
+        return nullptr;
+    }
+}
+
 std::string ProjectManager::PrepareProjectForExecution(TASProject *project) {
     if (!project) {
         m_Mod->GetLogger()->Error("Cannot prepare null project for execution.");
         return "";
     }
 
+    // Record projects don't need preparation - they're single files
+    if (project->IsRecordProject()) {
+        return project->GetRecordFilePath();
+    }
+
+    // For script projects, handle as before...
     // For directory projects, return the path directly
     if (!project->IsZipProject()) {
         return project->GetPath();

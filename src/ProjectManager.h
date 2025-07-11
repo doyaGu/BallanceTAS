@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <sol/sol.hpp>
+
 #include "TASProject.h"
 
 class BallanceTAS;
@@ -12,7 +13,7 @@ class BallanceTAS;
 /**
  * @class ProjectManager
  * @brief Discovers, loads, and manages TAS projects from the filesystem.
- * Supports both directory-based and zip-based projects with automatic extraction.
+ * Supports directory-based projects, zip-based projects, and binary record files.
  */
 class ProjectManager {
 public:
@@ -90,6 +91,13 @@ private:
      * @return A unique_ptr to the TASProject, or nullptr if loading fails.
      */
     std::unique_ptr<TASProject> LoadZipProject(const std::string &zipPath);
+
+    /**
+     * @brief Loads a single project from a .tas record file.
+     * @param recordPath Path to the .tas record file.
+     * @return A unique_ptr to the TASProject, or nullptr if loading fails.
+     */
+    std::unique_ptr<TASProject> LoadRecordProject(const std::string &recordPath);
 
     /**
      * @brief Parses a manifest.lua file in a secure, sandboxed Lua environment.

@@ -187,11 +187,6 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         return engine->GetGameInterface()->IsLegacyMode();
     };
 
-    // tas.is_explosion_disabled()
-    tas["is_explosion_disabled"] = [engine]() -> bool {
-        return engine->GetGameInterface()->IsExplosionDisabled();
-    };
-
     // tas.is_paused()
     tas["is_paused"] = [engine]() -> bool {
         auto *mod = engine->GetMod();

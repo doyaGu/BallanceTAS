@@ -50,11 +50,6 @@ void BallanceTAS::OnLoad() {
         "This option will disable determinism hooks and explosion effects. Requires restart.");
     m_LegacyMode->SetDefaultBoolean(false);
 
-    m_NoExplosion = GetConfig()->GetProperty("TAS", "NoExplosion");
-    m_NoExplosion->SetComment("Disables explosion effects during TAS playback. "
-        "Useful for cleaner recordings and replays. Requires restart.");
-    m_NoExplosion->SetDefaultBoolean(false);
-
     // UI visibility control.
     m_ShowOSD = GetConfig()->GetProperty("OSD", "ShowInGameOSD");
     m_ShowOSD->SetComment("Controls the visibility of the in-game On-Screen Display.");
@@ -212,7 +207,7 @@ void BallanceTAS::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
 
 void BallanceTAS::OnLoadScript(const char *filename, CKBehavior *script) {
     if (m_Initialized && m_Engine) {
-        if (m_LegacyMode->GetBoolean() || !m_NoExplosion->GetBoolean()) {
+        if (m_LegacyMode->GetBoolean()) {
             if (!strcmp(script->GetName(), "Ball_Explosion_Wood")
                 || !strcmp(script->GetName(), "Ball_Explosion_Paper")
                 || !strcmp(script->GetName(), "Ball_Explosion_Stone")) {

@@ -103,7 +103,6 @@ public:
     // --- Gameplay State Queries ---
 
     bool IsLegacyMode() const;
-    bool IsExplosionDisabled() const;
 
     /**
      * @brief Gets the current frame count since the level started.

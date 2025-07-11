@@ -128,10 +128,6 @@ public:
         return m_LegacyMode && m_LegacyMode->GetBoolean();
     }
 
-    bool IsExplosionDisabled() const {
-        return m_NoExplosion && m_NoExplosion->GetBoolean();
-    }
-
     //================================================================
     // UI Coordination Methods
     //================================================================
@@ -214,7 +210,6 @@ private:
     // These pointers are owned by BML's config manager.
     IProperty *m_Enabled = nullptr;
     IProperty *m_LegacyMode = nullptr;
-    IProperty *m_NoExplosion = nullptr;
     IProperty *m_ShowOSD = nullptr;
     IProperty *m_StopKey = nullptr;
 

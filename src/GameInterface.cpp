@@ -178,10 +178,6 @@ bool GameInterface::IsLegacyMode() const {
     return m_Mod->IsLegacyMode();
 }
 
-bool GameInterface::IsExplosionDisabled() const {
-    return m_Mod->IsExplosionDisabled();
-}
-
 int GameInterface::GetPoints() const {
     int points = 0;
     if (m_Energy) {

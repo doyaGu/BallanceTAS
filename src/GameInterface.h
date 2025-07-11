@@ -129,20 +129,13 @@ private:
 
     std::string m_MapName;
 
+    CKDataArray *m_Keyboard = nullptr;
     CKDataArray *m_CurrentLevel = nullptr;
     CKDataArray *m_Energy = nullptr;
     CKDataArray *m_CheckPoints = nullptr;
     CKDataArray *m_IngameParam = nullptr;
     CKParameter *m_CurrentSector = nullptr;
     CKParameter *m_ActiveBallParam = nullptr;
-
-    CKDataArray *m_Keyboard = nullptr;
-    CKKEYBOARD m_KeyUp = CKKEY_UP;
-    CKKEYBOARD m_KeyDown = CKKEY_DOWN;
-    CKKEYBOARD m_KeyLeft = CKKEY_LEFT;
-    CKKEYBOARD m_KeyRight = CKKEY_RIGHT;
-    CKKEYBOARD m_KeyShift = CKKEY_LSHIFT;
-    CKKEYBOARD m_KeySpace = CKKEY_SPACE;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;

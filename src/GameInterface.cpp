@@ -32,14 +32,6 @@ void GameInterface::AcquireKeyBindings() {
     auto *bml = m_Mod->GetBML();
 
     m_Keyboard = bml->GetArrayByName("Keyboard");
-    if (m_Keyboard) {
-        m_Keyboard->GetElementValue(0, 0, &m_KeyUp);
-        m_Keyboard->GetElementValue(0, 1, &m_KeyDown);
-        m_Keyboard->GetElementValue(0, 2, &m_KeyLeft);
-        m_Keyboard->GetElementValue(0, 3, &m_KeyRight);
-        m_Keyboard->GetElementValue(0, 4, &m_KeyShift);
-        m_Keyboard->GetElementValue(0, 5, &m_KeySpace);
-    }
 }
 
 void GameInterface::SetActiveBall(CKParameter *param) {
@@ -83,7 +75,7 @@ void GameInterface::ResetPhysicsTime() {
 // #ifdef _DEBUG
 //     m_Mod->GetLogger()->Info("current_time_code: %f", current_time_code);
 // #endif
-//     current_time_code = 1;
+//     current_time_code = 0;
 
     auto &deltaTime = *reinterpret_cast<float *>(reinterpret_cast<CKBYTE *>(m_IpionManager) + 0xC8);
     deltaTime = m_TimeManager->GetLastDeltaTime();
@@ -96,14 +88,36 @@ void GameInterface::SetPhysicsTimeFactor(float factor) {
 }
 
 CKKEYBOARD GameInterface::RemapKey(CKKEYBOARD key) const {
+    if (!m_Keyboard) {
+        // If no keyboard remapping array is available, return the original key
+        return key;
+    }
+
+    // The keyboard array stores remapped keys in specific positions
+    CKKEYBOARD remappedKey = key; // Default to original key
+
     switch (key) {
-        case CKKEY_UP: return m_KeyUp;
-        case CKKEY_DOWN: return m_KeyDown;
-        case CKKEY_LEFT: return m_KeyLeft;
-        case CKKEY_RIGHT: return m_KeyRight;
-        case CKKEY_LSHIFT: return m_KeyShift;
-        case CKKEY_SPACE: return m_KeySpace;
-        default: return key; // Return the original key if not remapped
+    case CKKEY_UP:
+        m_Keyboard->GetElementValue(0, 0, &remappedKey);
+        return remappedKey;
+    case CKKEY_DOWN:
+        m_Keyboard->GetElementValue(0, 1, &remappedKey);
+        return remappedKey;
+    case CKKEY_LEFT:
+        m_Keyboard->GetElementValue(0, 2, &remappedKey);
+        return remappedKey;
+    case CKKEY_RIGHT:
+        m_Keyboard->GetElementValue(0, 3, &remappedKey);
+        return remappedKey;
+    case CKKEY_LSHIFT:
+        m_Keyboard->GetElementValue(0, 4, &remappedKey);
+        return remappedKey;
+    case CKKEY_SPACE:
+        m_Keyboard->GetElementValue(0, 5, &remappedKey);
+        return remappedKey;
+    default:
+        // For keys not in the remapping table, return original
+        return key;
     }
 }
 

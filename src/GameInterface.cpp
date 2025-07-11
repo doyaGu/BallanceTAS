@@ -1,6 +1,5 @@
 #include "GameInterface.h"
 
-#include "physics_RT.h"
 #include "BallanceTAS.h"
 
 GameInterface::GameInterface(BallanceTAS *mod) : m_Mod(mod) {

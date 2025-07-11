@@ -3,9 +3,10 @@
 #include <BML/BMLAll.h>
 #include <sol/sol.hpp>
 
+#include "physics_RT.h"
+
 // Forward declarations
 class CKIpionManager;
-class PhysicsObject;
 class BallanceTAS;
 
 /**

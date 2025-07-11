@@ -12,9 +12,9 @@ void LuaApi::RegisterCKObject(sol::state &lua) {
 
         // Basic properties
         "name", sol::property(&CKObject::GetName, &CKObject::SetName),
-        "id", sol::property(&CKObject::GetID),
-        "class_id", sol::property(&CKObject::GetClassID),
-        "object_flags", sol::property(&CKObject::GetObjectFlags),
+        "id", sol::readonly_property(&CKObject::GetID),
+        "class_id", sol::readonly_property(&CKObject::GetClassID),
+        "object_flags", sol::readonly_property(&CKObject::GetObjectFlags),
 
         // Status checks
         "is_dynamic", &CKObject::IsDynamic,
@@ -39,7 +39,7 @@ void LuaApi::RegisterCKObject(sol::state &lua) {
         // "set_app_data", &CKObject::SetAppData,
 
         // Context access
-        "get_context", &CKObject::GetCKContext,
+        // "context", sol::readonly_property(&CKObject::GetCKContext),
 
         // Object manipulation
         "modify_object_flags", &CKObject::ModifyObjectFlags

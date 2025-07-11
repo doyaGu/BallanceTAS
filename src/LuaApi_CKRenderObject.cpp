@@ -12,14 +12,13 @@ void LuaApi::RegisterCKRenderObject(sol::state &lua) {
         sol::base_classes, sol::bases<CKBeObject, CKSceneObject, CKObject>(),
 
         // Render context queries
-        "is_in_render_context", &CKRenderObject::IsInRenderContext,
+        // "is_in_render_context", &CKRenderObject::IsInRenderContext,
         "is_root_object", &CKRenderObject::IsRootObject,
         "is_to_be_rendered", &CKRenderObject::IsToBeRendered,
         "is_to_be_rendered_last", &CKRenderObject::IsToBeRenderedLast,
 
         // Z order
-        "set_z_order", &CKRenderObject::SetZOrder,
-        "get_z_order", &CKRenderObject::GetZOrder
+        "z_order", sol::property(&CKRenderObject::GetZOrder, &CKRenderObject::SetZOrder)
 
         // Render callbacks - Note: These might need special handling due to function pointers
         // "add_pre_render_callback", [](CKRenderObject &obj, sol::function func, bool temp = false) {

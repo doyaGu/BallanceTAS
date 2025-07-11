@@ -72,11 +72,11 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         "is_all_outside_frustum", &CK3dEntity::IsAllOutsideFrustrum,
 
         // Animation control
-        "ignore_animations", sol::overload(
-            [](CK3dEntity &entity) { entity.IgnoreAnimations(); },
-            [](CK3dEntity &entity, CKBOOL ignore) { entity.IgnoreAnimations(ignore); }
-        ),
-        "are_animations_ignored", &CK3dEntity::AreAnimationIgnored,
+        // "ignore_animations", sol::overload(
+        //     [](CK3dEntity &entity) { entity.IgnoreAnimations(); },
+        //     [](CK3dEntity &entity, CKBOOL ignore) { entity.IgnoreAnimations(ignore); }
+        // ),
+        // "are_animations_ignored", &CK3dEntity::AreAnimationIgnored,
 
         // Transparency
         "set_render_as_transparent", sol::overload(
@@ -211,9 +211,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
             },
             [](CK3dEntity &entity, const VxVector *scale, CKBOOL keepChildren, CKBOOL local) {
                 entity.SetScale(scale, keepChildren, local);
-            }
-        ),
-        "set_scale_3f", sol::overload(
+            },
             [](CK3dEntity &entity, float x, float y, float z) { entity.SetScale3f(x, y, z); },
             [](CK3dEntity &entity, float x, float y, float z, CKBOOL keepChildren) {
                 entity.SetScale3f(x, y, z, keepChildren);
@@ -229,9 +227,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
             },
             [](CK3dEntity &entity, const VxVector *scale, CKBOOL keepChildren, CKBOOL local) {
                 entity.AddScale(scale, keepChildren, local);
-            }
-        ),
-        "add_scale_3f", sol::overload(
+            },
             [](CK3dEntity &entity, float x, float y, float z) { entity.AddScale3f(x, y, z); },
             [](CK3dEntity &entity, float x, float y, float z, CKBOOL keepChildren) {
                 entity.AddScale3f(x, y, z, keepChildren);
@@ -351,16 +347,16 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         "get_radius", &CK3dEntity::GetRadius,
 
         // Ray intersection
-        // "ray_intersection", sol::overload(
-        //     [](CK3dEntity &entity, const VxVector *pos1, const VxVector *pos2, VxIntersectionDesc *desc,
-        //        CK3dEntity *ref) {
-        //         return entity.RayIntersection(pos1, pos2, desc, ref);
-        //     },
-        //     [](CK3dEntity &entity, const VxVector *pos1, const VxVector *pos2, VxIntersectionDesc *desc,
-        //        CK3dEntity *ref, CK_RAYINTERSECTION options) {
-        //         return entity.RayIntersection(pos1, pos2, desc, ref, options);
-        //     }
-        // ),
+        "ray_intersection", sol::overload(
+            [](CK3dEntity &entity, const VxVector *pos1, const VxVector *pos2, VxIntersectionDesc *desc,
+               CK3dEntity *ref) {
+                return entity.RayIntersection(pos1, pos2, desc, ref);
+            },
+            [](CK3dEntity &entity, const VxVector *pos1, const VxVector *pos2, VxIntersectionDesc *desc,
+               CK3dEntity *ref, CK_RAYINTERSECTION options) {
+                return entity.RayIntersection(pos1, pos2, desc, ref, options);
+            }
+        ),
 
         // Rendering
         // "render", sol::overload(

@@ -26,7 +26,7 @@ void LuaApi::RegisterCKCamera(sol::state &lua) {
 
         // Aspect ratio
         "set_aspect_ratio", &CKCamera::SetAspectRatio,
-        "get_aspect_ratio", [&lua](CKCamera &camera) {
+        "get_aspect_ratio", [](CKCamera &camera) {
             int width, height;
             camera.GetAspectRatio(width, height);
             return Vx2DVector(width, height);
@@ -45,9 +45,6 @@ void LuaApi::RegisterCKCamera(sol::state &lua) {
 
         // Target operations (may return NULL for non-target cameras)
         "get_target", &CKCamera::GetTarget,
-        "set_target", &CKCamera::SetTarget,
-
-        // Static cast method
-        "cast", &CKCamera::Cast
+        "set_target", &CKCamera::SetTarget
     );
 }

@@ -10,11 +10,11 @@ void LuaApi::RegisterCKSceneObject(sol::state &lua) {
     auto ckSceneObjectType = lua.new_usertype<CKSceneObject>(
         "CKSceneObject",
         sol::no_constructor,
-        sol::base_classes, sol::bases<CKObject>()
+        sol::base_classes, sol::bases<CKObject>(),
 
         // Scene activity
         // "is_active_in_scene", &CKSceneObject::IsActiveInScene,
-        // "is_active_in_current_scene", &CKSceneObject::IsActiveInCurrentScene,
+        "is_active_in_current_scene", &CKSceneObject::IsActiveInCurrentScene
 
         // Scene presence
         // "is_in_scene", &CKSceneObject::IsInScene,

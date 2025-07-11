@@ -24,24 +24,14 @@ void LuaApi::RegisterDataTypes(sol::state &lua) {
     RegisterVxQuaternion(lua);
     RegisterVxRect(lua);
     RegisterVxVector(lua);
+    RegisterVxIntersectionDesc(lua);
 
     RegisterCKObject(lua);
     RegisterCKSceneObject(lua);
     RegisterCKBeObject(lua);
-    RegisterCKScene(lua);
-    RegisterCKLevel(lua);
-    RegisterCKGroup(lua);
-    RegisterCKMaterial(lua);
-    RegisterCKTexture(lua);
-    RegisterCKMesh(lua);
     RegisterCKRenderObject(lua);
-    RegisterCK2dEntity(lua);
     RegisterCK3dEntity(lua);
     RegisterCKCamera(lua);
-    RegisterCKTargetCamera(lua);
-    RegisterCKPlace(lua);
-    RegisterCKLight(lua);
-    RegisterCKTargetLight(lua);
 
     RegisterPhysicsObject(lua);
 }

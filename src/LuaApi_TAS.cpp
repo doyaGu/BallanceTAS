@@ -337,8 +337,8 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         return sol::nil;
     };
 
-    // tas.get_active_camera()
-    tas["get_active_camera"] = [engine]() -> sol::object {
+    // tas.get_camera()
+    tas["get_camera"] = [engine]() -> sol::object {
         try {
             auto *g = engine->GetGameInterface();
             CK3dEntity *camera = g->GetActiveCamera();

@@ -231,6 +231,36 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         return mod->GetBML()->GetHSScore();
     };
 
+    // tas.get_points()
+    tas["get_points"] = [engine]() -> int {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
+            return 0;
+        }
+
+        return g->GetPoints();
+    };
+
+    // tas.get_life_count()
+    tas["get_life_count"] = [engine]() -> int {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
+            return 0;
+        }
+
+        return g->GetLifeCount();
+    };
+
+    // tas.get_sector()
+    tas["get_sector"] = [engine]() -> int {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
+            return 0;
+        }
+
+        return g->GetCurrentSector();
+    };
+
     // tas.get_object(name)
     tas["get_object"] = [engine](const std::string &name) -> sol::object {
         if (name.empty()) {

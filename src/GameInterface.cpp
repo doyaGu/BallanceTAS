@@ -21,6 +21,7 @@ void GameInterface::AcquireGameplayInfo() {
 
     // 3D Entities\Gameplay.nmo
     m_CurrentLevel = bml->GetArrayByName("CurrentLevel");
+    m_Energy = bml->GetArrayByName("Energy");
     m_CheckPoints = bml->GetArrayByName("Checkpoints");
     m_IngameParam = bml->GetArrayByName("IngameParameter");
     CKBehavior *events = bml->GetScriptByName("Gameplay_Events");
@@ -179,6 +180,22 @@ bool GameInterface::IsLegacyMode() const {
 
 bool GameInterface::IsExplosionDisabled() const {
     return m_Mod->IsExplosionDisabled();
+}
+
+int GameInterface::GetPoints() const {
+    int points = 0;
+    if (m_Energy) {
+        m_Energy->GetElementValue(0, 0, &points);
+    }
+    return points;
+}
+
+int GameInterface::GetLifeCount() const {
+    int life = 0;
+    if (m_Energy) {
+        m_Energy->GetElementValue(0, 1, &life);
+    }
+    return life;
 }
 
 int GameInterface::GetCurrentSector() const {

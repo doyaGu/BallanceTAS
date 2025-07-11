@@ -109,9 +109,11 @@ public:
      * @brief Gets the current frame count since the level started.
      * @return The current game tick.
      */
-    unsigned int GetCurrentTick() const;
-    void SetCurrentTick(unsigned int tick);
-    void IncrementCurrentTick() { m_CurrentTick++; }
+
+
+    int GetPoints() const;
+
+    int GetLifeCount() const;
 
     int GetCurrentSector() const;
 
@@ -128,6 +130,7 @@ private:
     std::string m_MapName;
 
     CKDataArray *m_CurrentLevel = nullptr;
+    CKDataArray *m_Energy = nullptr;
     CKDataArray *m_CheckPoints = nullptr;
     CKDataArray *m_IngameParam = nullptr;
     CKParameter *m_CurrentSector = nullptr;

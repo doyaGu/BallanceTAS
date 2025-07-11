@@ -223,7 +223,7 @@ void TASListPage::OnAfterBegin() {
     const auto &projects = projectManager->GetProjects();
 
     m_Count = static_cast<int>(projects.size());
-    SetMaxPage(m_Count % 4 == 0 ? m_Count / 4 : m_Count / 4 + 1);
+    SetMaxPage(m_Count % 8 == 0 ? m_Count / 8 : m_Count / 8 + 1);
 
     if (m_PageIndex > 0 &&
         LeftButton("PrevPage")) {

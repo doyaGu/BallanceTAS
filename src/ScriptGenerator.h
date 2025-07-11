@@ -222,7 +222,7 @@ private:
         std::string GetScript() const;
 
     private:
-        std::stringstream m_ss;
+        std::stringstream m_SS;
         int m_IndentLevel = 0;
         std::string m_CurrentIndent;
         const GenerationOptions &m_Options;

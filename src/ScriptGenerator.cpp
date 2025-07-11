@@ -41,25 +41,25 @@ void ScriptGenerator::LuaScriptBuilder::Unindent() {
 }
 
 void ScriptGenerator::LuaScriptBuilder::AddLine(const std::string &line) {
-    m_ss << m_CurrentIndent << line << "\n";
+    m_SS << m_CurrentIndent << line << "\n";
 }
 
 void ScriptGenerator::LuaScriptBuilder::AddComment(const std::string &comment) {
-    m_ss << m_CurrentIndent << "-- " << comment << "\n";
+    m_SS << m_CurrentIndent << "-- " << comment << "\n";
 }
 
 void ScriptGenerator::LuaScriptBuilder::AddBlockComment(const std::string &comment) {
     std::istringstream iss(comment);
     std::string line;
-    m_ss << m_CurrentIndent << "--[[\n";
+    m_SS << m_CurrentIndent << "--[[\n";
     while (std::getline(iss, line)) {
-        m_ss << m_CurrentIndent << "   " << line << "\n";
+        m_SS << m_CurrentIndent << "   " << line << "\n";
     }
-    m_ss << m_CurrentIndent << "--]]\n";
+    m_SS << m_CurrentIndent << "--]]\n";
 }
 
 void ScriptGenerator::LuaScriptBuilder::AddBlankLine() {
-    m_ss << "\n";
+    m_SS << "\n";
 }
 
 void ScriptGenerator::LuaScriptBuilder::AddSeparator(const std::string &title) {
@@ -95,7 +95,7 @@ void ScriptGenerator::LuaScriptBuilder::CloseMainFunction() {
 }
 
 std::string ScriptGenerator::LuaScriptBuilder::GetScript() const {
-    return m_ss.str();
+    return m_SS.str();
 }
 
 // ===================================================================

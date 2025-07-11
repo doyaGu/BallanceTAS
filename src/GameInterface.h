@@ -56,13 +56,18 @@ public:
     CK3dEntity *GetObjectByName(const std::string &name) const;
 
     /**
+     * @brief Gets a game object by its id.
+     * @param id The id of the CK3dEntity.
+     * @return A pointer to the entity, or nullptr if not found.
+     */
+    CK3dEntity *GetObjectByID(int id) const;
+
+    /**
      * @brief Gets the PhysicsObject for a given CK3dEntity.
      * @param entity A pointer to the CK3dEntity.
      * @return A pointer to the PhysicsObject, or nullptr if not found.
      */
     PhysicsObject *GetPhysicsObject(CK3dEntity *entity) const;
-
-    // In the future, we might add GetObjectByID if needed.
 
     // --- Object Property Queries ---
 
@@ -74,18 +79,18 @@ public:
     VxVector GetPosition(CK3dEntity *obj) const;
 
     /**
-     * @brief Gets the world velocity of a game entity.
-     * @param obj A pointer to the CK3dEntity.
-     * @return The entity's linear velocity as a VxVector. Returns a zero vector if obj is null.
-     */
-    VxVector GetVelocity(CK3dEntity *obj) const;
-
-    /**
      * @brief Gets the world rotation of a game entity.
      * @param obj A pointer to the CK3dEntity.
      * @return The entity's rotation as a VxQuaternion. Returns an identity quaternion if obj is null.
      */
     VxQuaternion GetRotation(CK3dEntity *obj) const;
+
+    /**
+     * @brief Gets the world velocity of a game entity.
+     * @param obj A pointer to the CK3dEntity.
+     * @return The entity's linear velocity as a VxVector. Returns a zero vector if obj is null.
+     */
+    VxVector GetVelocity(CK3dEntity *obj) const;
 
     /**
      * @brief Gets the angular velocity of a game entity.

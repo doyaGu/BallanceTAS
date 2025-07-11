@@ -133,6 +133,15 @@ CK3dEntity *GameInterface::GetObjectByName(const std::string &name) const {
     return m_Mod->GetBML()->Get3dEntityByName(name.c_str());
 }
 
+CK3dEntity *GameInterface::GetObjectByID(int id) const {
+    auto *context = m_Mod->GetBML()->GetCKContext();
+    CKObject *obj = context->GetObject(id);
+    if (CKIsChildClassOf(obj,CKCID_3DENTITY)) {
+        return static_cast<CK3dEntity *>(obj);
+    }
+    return nullptr;
+}
+
 PhysicsObject *GameInterface::GetPhysicsObject(CK3dEntity *entity) const {
     return m_IpionManager ? m_IpionManager->GetPhysicsObject(entity) : nullptr;
 }
@@ -145,6 +154,14 @@ VxVector GameInterface::GetPosition(CK3dEntity *obj) const {
     return pos;
 }
 
+VxQuaternion GameInterface::GetRotation(CK3dEntity *obj) const {
+    if (!obj) return VxQuaternion(0, 0, 0, 1);
+
+    VxQuaternion rot;
+    obj->GetQuaternion(&rot);
+    return rot;
+}
+
 VxVector GameInterface::GetVelocity(CK3dEntity *obj) const {
     if (!obj || !m_IpionManager) return VxVector(0, 0, 0);
 
@@ -154,14 +171,6 @@ VxVector GameInterface::GetVelocity(CK3dEntity *obj) const {
     VxVector vel;
     physObj->GetVelocity(&vel, nullptr);
     return vel;
-}
-
-VxQuaternion GameInterface::GetRotation(CK3dEntity *obj) const {
-    if (!obj) return VxQuaternion(0, 0, 0, 1);
-
-    VxQuaternion rot;
-    obj->GetQuaternion(&rot);
-    return rot;
 }
 
 VxVector GameInterface::GetAngularVelocity(CK3dEntity *obj) const {

@@ -263,7 +263,23 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         }
         try {
             auto *g = engine->GetGameInterface();
-            CK3dEntity *obj = g->GetObjectByName(name);
+            if (g) {
+                return sol::make_object(engine->GetLuaState(), g);
+            }
+        } catch (const std::exception &) {
+            // Fall through to return nil
+        }
+        return sol::nil;
+    };
+
+    // tas.get_object_by_id(id)
+    tas["get_object_by_id"] = [engine](int id) -> sol::object {
+        if (id <= 0) {
+            return sol::nil;
+        }
+        try {
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *obj = g->GetObjectByID(id);
             if (obj) {
                 return sol::make_object(engine->GetLuaState(), obj);
             }
@@ -325,6 +341,20 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
             CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
                 return sol::make_object(engine->GetLuaState(), g->GetVelocity(ball));
+            }
+        } catch (const std::exception &) {
+            // Fall through to return nil
+        }
+        return sol::nil;
+    };
+
+    // tas.get_ball_angular_velocity()
+    tas["get_ball_angular_velocity"] = [engine]() -> sol::object {
+        try {
+            auto *g = engine->GetGameInterface();
+            CK3dEntity *ball = g->GetActiveBall();
+            if (ball) {
+                return sol::make_object(engine->GetLuaState(), g->GetAngularVelocity(ball));
             }
         } catch (const std::exception &) {
             // Fall through to return nil

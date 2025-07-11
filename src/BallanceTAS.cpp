@@ -686,30 +686,50 @@ void BallanceTAS::OnGameOver() {
 
 void BallanceTAS::OnExtraPoint() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("extra_point");
+        int points = 0;
+        if (m_Engine->GetGameInterface()) {
+            points = m_Engine->GetGameInterface()->GetPoints();
+        }
+        m_Engine->OnGameEvent("extra_point", points);
     }
 }
 
 void BallanceTAS::OnPreSubLife() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_sub_life");
+        int lifeCount = 0;
+        if (m_Engine->GetGameInterface()) {
+            lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
+        }
+        m_Engine->OnGameEvent("pre_sub_life", lifeCount);
     }
 }
 
 void BallanceTAS::OnPostSubLife() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_sub_life");
+        int lifeCount = 0;
+        if (m_Engine->GetGameInterface()) {
+            lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
+        }
+        m_Engine->OnGameEvent("post_sub_life", lifeCount);
     }
 }
 
 void BallanceTAS::OnPreLifeUp() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_life_up");
+        int lifeCount = 0;
+        if (m_Engine->GetGameInterface()) {
+            lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
+        }
+        m_Engine->OnGameEvent("pre_life_up", lifeCount);
     }
 }
 
 void BallanceTAS::OnPostLifeUp() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_life_up");
+        int lifeCount = 0;
+        if (m_Engine->GetGameInterface()) {
+            lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
+        }
+        m_Engine->OnGameEvent("post_life_up", lifeCount);
     }
 }

@@ -33,17 +33,13 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     m_DeltaTime = 1.0f / m_UpdateRate * 1000.0f; // Convert to milliseconds
 
     // Parse legacy mode settings
-
-    // Check for boolean flags first (simple case)
     if (manifest["legacy_mode"].get_type() == sol::type::boolean) {
-        m_RequiresLegacyMode = manifest.get_or("legacy_mode", false);
+        m_LegacyMode = manifest.get_or("legacy_mode", false);
     } else if (manifest["legacy_mode"].get_type() == sol::type::string) {
-        // Check for string values like "required", "optional", "recommended"
+        // Check for string values like "required"
         std::string legacyMode = manifest.get_or<std::string>("legacy_mode", "");
         if (legacyMode == "required") {
-            m_RequiresLegacyMode = true;
-        } else if (legacyMode == "optional" || legacyMode == "recommended") {
-            m_OptionalLegacyMode = true;
+            m_LegacyMode = true;
         }
     }
 
@@ -72,7 +68,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     m_DeltaTime = 1.0f / 132.0f * 1000.0f;
 
     // Record projects ALWAYS require legacy mode
-    m_RequiresLegacyMode = true;
+    m_LegacyMode = true;
 
     // Try to parse some basic info from the file if possible
     try {
@@ -143,7 +139,7 @@ std::string TASProject::GetProjectFilePath(const std::string &fileName, const st
 
 bool TASProject::IsCompatibleWithSettings(bool currentLegacyMode) const {
     // Check required settings
-    if (m_RequiresLegacyMode && !currentLegacyMode) {
+    if (m_LegacyMode && !currentLegacyMode) {
         return false;
     }
 
@@ -154,7 +150,7 @@ std::string TASProject::GetCompatibilityMessage(bool currentLegacyMode) const {
     // Build incompatibility message
     std::vector<std::string> requirements;
 
-    if (m_RequiresLegacyMode && !currentLegacyMode) {
+    if (m_LegacyMode && !currentLegacyMode) {
         requirements.emplace_back("legacy mode required");
     }
 
@@ -174,19 +170,9 @@ std::string TASProject::GetCompatibilityMessage(bool currentLegacyMode) const {
 std::vector<std::string> TASProject::GetRequirements() const {
     std::vector<std::string> requirements;
 
-    if (m_RequiresLegacyMode) {
+    if (m_LegacyMode) {
         requirements.emplace_back("Legacy Mode");
     }
 
     return requirements;
-}
-
-std::vector<std::string> TASProject::GetRecommendations() const {
-    std::vector<std::string> recommendations;
-
-    if (m_OptionalLegacyMode && !m_RequiresLegacyMode) {
-        recommendations.emplace_back("Legacy Mode (recommended)");
-    }
-
-    return recommendations;
 }

@@ -48,8 +48,7 @@ public:
     float GetDeltaTime() const { return m_DeltaTime; }
 
     // --- Legacy Mode Settings ---
-    bool RequiresLegacyMode() const { return m_RequiresLegacyMode; }
-    bool IsOptionalLegacyMode() const { return m_OptionalLegacyMode; }
+    bool RequiresLegacyMode() const { return m_LegacyMode; }
 
     // --- Path Accessors ---
     const std::string &GetPath() const { return m_ProjectPath; }
@@ -127,12 +126,6 @@ public:
      */
     std::vector<std::string> GetRequirements() const;
 
-    /**
-     * @brief Gets all recommendation strings for UI display.
-     * @return Vector of recommendation strings.
-     */
-    std::vector<std::string> GetRecommendations() const;
-
 private:
     void ParseManifest(const sol::table &manifest);
     void ParseRecordProject(const std::string &tasFilePath);
@@ -151,10 +144,7 @@ private:
     std::string m_TargetLevel;
     float m_UpdateRate = 132.0f; // Default to 132 = 66 * 2 (game's physics update rate)
     float m_DeltaTime = 1 / 132.0f * 1000;
-
-    // Legacy mode settings
-    bool m_RequiresLegacyMode = false;  // Must have legacy mode enabled
-    bool m_OptionalLegacyMode = false;  // Recommended but not required
+    bool m_LegacyMode = false;
 
     bool m_IsValid = false;
     bool m_IsZipProject = false;

@@ -476,9 +476,8 @@ void TASDetailsPage::DrawProjectInfo() {
     ImGui::SetCursorPosX(menuPos.x);
     Page::WrappedText(project->GetDescription().c_str(), menuSize.x);
 
-    // Show requirements and recommendations
+    // Show requirements
     auto requirements = project->GetRequirements();
-    auto recommendations = project->GetRecommendations();
 
     // Get current BML settings for compatibility check
     bool currentLegacyMode = m_Menu->GetEngine()->GetMod()->IsLegacyMode();
@@ -495,21 +494,6 @@ void TASDetailsPage::DrawProjectInfo() {
             ImGui::SetCursorPosX(menuPos.x);
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
             Page::WrappedText(requirement.c_str(), menuSize.x);
-            ImGui::PopStyleColor();
-        }
-    }
-
-    if (!recommendations.empty()) {
-        ImGui::NewLine();
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 0.7f, 1.0f));
-        Page::WrappedText("Recommendations:", menuSize.x, 1.1f);
-        ImGui::PopStyleColor();
-
-        for (const auto &recommendation : recommendations) {
-            ImGui::SetCursorPosX(menuPos.x);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-            Page::WrappedText(recommendation.c_str(), menuSize.x);
             ImGui::PopStyleColor();
         }
     }

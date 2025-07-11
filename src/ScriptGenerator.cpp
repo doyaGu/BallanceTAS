@@ -525,6 +525,9 @@ std::string ScriptGenerator::GenerateManifest(const GenerationOptions &options) 
     ss << "  entry_script = \"main.lua\",\n";
     ss << "  description = \"" << options.description << "\",\n";
     ss << "  update_rate = 132, -- Standard Ballance physics rate\n";
+    if (m_Mod->IsLegacyMode()) {
+        ss << "  legacy_mode = true,\n";
+    }
     ss << "  \n";
     ss << "  -- Generation metadata\n";
     ss << "  generated_by = \"BallanceTAS ScriptGenerator\",\n";

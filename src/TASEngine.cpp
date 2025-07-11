@@ -313,6 +313,14 @@ void TASEngine::StopReplay() {
     m_Mod->GetLogger()->Info("Replay stopped.");
 }
 
+size_t TASEngine::GetCurrentTick() const {
+    return m_CurrentTick;
+}
+
+void TASEngine::SetCurrentTick(size_t tick) {
+    m_CurrentTick = tick;
+}
+
 void TASEngine::StopReplayImmediate() {
     try {
         if (m_Scheduler) {
@@ -354,9 +362,10 @@ void TASEngine::StartRecordingInternal() {
     // Set up callbacks for recording mode
     SetupRecordingCallbacks();
 
+    SetCurrentTick(0);
+
     if (m_GameInterface) {
         m_GameInterface->AcquireKeyBindings();
-        m_GameInterface->SetCurrentTick(0);
     }
 
     // Ensure InputSystem is DISABLED during recording
@@ -403,9 +412,10 @@ void TASEngine::StartReplayInternal() {
     // Set up callbacks for playback mode
     SetupPlaybackCallbacks();
 
+    SetCurrentTick(0);
+
     if (m_GameInterface) {
         m_GameInterface->AcquireKeyBindings();
-        m_GameInterface->SetCurrentTick(0);
     }
 
     // Enable InputSystem for deterministic replay
@@ -469,11 +479,7 @@ void TASEngine::SetupPlaybackCallbacks() {
         if (!m_ShuttingDown) {
             try {
                 auto *inputManager = static_cast<CKInputManager *>(man);
-                 size_t currentTick = 0;
-
-                 if (m_GameInterface) {
-                     currentTick = m_GameInterface->GetCurrentTick();
-                 }
+                 size_t currentTick = GetCurrentTick();
 
                  // STEP 1: Process Lua scheduler to execute script commands
                  if (m_Scheduler) {
@@ -486,9 +492,7 @@ void TASEngine::SetupPlaybackCallbacks() {
                  }
 
                  // STEP 3: Increment frame counter for next iteration
-                 if (m_GameInterface) {
-                     m_GameInterface->IncrementCurrentTick();
-                 }
+                 IncrementCurrentTick();
 
                  // STEP 4: Prepare InputSystem for next frame
                  // This happens at the end of the current frame processing
@@ -528,9 +532,7 @@ void TASEngine::SetupRecordingCallbacks() {
                     }
 
                     // Increment frame counter for recording timeline
-                    if (m_GameInterface) {
-                        m_GameInterface->IncrementCurrentTick();
-                    }
+                    IncrementCurrentTick();
                 }
             } catch (const std::exception &e) {
                 if (m_Mod) {

@@ -181,14 +181,6 @@ bool GameInterface::IsExplosionDisabled() const {
     return m_Mod->IsExplosionDisabled();
 }
 
-unsigned int GameInterface::GetCurrentTick() const {
-    return m_CurrentTick;
-}
-
-void GameInterface::SetCurrentTick(unsigned int tick) {
-    m_CurrentTick = tick;
-}
-
 int GameInterface::GetCurrentSector() const {
     int sector = -1;
     m_CurrentSector->GetValue(&sector);

@@ -3,8 +3,9 @@
 #include <BML/BMLAll.h>
 #include <sol/sol.hpp>
 
-#include <physics_RT.h>
-
+// Forward declarations
+class CKIpionManager;
+class PhysicsObject;
 class BallanceTAS;
 
 /**
@@ -125,7 +126,6 @@ private:
     CKIpionManager *m_IpionManager = nullptr;
 
     std::string m_MapName;
-    unsigned int m_CurrentTick = 0;
 
     CKDataArray *m_CurrentLevel = nullptr;
     CKDataArray *m_CheckPoints = nullptr;

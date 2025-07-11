@@ -48,9 +48,7 @@ void Recorder::Start() {
     m_WarnedMaxFrames = false;
 
     // Get starting frame from game interface
-    if (auto *gameInterface = m_Engine->GetGameInterface()) {
-        m_CurrentTick = gameInterface->GetCurrentTick();
-    }
+    m_CurrentTick = m_Engine->GetCurrentTick();
 
     m_IsRecording = true;
     NotifyStatusChange(true);

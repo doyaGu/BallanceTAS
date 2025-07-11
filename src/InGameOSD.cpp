@@ -12,7 +12,7 @@ size_t PhysicsHistory::s_MaxHistory = 300; // 5 seconds at 60fps
 
 // PhysicsHistory Implementation
 void PhysicsHistory::AddFrame(const VxVector &velocity, const VxVector &position,
-                              const VxVector &angularVel, int frame) {
+                              const VxVector &angularVel, size_t frame) {
     // Add new data
     velocityX.push_back(velocity.x);
     velocityY.push_back(velocity.y);
@@ -195,7 +195,7 @@ void InGameOSD::DrawStatusPanel() {
     ImGui::PopFont();
 
     // Frame and level info
-    ImGui::Text("Frame: %d", m_Engine->GetGameInterface()->GetCurrentTick());
+    ImGui::Text("Frame: %d", m_Engine->GetCurrentTick());
 
     ImGui::PopStyleVar();
 }
@@ -510,9 +510,9 @@ void InGameOSD::UpdatePhysicsData() {
 void InGameOSD::UpdatePhysicsHistory() {
     if (!m_PhysicsData.isValid) return;
 
-    int currentFrame = 0;
-    if (m_Engine && m_Engine->GetGameInterface()) {
-        currentFrame = m_Engine->GetGameInterface()->GetCurrentTick();
+    size_t currentFrame = 0;
+    if (m_Engine) {
+        currentFrame = m_Engine->GetCurrentTick();
     }
 
     m_PhysicsHistory.AddFrame(

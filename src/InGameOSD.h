@@ -49,12 +49,12 @@ struct PhysicsHistory {
     std::deque<float> positionY;
     std::deque<float> positionZ;
     std::deque<float> angularSpeed;
-    std::deque<int> frameNumbers;
+    std::deque<size_t> frameNumbers;
 
     static size_t s_MaxHistory;
 
     void AddFrame(const VxVector &velocity, const VxVector &position,
-                  const VxVector &angularVel, int frame);
+                  const VxVector &angularVel, size_t frame);
     void Clear();
 };
 

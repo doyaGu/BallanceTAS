@@ -96,11 +96,7 @@ void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
 
     // tas.get_tick()
     tas["get_tick"] = [engine]() -> unsigned int {
-        try {
-            return engine->GetGameInterface()->GetCurrentTick();
-        } catch (const std::exception &) {
-            return 0;
-        }
+        return engine->GetCurrentTick();
     };
 
     // tas.get_manifest()

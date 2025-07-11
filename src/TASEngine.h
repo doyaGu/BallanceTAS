@@ -136,6 +136,10 @@ public:
     Recorder *GetRecorder() const { return m_Recorder.get(); }
     ScriptGenerator *GetScriptGenerator() const { return m_ScriptGenerator.get(); }
 
+    size_t GetCurrentTick() const;
+    void SetCurrentTick(size_t tick);
+    void IncrementCurrentTick() { ++m_CurrentTick; }
+
 private:
     /**
      * @brief Internal method to start recording when level loads.
@@ -243,4 +247,5 @@ private:
     // --- State ---
     uint32_t m_State = TAS_IDLE;
     std::atomic<bool> m_ShuttingDown;
+    size_t m_CurrentTick = 0;
 };

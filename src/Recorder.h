@@ -153,7 +153,7 @@ public:
      * @param currentTick The current game tick/frame index.
      * @param keyboardState The current keyboard state array.
      */
-    void Tick(size_t &currentTick, const unsigned char *keyboardState);
+    void Tick(size_t currentTick, const unsigned char *keyboardState);
 
     /**
      * @brief A callback for the TASEngine to notify the recorder of a game event.

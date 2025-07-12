@@ -169,7 +169,7 @@ bool Recorder::GenerateScript() {
     }
 }
 
-void Recorder::Tick(size_t &currentTick, const unsigned char *keyboardState) {
+void Recorder::Tick(size_t currentTick, const unsigned char *keyboardState) {
     if (!m_IsRecording) {
         return;
     }
@@ -198,7 +198,6 @@ void Recorder::Tick(size_t &currentTick, const unsigned char *keyboardState) {
         m_PendingEvents.clear();
 
         m_Frames.emplace_back(std::move(frame));
-        ++currentTick;
     } catch (const std::exception &e) {
         m_Engine->GetLogger()->Error("Error during recording tick: %s", e.what());
         Stop(); // Stop recording on error to prevent corruption

@@ -62,7 +62,7 @@ void RecordPlayer::Stop() {
     m_Engine->GetLogger()->Info("Record playback stopped.");
 }
 
-void RecordPlayer::Tick(size_t &currentTick, unsigned char *keyboardState) {
+void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
     if (!m_IsPlaying) {
         return;
     }
@@ -77,9 +77,6 @@ void RecordPlayer::Tick(size_t &currentTick, unsigned char *keyboardState) {
     // Apply input for the current frame and advance
     const RecordFrameData &frameData = m_Frames[currentTick];
     ApplyFrameInput(frameData, keyboardState);
-
-    // Advance to next frame
-    ++currentTick;
 }
 
 float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {

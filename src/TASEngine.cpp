@@ -516,6 +516,8 @@ void TASEngine::SetupRecordingCallbacks() {
                         auto *inputManager = static_cast<CKInputManager *>(man);
                         m_Recorder->Tick(m_CurrentTick, inputManager->GetKeyboardState());
                     }
+
+                    IncrementCurrentTick();
                 }
             } catch (const std::exception &e) {
                 GetLogger()->Error("Recording callback error: %s", e.what());
@@ -542,8 +544,6 @@ void TASEngine::SetupScriptPlaybackCallbacks() {
     CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
         if (!m_ShuttingDown) {
             try {
-                size_t currentTick = GetCurrentTick();
-
                 // STEP 1: Process script execution
                 if (m_ScriptExecutor) {
                     m_ScriptExecutor->Tick();
@@ -552,7 +552,7 @@ void TASEngine::SetupScriptPlaybackCallbacks() {
                 // STEP 2: Apply InputSystem changes
                 if (m_InputSystem && m_InputSystem->IsEnabled()) {
                     auto *inputManager = static_cast<CKInputManager *>(man);
-                    m_InputSystem->Apply(currentTick, inputManager->GetKeyboardState());
+                    m_InputSystem->Apply(m_CurrentTick, inputManager->GetKeyboardState());
                 }
 
                 // STEP 3: Increment frame counter for next iteration
@@ -592,6 +592,8 @@ void TASEngine::SetupRecordPlaybackCallbacks() {
 
                 // This will apply the current frame's input and advance to the next frame
                 m_RecordPlayer->Tick(m_CurrentTick, inputManager->GetKeyboardState());
+
+                IncrementCurrentTick();
             } catch (const std::exception &e) {
                 GetLogger()->Error("Record playback callback error: %s", e.what());
                 // Stop on error

@@ -81,7 +81,7 @@ public:
      * This applies the input for the current frame and advances to the next.
      * Should be called from the InputManager hook.
      */
-    void Tick(size_t &currentTick, unsigned char *keyboardState);
+    void Tick(size_t currentTick, unsigned char *keyboardState);
 
     /**
      * @brief Checks if a record is currently playing.

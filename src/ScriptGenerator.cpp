@@ -323,26 +323,23 @@ std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState 
             continue;
         }
 
-        // Analyze the bit flags properly
+        KeyTransition transition = KeyTransition::NoChange;
+
         bool wasPrevPressed = (prevKeyState & KS_PRESSED) != 0;
         bool isCurrentPressed = (currentKeyState & KS_PRESSED) != 0;
         bool isCurrentReleased = (currentKeyState & KS_RELEASED) != 0;
-
-        KeyTransition transition = KeyTransition::NoChange;
+        bool isCurrentIdle = (currentKeyState == KS_IDLE);
 
         if (!wasPrevPressed && isCurrentPressed) {
-            // Check for key press transition
-            // Key went from not-pressed to pressed
+            // Key was just pressed (IDLE -> PRESSED or RELEASED -> PRESSED)
             transition = KeyTransition::Pressed;
-        } else if (wasPrevPressed && isCurrentReleased) {
-            // Check for key release transition
-            // Key went from pressed to released
-            // Note: this handles both PRESSED -> RELEASED and PRESSED -> IDLE transitions
+        } else if (wasPrevPressed && (isCurrentReleased || isCurrentIdle)) {
+            // Key was just released (PRESSED -> RELEASED or PRESSED -> IDLE)
             transition = KeyTransition::Released;
         }
 
-        // Only add events for meaningful transitions
-        if (transition != KeyTransition::NoChange) {
+        // Only add events for press/release transitions
+        if (transition == KeyTransition::Pressed || transition == KeyTransition::Released) {
             events.emplace_back(frameIndex, GetKeyName(keyIdx), transition);
         }
     }

@@ -7,6 +7,7 @@
 #include <BML/InputHook.h>
 
 #include "physics_RT.h"
+#include "UIManager.h"
 
 // Forward declarations
 class BallanceTAS;
@@ -37,6 +38,8 @@ public:
     InputHook *GetInputManager() const { return m_InputManager; }
     CKIpionManager *GetIpionManager() const { return m_IpionManager; }
     UIManager *GetUIManager() const;
+
+    void SetUIMode(UIMode mode);
 
     void AcquireGameplayInfo();
     void AcquireKeyBindings();

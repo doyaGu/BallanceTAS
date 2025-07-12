@@ -78,7 +78,7 @@ bool TASEngine::Initialize() {
             } else {
                 m_State &= ~TAS_RECORDING;
             }
-            m_GameInterface->GetUIManager()->SetMode(isRecording ? UIMode::Recording : UIMode::Idle);
+            m_GameInterface->SetUIMode(isRecording ? UIMode::Recording : UIMode::Idle);
         });
     }
 
@@ -163,7 +163,7 @@ void TASEngine::Stop() {
         // Stop any pending operations
         m_State = TAS_IDLE;
         m_PlaybackType = PlaybackType::None;
-        m_GameInterface->GetUIManager()->SetMode(UIMode::Idle);
+        m_GameInterface->SetUIMode(UIMode::Idle);
     }
 
     if (!m_GameInterface->IsLegacyMode()) {
@@ -221,7 +221,7 @@ void TASEngine::StopRecording() {
     SetRecording(false);
     SetRecordPending(false);
 
-    m_GameInterface->GetUIManager()->SetMode(UIMode::Idle);
+    m_GameInterface->SetUIMode(UIMode::Idle);
     GetLogger()->Info("Recording stopped.");
 }
 
@@ -234,7 +234,7 @@ void TASEngine::StopRecordingImmediate() {
         SetRecording(false);
         SetRecordPending(false);
 
-        m_GameInterface->GetUIManager()->SetMode(UIMode::Idle);
+        m_GameInterface->SetUIMode(UIMode::Idle);
         GetLogger()->Info("Recording stopped immediately.");
     } catch (const std::exception &e) {
         GetLogger()->Error("Exception during immediate recording stop: %s", e.what());
@@ -312,7 +312,7 @@ void TASEngine::StopReplay() {
     // Reset keyboard state to ensure clean state
     memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
 
-    m_GameInterface->GetUIManager()->SetMode(UIMode::Idle);
+    m_GameInterface->SetUIMode(UIMode::Idle);
     GetLogger()->Info("Replay stopped.");
 }
 
@@ -338,7 +338,7 @@ void TASEngine::StopReplayImmediate() {
         // Reset keyboard state to ensure clean state
         memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
 
-        m_GameInterface->GetUIManager()->SetMode(UIMode::Idle);
+        m_GameInterface->SetUIMode(UIMode::Idle);
         GetLogger()->Info("Replay stopped immediately.");
     } catch (const std::exception &e) {
         GetLogger()->Error("Exception during immediate replay stop: %s", e.what());
@@ -460,7 +460,7 @@ void TASEngine::StartReplayInternal() {
     SetPlaying(true);
     m_PlaybackType = playbackType;
 
-    m_GameInterface->GetUIManager()->SetMode(UIMode::Playing);
+    m_GameInterface->SetUIMode(UIMode::Playing);
     GetLogger()->Info("Started playing TAS project: %s (%s mode)",
                              project->GetName().c_str(),
                              playbackType == PlaybackType::Script ? "Script" : "Record");

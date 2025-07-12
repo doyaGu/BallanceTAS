@@ -50,6 +50,12 @@ UIManager *GameInterface::GetUIManager() const {
     return m_Mod->GetUIManager();
 }
 
+void GameInterface::SetUIMode(UIMode mode) {
+    if (GetUIManager()) {
+        GetUIManager()->SetMode(mode);
+    }
+}
+
 void GameInterface::AcquireGameplayInfo() {
     // 3D Entities\Gameplay.nmo
     m_CurrentLevel = m_BML->GetArrayByName("CurrentLevel");

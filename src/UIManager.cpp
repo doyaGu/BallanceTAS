@@ -1,13 +1,13 @@
 #include "UIManager.h"
 
-#include "BallanceTAS.h"
+#include "GameInterface.h"
 #include "TASMenu.h"
 #include "InGameOSD.h"
 #include "TASEngine.h"
 
 UIManager::UIManager(TASEngine *engine)
-    : m_Engine(engine), m_Mod(engine ? engine->GetMod() : nullptr), m_BML(m_Mod ? m_Mod->GetBML() : nullptr) {
-    if (!m_Engine || !m_Mod || !m_BML) {
+    : m_Engine(engine) {
+    if (!m_Engine) {
         throw std::runtime_error("UIManager requires valid TASEngine.");
     }
 }
@@ -18,19 +18,19 @@ UIManager::~UIManager() {
 
 bool UIManager::Initialize() {
     if (m_Initialized) {
-        m_Mod->GetLogger()->Warn("UIManager already initialized.");
+        m_Engine->GetLogger()->Warn("UIManager already initialized.");
         return true;
     }
 
-    m_Mod->GetLogger()->Info("Initializing UIManager...");
+    m_Engine->GetLogger()->Info("Initializing UIManager...");
 
     // Create and initialize TAS menu
     try {
         m_TASMenu = std::make_unique<TASMenu>(m_Engine);
         m_TASMenu->Init();
-        m_Mod->GetLogger()->Info("TAS Menu initialized.");
+        m_Engine->GetLogger()->Info("TAS Menu initialized.");
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Failed to initialize TAS Menu: %s", e.what());
+        m_Engine->GetLogger()->Error("Failed to initialize TAS Menu: %s", e.what());
         return false;
     }
 
@@ -38,22 +38,22 @@ bool UIManager::Initialize() {
     try {
         m_InGameOSD = std::make_unique<InGameOSD>("TAS OSD", m_Engine);
         m_InGameOSD->SetVisibility(false); // Start hidden
-        m_Mod->GetLogger()->Info("In-Game OSD initialized.");
+        m_Engine->GetLogger()->Info("In-Game OSD initialized.");
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Failed to initialize In-Game OSD: %s", e.what());
+        m_Engine->GetLogger()->Error("Failed to initialize In-Game OSD: %s", e.what());
         return false;
     }
 
     m_Initialized = true;
-    m_Mod->GetLogger()->Info("UIManager initialized successfully.");
+    m_Engine->GetLogger()->Info("UIManager initialized successfully.");
     return true;
 }
 
 void UIManager::Shutdown() {
     if (!m_Initialized) return;
 
-    if (m_Mod && m_Mod->GetLogger()) {
-        m_Mod->GetLogger()->Info("Shutting down UIManager...");
+    if (m_Engine && m_Engine->GetLogger()) {
+        m_Engine->GetLogger()->Info("Shutting down UIManager...");
     }
 
     // Shutdown components in reverse order
@@ -69,8 +69,8 @@ void UIManager::Shutdown() {
 
     m_Initialized = false;
 
-    if (m_Mod && m_Mod->GetLogger()) {
-        m_Mod->GetLogger()->Info("UIManager shutdown complete.");
+    if (m_Engine && m_Engine->GetLogger()) {
+        m_Engine->GetLogger()->Info("UIManager shutdown complete.");
     }
 }
 
@@ -80,8 +80,8 @@ void UIManager::Process() {
     UpdateHotkeys();
 
     // Update OSD visibility based on game state
-    if (m_InGameOSD && m_BML) {
-        bool shouldShowOSD = m_BML->IsIngame() && m_OSDVisible;
+    if (m_InGameOSD) {
+        bool shouldShowOSD = m_Engine->GetGameInterface()->IsIngame() && m_OSDVisible;
         m_InGameOSD->SetVisibility(shouldShowOSD);
 
         if (shouldShowOSD) {
@@ -90,7 +90,7 @@ void UIManager::Process() {
     }
 
     // Close TAS menu if we're in game (similar to MapMenu behavior)
-    if (m_BML && m_BML->IsIngame() && IsTASMenuOpen()) {
+    if (m_Engine->GetGameInterface()->IsIngame() && IsTASMenuOpen()) {
         CloseTASMenu();
     }
 }
@@ -113,11 +113,11 @@ void UIManager::Render() {
 }
 
 void UIManager::OpenTASMenu() {
-    if (!m_TASMenu || !m_BML || m_BML->IsIngame()) return;
+    if (!m_TASMenu || m_Engine->GetGameInterface()->IsIngame()) return;
 
     m_TASMenu->Open("TAS Projects");
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("TAS Menu opened.");
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("TAS Menu opened.");
     }
 }
 
@@ -125,8 +125,8 @@ void UIManager::CloseTASMenu() {
     if (!m_TASMenu) return;
 
     m_TASMenu->Close();
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("TAS Menu closed.");
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("TAS Menu closed.");
     }
 }
 
@@ -148,8 +148,8 @@ bool UIManager::StartRecording() {
     if (!m_Engine) return false;
 
     bool success = m_Engine->StartRecording();
-    if (success && m_Mod) {
-        m_Mod->GetLogger()->Info("Recording started via UI.");
+    if (success && m_Engine) {
+        m_Engine->GetLogger()->Info("Recording started via UI.");
     }
     return success;
 }
@@ -162,8 +162,8 @@ bool UIManager::StopRecording() {
     }
 
     m_Engine->StopRecording();
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("Recording stopped via UI.");
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("Recording stopped via UI.");
     }
     return true;
 }
@@ -186,8 +186,8 @@ bool UIManager::StartReplay() {
     if (!m_Engine) return false;
 
     bool success = m_Engine->StartReplay();
-    if (success && m_Mod) {
-        m_Mod->GetLogger()->Info("Replay started via UI.");
+    if (success && m_Engine) {
+        m_Engine->GetLogger()->Info("Replay started via UI.");
     }
     return success;
 }
@@ -200,8 +200,8 @@ bool UIManager::StopReplay() {
     }
 
     m_Engine->StopReplay();
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("Replay stopped via UI.");
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("Replay stopped via UI.");
     }
     return true;
 }
@@ -223,14 +223,14 @@ bool UIManager::IsReplaying() const {
 void UIManager::SetOSDVisible(bool visible) {
     m_OSDVisible = visible;
 
-    if (m_InGameOSD && m_BML) {
+    if (m_InGameOSD) {
         // Only actually show if we're in game
-        bool shouldShow = visible && m_BML->IsIngame();
+        bool shouldShow = visible && m_Engine->GetGameInterface()->IsIngame();
         m_InGameOSD->SetVisibility(shouldShow);
     }
 
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("OSD visibility set to %s", visible ? "visible" : "hidden");
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("OSD visibility set to %s", visible ? "visible" : "hidden");
     }
 }
 
@@ -267,8 +267,8 @@ void UIManager::ToggleOSDPanel(OSDPanel panel) {
     }
 
     bool isVisible = m_InGameOSD->IsPanelVisible(panel);
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
     }
 }
 
@@ -294,13 +294,13 @@ void UIManager::SetMode(UIMode mode) {
         break;
     }
 
-    if (m_Mod) {
-        m_Mod->GetLogger()->Info("UI Mode changed to: %s", modeStr);
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("UI Mode changed to: %s", modeStr);
     }
 }
 
 void UIManager::UpdateHotkeys() {
-    if (!m_Mod) return;
+    if (!m_Engine) return;
 
     // Handle stop key for both playback and recording
     if (ImGui::IsKeyPressed(m_StopHotkey)) {
@@ -309,7 +309,7 @@ void UIManager::UpdateHotkeys() {
         } else if (m_Engine->IsPlaying()) {
             StopReplay();
         }
-        m_Mod->GetLogger()->Info("TAS stopped via stop hotkey.");
+        m_Engine->GetLogger()->Info("TAS stopped via stop hotkey.");
     }
 
     // OSD hotkey handling using IsKeyToggled
@@ -318,7 +318,7 @@ void UIManager::UpdateHotkeys() {
     }
 
     // Panel-specific hotkeys (only when in-game and OSD is enabled)
-    if (m_BML && m_BML->IsIngame() && m_OSDVisible) {
+    if (m_Engine->GetGameInterface()->IsIngame() && m_OSDVisible) {
         if (ImGui::IsKeyPressed(m_StatusPanelHotkey)) {
             ToggleOSDPanel(OSDPanel::Status);
         }

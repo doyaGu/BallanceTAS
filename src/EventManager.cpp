@@ -1,6 +1,5 @@
 #include "EventManager.h"
 
-#include "BallanceTAS.h"
 #include "TASEngine.h"
 
 EventManager::EventManager(TASEngine *engine) : m_Engine(engine) {
@@ -95,5 +94,5 @@ size_t EventManager::GetListenerCount(const std::string &eventName) const {
 }
 
 void EventManager::HandleLuaError(const std::string &eventName, const std::string &error) {
-    m_Engine->GetMod()->GetLogger()->Error("Error in event '%s': %s\n", eventName.c_str(), error.c_str());
+    m_Engine->GetLogger()->Error("Error in event '%s': %s\n", eventName.c_str(), error.c_str());
 }

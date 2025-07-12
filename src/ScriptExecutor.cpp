@@ -6,7 +6,6 @@
 #include "LuaApi.h"
 #include "EventManager.h"
 #include "ProjectManager.h"
-#include "BallanceTAS.h"
 
 ScriptExecutor::ScriptExecutor(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
@@ -20,11 +19,11 @@ ScriptExecutor::~ScriptExecutor() {
 
 bool ScriptExecutor::Initialize() {
     if (m_IsInitialized) {
-        m_Engine->GetMod()->GetLogger()->Warn("ScriptExecutor already initialized.");
+        m_Engine->GetLogger()->Warn("ScriptExecutor already initialized.");
         return true;
     }
 
-    m_Engine->GetMod()->GetLogger()->Info("Initializing ScriptExecutor...");
+    m_Engine->GetLogger()->Info("Initializing ScriptExecutor...");
 
     try {
         // 1. Initialize Lua State
@@ -47,10 +46,10 @@ bool ScriptExecutor::Initialize() {
         LuaApi::Register(m_Engine);
 
         m_IsInitialized = true;
-        m_Engine->GetMod()->GetLogger()->Info("ScriptExecutor initialized successfully.");
+        m_Engine->GetLogger()->Info("ScriptExecutor initialized successfully.");
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetMod()->GetLogger()->Error("Failed to initialize ScriptExecutor: %s", e.what());
+        m_Engine->GetLogger()->Error("Failed to initialize ScriptExecutor: %s", e.what());
         return false;
     }
 }
@@ -58,7 +57,7 @@ bool ScriptExecutor::Initialize() {
 void ScriptExecutor::Shutdown() {
     if (!m_IsInitialized) return;
 
-    m_Engine->GetMod()->GetLogger()->Info("Shutting down ScriptExecutor...");
+    m_Engine->GetLogger()->Info("Shutting down ScriptExecutor...");
 
     try {
         // Stop any running script
@@ -74,22 +73,22 @@ void ScriptExecutor::Shutdown() {
         m_LuaState = sol::state{};
 
         m_IsInitialized = false;
-        m_Engine->GetMod()->GetLogger()->Info("ScriptExecutor shutdown complete.");
+        m_Engine->GetLogger()->Info("ScriptExecutor shutdown complete.");
     } catch (const std::exception &e) {
-        if (m_Engine && m_Engine->GetMod() && m_Engine->GetMod()->GetLogger()) {
-            m_Engine->GetMod()->GetLogger()->Error("Exception during ScriptExecutor shutdown: %s", e.what());
+        if (m_Engine && m_Engine && m_Engine->GetLogger()) {
+            m_Engine->GetLogger()->Error("Exception during ScriptExecutor shutdown: %s", e.what());
         }
     }
 }
 
 bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
     if (!m_IsInitialized) {
-        m_Engine->GetMod()->GetLogger()->Error("ScriptExecutor not initialized.");
+        m_Engine->GetLogger()->Error("ScriptExecutor not initialized.");
         return false;
     }
 
     if (!project || !project->IsScriptProject() || !project->IsValid()) {
-        m_Engine->GetMod()->GetLogger()->Error("Invalid script project provided to ScriptExecutor.");
+        m_Engine->GetLogger()->Error("Invalid script project provided to ScriptExecutor.");
         return false;
     }
 
@@ -100,7 +99,7 @@ bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
         // Prepare project for execution
         std::string executionPath = PrepareProjectForExecution(project);
         if (executionPath.empty()) {
-            m_Engine->GetMod()->GetLogger()->Error("Failed to prepare script project for execution: %s",
+            m_Engine->GetLogger()->Error("Failed to prepare script project for execution: %s",
                                                    project->GetName().c_str());
             return false;
         }
@@ -108,18 +107,18 @@ bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
         // Get the entry script path
         std::string entryScriptPath = project->GetEntryScriptPath(executionPath);
         if (entryScriptPath.empty()) {
-            m_Engine->GetMod()->GetLogger()->Error("No entry script found for project: %s",
+            m_Engine->GetLogger()->Error("No entry script found for project: %s",
                                                    project->GetName().c_str());
             return false;
         }
 
-        m_Engine->GetMod()->GetLogger()->Info("Loading TAS script: %s", entryScriptPath.c_str());
+        m_Engine->GetLogger()->Info("Loading TAS script: %s", entryScriptPath.c_str());
 
         // Load and execute the main script file in the Lua VM
         auto result = m_LuaState.safe_script_file(entryScriptPath, &sol::script_pass_on_error);
         if (!result.valid()) {
             sol::error err = result;
-            m_Engine->GetMod()->GetLogger()->Error("Failed to execute script: %s", err.what());
+            m_Engine->GetLogger()->Error("Failed to execute script: %s", err.what());
             CleanupCurrentProject();
             return false;
         }
@@ -127,7 +126,7 @@ bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
         // The script should define a global 'main' function
         sol::function mainFunc = m_LuaState["main"];
         if (!mainFunc.valid()) {
-            m_Engine->GetMod()->GetLogger()->Error("'main' function not found in entry script.");
+            m_Engine->GetLogger()->Error("'main' function not found in entry script.");
             CleanupCurrentProject();
             return false;
         }
@@ -142,10 +141,10 @@ bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
         m_CurrentExecutionPath = executionPath;
         m_IsExecuting = true;
 
-        m_Engine->GetMod()->GetLogger()->Info("TAS script '%s' loaded and started.", project->GetName().c_str());
+        m_Engine->GetLogger()->Info("TAS script '%s' loaded and started.", project->GetName().c_str());
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetMod()->GetLogger()->Error("Exception loading TAS script: %s", e.what());
+        m_Engine->GetLogger()->Error("Exception loading TAS script: %s", e.what());
         CleanupCurrentProject();
         return false;
     }
@@ -154,7 +153,7 @@ bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
 void ScriptExecutor::Stop() {
     if (!m_IsExecuting) return;
 
-    m_Engine->GetMod()->GetLogger()->Info("Stopping script execution...");
+    m_Engine->GetLogger()->Info("Stopping script execution...");
 
     try {
         // Clear scheduler
@@ -170,9 +169,9 @@ void ScriptExecutor::Stop() {
         m_CurrentProject = nullptr;
         m_CurrentExecutionPath.clear();
 
-        m_Engine->GetMod()->GetLogger()->Info("Script execution stopped.");
+        m_Engine->GetLogger()->Info("Script execution stopped.");
     } catch (const std::exception &e) {
-        m_Engine->GetMod()->GetLogger()->Error("Exception stopping script execution: %s", e.what());
+        m_Engine->GetLogger()->Error("Exception stopping script execution: %s", e.what());
     }
 }
 
@@ -187,11 +186,11 @@ void ScriptExecutor::Tick() {
 
         // Check if script execution has completed
         if (!m_Scheduler->IsRunning()) {
-            m_Engine->GetMod()->GetLogger()->Info("Script execution completed naturally.");
+            m_Engine->GetLogger()->Info("Script execution completed naturally.");
             Stop();
         }
     } catch (const std::exception &e) {
-        m_Engine->GetMod()->GetLogger()->Error("Exception during script tick: %s", e.what());
+        m_Engine->GetLogger()->Error("Exception during script tick: %s", e.what());
         Stop(); // Stop on error to prevent further issues
     }
 }
@@ -212,7 +211,7 @@ void ScriptExecutor::FireGameEvent(const std::string &eventName, Args... args) {
             eventManager->FireEvent(eventName, args...);
         }
     } catch (const std::exception &e) {
-        m_Engine->GetMod()->GetLogger()->Error("Exception firing game event to script: %s", e.what());
+        m_Engine->GetLogger()->Error("Exception firing game event to script: %s", e.what());
     }
 }
 
@@ -229,13 +228,13 @@ std::string ScriptExecutor::PrepareProjectForExecution(const TASProject *project
     if (project->IsZipProject()) {
         auto *projectManager = m_Engine->GetProjectManager();
         if (!projectManager) {
-            m_Engine->GetMod()->GetLogger()->Error("ProjectManager not available for zip project preparation.");
+            m_Engine->GetLogger()->Error("ProjectManager not available for zip project preparation.");
             return "";
         }
 
         std::string executionPath = projectManager->PrepareProjectForExecution(const_cast<TASProject *>(project));
         if (executionPath.empty()) {
-            m_Engine->GetMod()->GetLogger()->Error("Failed to prepare zip project for execution: %s",
+            m_Engine->GetLogger()->Error("Failed to prepare zip project for execution: %s",
                                                    project->GetName().c_str());
             return "";
         }
@@ -243,7 +242,7 @@ std::string ScriptExecutor::PrepareProjectForExecution(const TASProject *project
         // Update the project's execution base path for script resolution
         const_cast<TASProject *>(project)->SetExecutionBasePath(executionPath);
 
-        m_Engine->GetMod()->GetLogger()->Info("Zip project prepared for execution: %s -> %s",
+        m_Engine->GetLogger()->Info("Zip project prepared for execution: %s -> %s",
                                               project->GetPath().c_str(), executionPath.c_str());
         return executionPath;
     } else {

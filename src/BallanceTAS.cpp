@@ -102,8 +102,6 @@ void BallanceTAS::OnLoad() {
     m_OSDScale->SetComment("OSD scale factor (1.0 = normal size)");
     m_OSDScale->SetDefaultFloat(1.0f);
 
-    VxMakeDirectory((CKSTRING) BML_TAS_PATH);
-
     m_InputManager = m_BML->GetInputManager();
 
     InitPhysicsMethodPointers();
@@ -340,8 +338,10 @@ bool BallanceTAS::Initialize() {
             throw std::runtime_error("Failed to initialize game hooks.");
         }
 
+        m_GameInterface = std::make_unique<GameInterface>(this);
+
         // Initialize TAS Engine
-        m_Engine = std::make_unique<TASEngine>(this);
+        m_Engine = std::make_unique<TASEngine>(m_GameInterface.get());
         if (!m_Engine->Initialize()) {
             throw std::runtime_error("Engine failed to initialize.");
         }
@@ -378,6 +378,9 @@ bool BallanceTAS::Initialize() {
         if (m_Engine) {
             m_Engine->Shutdown();
             m_Engine.reset();
+        }
+        if (m_GameInterface) {
+            m_GameInterface.reset();
         }
         DisableGameHooks();
         return false;
@@ -453,20 +456,6 @@ void BallanceTAS::OnProcess() {
         // Process and render UI
         m_UIManager->Process();
         m_UIManager->Render();
-    }
-}
-
-void BallanceTAS::SetUIMode(int mode) {
-    if (m_Initialized && m_UIManager) {
-        UIMode uiMode;
-        switch (mode) {
-        case 0: uiMode = UIMode::Idle; break;
-        case 1: uiMode = UIMode::Playing; break;
-        case 2: uiMode = UIMode::Recording; break;
-        case 3: uiMode = UIMode::Paused; break;
-        default: uiMode = UIMode::Idle; break;
-        }
-        m_UIManager->SetMode(uiMode);
     }
 }
 

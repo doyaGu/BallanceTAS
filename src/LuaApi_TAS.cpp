@@ -3,7 +3,6 @@
 #include <sstream>
 #include <iomanip>
 
-#include "BallanceTAS.h"
 #include "TASEngine.h"
 #include "LuaScheduler.h"
 #include "InputSystem.h"
@@ -36,45 +35,44 @@ std::string FormatString(const std::string &fmt, sol::variadic_args va) {
 
 void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
     auto *scheduler = engine->GetScheduler();
-    auto *mod = engine->GetMod();
 
     // tas.log(format_string, ...)
-    tas["log"] = [mod](const std::string &fmt, const sol::variadic_args &va) {
+    tas["log"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
         try {
             std::string text = FormatString(fmt, va);
-            mod->GetLogger()->Info("[TAS] %s", text.c_str());
+            engine->GetLogger()->Info("[TAS] %s", text.c_str());
         } catch (const std::exception &e) {
-            mod->GetLogger()->Error("[TAS] Error in log: %s", e.what());
+            engine->GetLogger()->Error("[TAS] Error in log: %s", e.what());
         }
     };
 
     // tas.warn(format_string, ...)
-    tas["warn"] = [mod](const std::string &fmt, const sol::variadic_args &va) {
+    tas["warn"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
         try {
             std::string text = FormatString(fmt, va);
-            mod->GetLogger()->Warn("[TAS] %s", text.c_str());
+            engine->GetLogger()->Warn("[TAS] %s", text.c_str());
         } catch (const std::exception &e) {
-            mod->GetLogger()->Error("[TAS] Error in warn: %s", e.what());
+            engine->GetLogger()->Error("[TAS] Error in warn: %s", e.what());
         }
     };
 
     // tas.error(format_string, ...)
-    tas["error"] = [mod](const std::string &fmt, const sol::variadic_args &va) {
+    tas["error"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
         try {
             std::string text = FormatString(fmt, va);
-            mod->GetLogger()->Error("[TAS] %s", text.c_str());
+            engine->GetLogger()->Error("[TAS] %s", text.c_str());
         } catch (const std::exception &e) {
-            mod->GetLogger()->Error("[TAS] Error in error: %s", e.what());
+            engine->GetLogger()->Error("[TAS] Error in error: %s", e.what());
         }
     };
 
     // tas.print(format_string, ...)
-    tas["print"] = [engine, mod](const std::string &fmt, const sol::variadic_args &va) {
+    tas["print"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
         try {
             std::string text = FormatString(fmt, va);
             engine->GetGameInterface()->PrintMessage(text.c_str());
         } catch (const std::exception &e) {
-            mod->GetLogger()->Error("[TAS] Error in print: %s", e.what());
+            engine->GetLogger()->Error("[TAS] Error in print: %s", e.what());
         }
     };
 
@@ -189,41 +187,42 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.is_paused()
     tas["is_paused"] = [engine]() -> bool {
-        auto *mod = engine->GetMod();
-        if (!mod || !mod->GetBML()) {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
             return false;
         }
 
-        return mod->GetBML()->IsPaused();
+        return g->IsPaused();
     };
 
     // tas.is_playing()
     tas["is_playing"] = [engine]() -> bool {
-        auto *mod = engine->GetMod();
-        if (!mod || !mod->GetBML()) {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
             return false;
         }
-        return mod->GetBML()->IsPlaying();
+
+        return g->IsPlaying();
     };
 
     // tas.get_sr_score()
     tas["get_sr_score"] = [engine]() -> float {
-        auto *mod = engine->GetMod();
-        if (!mod || !mod->GetBML()) {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
             return false;
         }
 
-        return mod->GetBML()->GetSRScore();
+        return g->GetSRScore();
     };
 
     // tas.get_hs_score()
     tas["get_hs_score"] = [engine]() -> int {
-        auto *mod = engine->GetMod();
-        if (!mod || !mod->GetBML()) {
+        auto *g = engine->GetGameInterface();
+        if (!g) {
             return false;
         }
 
-        return mod->GetBML()->GetHSScore();
+        return g->GetHSScore();
     };
 
     // tas.get_points()
@@ -430,9 +429,9 @@ void LuaApi::RegisterDebugApi(sol::table &tas, TASEngine *engine) {
     };
 
     tas["skip_rendering"] = [engine]() {
-        auto *mod = engine->GetMod();
-        if (mod) {
-            mod->GetBML()->SkipRenderForNextTick();
+        auto *g = engine->GetGameInterface();
+        if (g) {
+            g->SkipRenderForNextTick();
         }
     };
 }

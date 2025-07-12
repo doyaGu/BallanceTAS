@@ -5,7 +5,6 @@
 
 #include "TASEngine.h"
 #include "TASProject.h"
-#include "BallanceTAS.h"
 #include "GameInterface.h"
 
 RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
@@ -16,13 +15,13 @@ RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
 
 bool RecordPlayer::LoadAndPlay(const TASProject *project) {
     if (!project || !project->IsRecordProject() || !project->IsValid()) {
-        m_Engine->GetMod()->GetLogger()->Error("Invalid record project provided.");
+        m_Engine->GetLogger()->Error("Invalid record project provided.");
         return false;
     }
 
     // Verify legacy mode is enabled (required for record playback)
-    if (!m_Engine->GetMod()->IsLegacyMode()) {
-        m_Engine->GetMod()->GetLogger()->Error("Record playback requires legacy mode to be enabled.");
+    if (!m_Engine->GetGameInterface()->IsLegacyMode()) {
+        m_Engine->GetLogger()->Error("Record playback requires legacy mode to be enabled.");
         return false;
     }
 
@@ -31,7 +30,7 @@ bool RecordPlayer::LoadAndPlay(const TASProject *project) {
 
     std::string recordPath = project->GetRecordFilePath();
     if (!LoadRecord(recordPath)) {
-        m_Engine->GetMod()->GetLogger()->Error("Failed to load record: %s", recordPath.c_str());
+        m_Engine->GetLogger()->Error("Failed to load record: %s", recordPath.c_str());
         return false;
     }
 
@@ -48,7 +47,7 @@ bool RecordPlayer::LoadAndPlay(const TASProject *project) {
 
     m_IsPlaying = true;
 
-    m_Engine->GetMod()->GetLogger()->Info("Record '%s' loaded and playback started (%zu frames).",
+    m_Engine->GetLogger()->Info("Record '%s' loaded and playback started (%zu frames).",
                                           project->GetName().c_str(), m_Frames.size());
     return true;
 }
@@ -60,7 +59,7 @@ void RecordPlayer::Stop() {
     m_Frames.clear();
     m_Frames.shrink_to_fit();
 
-    m_Engine->GetMod()->GetLogger()->Info("Record playback stopped.");
+    m_Engine->GetLogger()->Info("Record playback stopped.");
 }
 
 void RecordPlayer::Tick(size_t &currentTick, unsigned char *keyboardState) {
@@ -70,7 +69,7 @@ void RecordPlayer::Tick(size_t &currentTick, unsigned char *keyboardState) {
 
     // Check if we've reached the end
     if (currentTick >= m_Frames.size()) {
-        m_Engine->GetMod()->GetLogger()->Info("Record playback completed naturally.");
+        m_Engine->GetLogger()->Info("Record playback completed naturally.");
         Stop();
         return;
     }
@@ -92,12 +91,12 @@ float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {
 
 bool RecordPlayer::LoadRecord(const std::string &recordPath) {
     try {
-        m_Engine->GetMod()->GetLogger()->Info("Loading TAS record: %s", recordPath.c_str());
+        m_Engine->GetLogger()->Info("Loading TAS record: %s", recordPath.c_str());
 
         // --- 1. Read the entire file ---
         std::ifstream file(recordPath, std::ios::binary);
         if (!file) {
-            m_Engine->GetMod()->GetLogger()->Error("Could not open record file: %s", recordPath.c_str());
+            m_Engine->GetLogger()->Error("Could not open record file: %s", recordPath.c_str());
             return false;
         }
 
@@ -105,19 +104,19 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         uint32_t uncompressedSize;
         file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
         if (file.gcount() != sizeof(uncompressedSize)) {
-            m_Engine->GetMod()->GetLogger()->Error("Failed to read uncompressed size header from file.");
+            m_Engine->GetLogger()->Error("Failed to read uncompressed size header from file.");
             return false;
         }
 
         if (uncompressedSize == 0) {
-            m_Engine->GetMod()->GetLogger()->Warn("Record file is empty.");
+            m_Engine->GetLogger()->Warn("Record file is empty.");
             m_Frames.clear();
             return true; // Empty recording is technically valid
         }
 
         // The uncompressed data must be a multiple of the FrameData size.
         if (uncompressedSize % sizeof(RecordFrameData) != 0) {
-            m_Engine->GetMod()->GetLogger()->Error(
+            m_Engine->GetLogger()->Error(
                 "Uncompressed size is not a multiple of FrameData size. File may be corrupt.");
             return false;
         }
@@ -131,7 +130,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         std::vector<char> compressedData(compressedSize);
         file.read(compressedData.data(), compressedSize);
         if (static_cast<size_t>(file.gcount()) != compressedSize) {
-            m_Engine->GetMod()->GetLogger()->Error("Failed to read compressed data payload.");
+            m_Engine->GetLogger()->Error("Failed to read compressed data payload.");
             return false;
         }
         file.close();
@@ -139,7 +138,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         // --- 4. Decompress using CKUnPackData function ---
         char *uncompressedData = CKUnPackData(uncompressedSize, compressedData.data(), compressedSize);
         if (!uncompressedData) {
-            m_Engine->GetMod()->GetLogger()->Error("Failed to decompress TAS record data using CKUnPackData.");
+            m_Engine->GetLogger()->Error("Failed to decompress TAS record data using CKUnPackData.");
             return false;
         }
 
@@ -151,10 +150,10 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         // Clean up the decompressed data
         CKDeletePointer(uncompressedData);
 
-        m_Engine->GetMod()->GetLogger()->Info("Record loaded successfully: %zu frames", m_Frames.size());
+        m_Engine->GetLogger()->Info("Record loaded successfully: %zu frames", m_Frames.size());
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetMod()->GetLogger()->Error("Exception loading record: %s", e.what());
+        m_Engine->GetLogger()->Error("Exception loading record: %s", e.what());
         return false;
     }
 }

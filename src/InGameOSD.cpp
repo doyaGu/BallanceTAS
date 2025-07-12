@@ -2,10 +2,8 @@
 
 #include <algorithm>
 
-#include "physics_RT.h"
 #include "TASEngine.h"
 #include "GameInterface.h"
-#include "BallanceTAS.h"
 #include "UIManager.h"
 
 size_t PhysicsHistory::s_MaxHistory = 300; // 5 seconds at 60fps
@@ -52,9 +50,9 @@ void PhysicsHistory::Clear() {
 
 // InGameOSD Implementation
 InGameOSD::InGameOSD(const std::string &name, TASEngine *engine)
-    : Bui::Window(name), m_Engine(engine), m_Mod(engine->GetMod()) {
-    if (!m_Engine || !m_Mod) {
-        throw std::runtime_error("InGameOSD requires a valid TASEngine and BallanceTAS instance.");
+    : Bui::Window(name), m_Engine(engine) {
+    if (!m_Engine) {
+        throw std::runtime_error("InGameOSD requires a valid TASEngine instance.");
     }
 
     // Initialize frame time history
@@ -132,7 +130,7 @@ void InGameOSD::OnDraw() {
 }
 
 void InGameOSD::Update() {
-    float currentTime = m_Mod->GetBML()->GetTimeManager()->GetTime() / 1000.0f;
+    float currentTime = m_Engine->GetGameInterface()->GetTimeManager()->GetTime() / 1000.0f;
 
     // Update at 60fps for smooth graphs
     if (currentTime - m_LastUpdateTime < m_UpdateInterval) {
@@ -151,7 +149,7 @@ void InGameOSD::DrawStatusPanel() {
     const char *modeText = "IDLE";
     ImVec4 modeColor = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
 
-    auto* uiManager = m_Mod->GetUIManager();
+    auto* uiManager = m_Engine->GetGameInterface()->GetUIManager();
     if (uiManager) {
         switch (uiManager->GetMode()) {
         case UIMode::Playing:
@@ -526,7 +524,7 @@ void InGameOSD::UpdatePhysicsHistory() {
 void InGameOSD::UpdateKeyState() {
     if (!m_Engine) return;
 
-    auto *inputManager = m_Engine->GetMod()->GetInputManager();
+    auto *inputManager = m_Engine->GetGameInterface()->GetInputManager();
 
     // Update key states based on current input
     m_KeyState.keyUp = inputManager->IsKeyDown(CKKEY_UP);
@@ -540,7 +538,7 @@ void InGameOSD::UpdateKeyState() {
 }
 
 PhysicsObject *InGameOSD::GetBallPhysicsObject() {
-    auto *context = m_Mod->GetBML()->GetCKContext();
+    auto *context = m_Engine->GetGameInterface()->GetCKContext();
     if (!context) return nullptr;
 
     auto *gameInterface = m_Engine->GetGameInterface();

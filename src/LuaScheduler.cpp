@@ -3,7 +3,6 @@
 #include <utility>
 
 #include "TASEngine.h"
-#include "BallanceTAS.h"
 
 LuaScheduler::LuaScheduler(TASEngine *engine)
     : m_Engine(engine), m_CurrentThread(nullptr) {}
@@ -41,7 +40,7 @@ void LuaScheduler::StartCoroutine(const sol::coroutine &co) {
     // Handle any errors
     if (!result.valid()) {
         sol::error err = result;
-        m_Engine->GetMod()->GetLogger()->Error("Coroutine error: %s", err.what());
+        m_Engine->GetLogger()->Error("Coroutine error: %s", err.what());
     }
 }
 
@@ -101,7 +100,7 @@ void LuaScheduler::Tick() {
             // Handle any errors
             if (!result.valid()) {
                 sol::error err = result;
-                m_Engine->GetMod()->GetLogger()->Error("Coroutine resume error: %s", err.what());
+                m_Engine->GetLogger()->Error("Coroutine resume error: %s", err.what());
             }
         } else {
             ++i;
@@ -128,12 +127,12 @@ size_t LuaScheduler::GetTaskCount() const {
 
 void LuaScheduler::YieldTicks(int ticks) {
     if (ticks <= 0) {
-        m_Engine->GetMod()->GetLogger()->Error("YieldTicks: tick count must be positive");
+        m_Engine->GetLogger()->Error("YieldTicks: tick count must be positive");
         return;
     }
 
     if (!m_CurrentThread) {
-        m_Engine->GetMod()->GetLogger()->Error("YieldTicks called outside of coroutine context");
+        m_Engine->GetLogger()->Error("YieldTicks called outside of coroutine context");
         return;
     }
 
@@ -142,12 +141,12 @@ void LuaScheduler::YieldTicks(int ticks) {
 
 void LuaScheduler::YieldUntil(const sol::function &predicate) {
     if (!predicate.valid()) {
-        m_Engine->GetMod()->GetLogger()->Error("YieldUntil: invalid predicate function");
+        m_Engine->GetLogger()->Error("YieldUntil: invalid predicate function");
         return;
     }
 
     if (!m_CurrentThread) {
-        m_Engine->GetMod()->GetLogger()->Error("YieldUntil called outside of coroutine context");
+        m_Engine->GetLogger()->Error("YieldUntil called outside of coroutine context");
         return;
     }
 
@@ -156,12 +155,12 @@ void LuaScheduler::YieldUntil(const sol::function &predicate) {
 
 void LuaScheduler::YieldCoroutines(const std::vector<sol::coroutine> &coroutines) {
     if (coroutines.empty()) {
-        m_Engine->GetMod()->GetLogger()->Error("YieldCoroutines: no coroutines to wait for");
+        m_Engine->GetLogger()->Error("YieldCoroutines: no coroutines to wait for");
         return;
     }
 
     if (!m_CurrentThread) {
-        m_Engine->GetMod()->GetLogger()->Error("YieldCoroutines called outside of coroutine context");
+        m_Engine->GetLogger()->Error("YieldCoroutines called outside of coroutine context");
         return;
     }
 

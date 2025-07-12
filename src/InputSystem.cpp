@@ -315,7 +315,7 @@ std::vector<std::string> InputSystem::GetAvailableKeys() const {
     return keys;
 }
 
-void InputSystem::Apply(unsigned char *keyboardState, size_t currentTick) {
+void InputSystem::Apply(size_t currentTick, unsigned char *keyboardState) {
     if (!keyboardState || !m_Enabled) {
         return;
     }

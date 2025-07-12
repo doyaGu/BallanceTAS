@@ -6,10 +6,8 @@
 
 #include <BML/Bui.h>
 
-class BallanceTAS;
 class TASEngine;
 class TASProject;
-
 class TASMenu;
 
 class TASMenuPage : public Bui::Page {
@@ -57,7 +55,6 @@ public:
 
 private:
     TASEngine *m_Engine;
-    BallanceTAS *m_Mod;
     TASProject *m_CurrentProject = nullptr;
 
     std::unique_ptr<class TASListPage> m_TASListPage;

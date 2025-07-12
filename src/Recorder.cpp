@@ -6,14 +6,13 @@
 #include <sstream>
 
 #include "TASEngine.h"
-#include "BallanceTAS.h"
 #include "GameInterface.h"
 #include "ProjectManager.h"
 #include "ScriptGenerator.h"
 
 Recorder::Recorder(TASEngine *engine)
-    : m_Engine(engine), m_Mod(engine->GetMod()), m_BML(m_Mod->GetBML()) {
-    if (!m_Engine || !m_Mod || !m_BML) {
+    : m_Engine(engine) {
+    if (!m_Engine) {
         throw std::runtime_error("Recorder requires valid TASEngine, BallanceTAS, and IBML instances.");
     }
 
@@ -37,7 +36,7 @@ void Recorder::SetGenerationOptions(const GenerationOptions &options) {
 
 void Recorder::Start() {
     if (m_IsRecording) {
-        m_Mod->GetLogger()->Warn("Recorder is already recording. Stopping previous session.");
+        m_Engine->GetLogger()->Warn("Recorder is already recording. Stopping previous session.");
         Stop();
     }
 
@@ -63,7 +62,7 @@ void Recorder::Start() {
 
 std::vector<FrameData> Recorder::Stop() {
     if (!m_IsRecording) {
-        m_Mod->GetLogger()->Warn("Recorder is not currently recording.");
+        m_Engine->GetLogger()->Warn("Recorder is not currently recording.");
         return {};
     }
 
@@ -102,7 +101,7 @@ std::string Recorder::GenerateAutoProjectName() const {
 
 bool Recorder::GenerateScript() {
     if (m_Frames.empty()) {
-        m_Mod->GetLogger()->Warn("No frames recorded, cannot generate script.");
+        m_Engine->GetLogger()->Warn("No frames recorded, cannot generate script.");
         return false;
     }
 
@@ -110,7 +109,7 @@ bool Recorder::GenerateScript() {
         // Get script generator from engine
         auto *scriptGenerator = m_Engine->GetScriptGenerator();
         if (!scriptGenerator) {
-            m_Mod->GetLogger()->Error("ScriptGenerator not available.");
+            m_Engine->GetLogger()->Error("ScriptGenerator not available.");
             return false;
         }
 
@@ -145,32 +144,32 @@ bool Recorder::GenerateScript() {
             options.description = "Auto-recorded TAS run";
         }
 
-        m_Mod->GetLogger()->Info("Auto-generating TAS script: %s", options.projectName.c_str());
+        m_Engine->GetLogger()->Info("Auto-generating TAS script: %s", options.projectName.c_str());
 
         // Generate the script
         scriptGenerator->GenerateAsync(
             m_Frames, options,
             [this, options](bool success) {
                 if (success) {
-                    m_Mod->GetLogger()->Info("Script auto-generated successfully: %s", options.projectName.c_str());
+                    m_Engine->GetLogger()->Info("Script auto-generated successfully: %s", options.projectName.c_str());
                     // Refresh projects in project manager
                     if (auto *projectManager = m_Engine->GetProjectManager()) {
                         projectManager->RefreshProjects();
                     }
                 } else {
-                    m_Mod->GetLogger()->Error(
+                    m_Engine->GetLogger()->Error(
                         "Failed to auto-generate script: %s", options.projectName.c_str());
                 }
             });
 
         return true;
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Exception during script auto-generation: %s", e.what());
+        m_Engine->GetLogger()->Error("Exception during script auto-generation: %s", e.what());
         return false;
     }
 }
 
-void Recorder::Tick(size_t &currentTick) {
+void Recorder::Tick(size_t &currentTick, const unsigned char *keyboardState) {
     if (!m_IsRecording) {
         return;
     }
@@ -178,7 +177,7 @@ void Recorder::Tick(size_t &currentTick) {
     // Check frame limit
     if (m_Frames.size() >= m_MaxFrames) {
         if (!m_WarnedMaxFrames) {
-            m_Mod->GetLogger()->Warn("Recording reached maximum frame limit (%zu). Recording will stop.", m_MaxFrames);
+            m_Engine->GetLogger()->Warn("Recording reached maximum frame limit (%zu). Recording will stop.", m_MaxFrames);
             m_WarnedMaxFrames = true;
             Stop();
         }
@@ -189,7 +188,7 @@ void Recorder::Tick(size_t &currentTick) {
         FrameData frame;
         frame.frameIndex = currentTick;
         frame.deltaTime = m_DeltaTime;
-        frame.inputState = CaptureRealInput();
+        frame.inputState = CaptureRealInput(keyboardState);
 
         // Capture physics data
         CapturePhysicsData(frame);
@@ -201,7 +200,7 @@ void Recorder::Tick(size_t &currentTick) {
         m_Frames.emplace_back(std::move(frame));
         ++currentTick;
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Error during recording tick: %s", e.what());
+        m_Engine->GetLogger()->Error("Error during recording tick: %s", e.what());
         Stop(); // Stop recording on error to prevent corruption
     }
 }
@@ -215,23 +214,16 @@ void Recorder::OnGameEvent(size_t currentTick, const std::string &eventName, int
         // Store event in pending list
         m_PendingEvents.emplace_back(currentTick, eventName, eventData);
 
-        m_Mod->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
+        m_Engine->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
                                  eventName.c_str(), eventData, currentTick);
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Error recording game event: %s", e.what());
+        m_Engine->GetLogger()->Error("Error recording game event: %s", e.what());
     }
 }
 
-RawInputState Recorder::CaptureRealInput() const {
-    auto *inputManager = m_BML->GetInputManager();
-    if (!inputManager) {
-        m_Mod->GetLogger()->Warn("Input manager not found.");
-        return {};
-    }
-
-    auto *keyboardState = inputManager->GetKeyboardState();
+RawInputState Recorder::CaptureRealInput(const unsigned char *keyboardState) const {
     if (!keyboardState) {
-        m_Mod->GetLogger()->Warn("Keyboard state not available.");
+        m_Engine->GetLogger()->Warn("Keyboard state not available.");
         return {};
     }
 
@@ -279,7 +271,7 @@ void Recorder::NotifyStatusChange(bool isRecording) {
         try {
             m_StatusCallback(isRecording);
         } catch (const std::exception &e) {
-            m_Mod->GetLogger()->Error("Error in recording status callback: %s", e.what());
+            m_Engine->GetLogger()->Error("Error in recording status callback: %s", e.what());
         }
     }
 }

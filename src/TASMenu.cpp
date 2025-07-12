@@ -1,6 +1,5 @@
 #include "TASMenu.h"
 
-#include "BallanceTAS.h"
 #include "GameInterface.h"
 #include "TASEngine.h"
 #include "ProjectManager.h"
@@ -28,9 +27,9 @@ void TASMenuPage::OnClose() {
 }
 
 // TASMenu Implementation
-TASMenu::TASMenu(TASEngine *engine) : m_Engine(engine), m_Mod(engine ? engine->GetMod() : nullptr) {
-    if (!m_Engine || !m_Mod) {
-        throw std::runtime_error("TASMenu requires valid TASEngine and BallanceTAS instances");
+TASMenu::TASMenu(TASEngine *engine) : m_Engine(engine){
+    if (!m_Engine) {
+        throw std::runtime_error("TASMenu requires valid TASEngine instances");
     }
 }
 
@@ -46,7 +45,7 @@ void TASMenu::Init() {
 
         RefreshProjects();
     } catch (const std::exception &e) {
-        m_Mod->GetLogger()->Error("Failed to initialize TAS Menu: %s", e.what());
+        m_Engine->GetLogger()->Error("Failed to initialize TAS Menu: %s", e.what());
         throw;
     }
 }
@@ -61,9 +60,7 @@ void TASMenu::Shutdown() {
         m_TASDetailsPage.reset();
         m_TASListPage.reset();
     } catch (const std::exception &e) {
-        if (m_Mod && m_Mod->GetLogger()) {
-            m_Mod->GetLogger()->Error("Exception during TAS Menu shutdown: %s", e.what());
-        }
+        m_Engine->GetLogger()->Error("Exception during TAS Menu shutdown: %s", e.what());
     }
 }
 
@@ -72,9 +69,9 @@ bool TASMenu::IsOpen() const {
 }
 
 void TASMenu::OnOpen() {
-    if (!m_Engine || !m_Mod) return;
+    if (!m_Engine) return;
 
-    auto *inputManager = m_Mod->GetInputManager();
+    auto *inputManager = m_Engine->GetGameInterface()->GetInputManager();
     if (inputManager) {
         inputManager->Block(CK_INPUT_DEVICE_KEYBOARD);
     }
@@ -83,24 +80,9 @@ void TASMenu::OnOpen() {
 }
 
 void TASMenu::OnClose() {
-    if (!m_Engine || !m_Mod) return;
+    if (!m_Engine) return;
 
-    auto *bml = m_Mod->GetBML();
-    auto *inputManager = m_Mod->GetInputManager();
-
-    if (bml && inputManager) {
-        CKBehavior *beh = bml->GetScriptByName("Menu_Start");
-        if (beh) {
-            bml->GetCKContext()->GetCurrentScene()->Activate(beh, true);
-        }
-
-        bml->AddTimerLoop(1ul, [inputManager] {
-            if (inputManager->oIsKeyDown(CKKEY_ESCAPE) || inputManager->oIsKeyDown(CKKEY_RETURN))
-                return true;
-            inputManager->Unblock(CK_INPUT_DEVICE_KEYBOARD);
-            return false;
-        });
-    }
+    m_Engine->GetGameInterface()->OnCloseMenu();
 
     m_CurrentProject = nullptr;
 }
@@ -113,7 +95,7 @@ void TASMenu::RefreshProjects() {
 
 void TASMenu::PlayProject(TASProject *project) {
     if (!project || !project->IsValid() || !m_Engine) {
-        m_Mod->GetLogger()->Error("Cannot play invalid project or engine unavailable.");
+        m_Engine->GetLogger()->Error("Cannot play invalid project or engine unavailable.");
         return;
     }
 
@@ -122,7 +104,7 @@ void TASMenu::PlayProject(TASProject *project) {
         StopTAS();
     }
 
-    m_Mod->GetLogger()->Info("Playing TAS: %s", project->GetName().c_str());
+    m_Engine->GetLogger()->Info("Playing TAS: %s", project->GetName().c_str());
 
     // Set the current project and start replay via TASEngine
     m_Engine->GetProjectManager()->SetCurrentProject(project);
@@ -131,7 +113,7 @@ void TASMenu::PlayProject(TASProject *project) {
     if (m_Engine->StartReplay()) {
         Close(); // Close menu so user can load a level
     } else {
-        m_Mod->GetLogger()->Error("Failed to start replay from menu.");
+        m_Engine->GetLogger()->Error("Failed to start replay from menu.");
         // Reset project selection on failure
         m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
         m_CurrentProject = nullptr;
@@ -146,10 +128,10 @@ void TASMenu::StopTAS() {
 
     if (wasRecording) {
         m_Engine->StopRecording();
-        m_Mod->GetLogger()->Info("Recording stopped from menu.");
+        m_Engine->GetLogger()->Info("Recording stopped from menu.");
     } else if (wasPlaying) {
         m_Engine->StopReplay();
-        m_Mod->GetLogger()->Info("Replay stopped from menu.");
+        m_Engine->GetLogger()->Info("Replay stopped from menu.");
     }
 
     // Clear project selection after stopping
@@ -181,10 +163,10 @@ void TASMenu::StartRecording() {
     m_CurrentProject = nullptr;
 
     if (m_Engine->StartRecording()) {
-        m_Mod->GetLogger()->Info("Recording setup from menu.");
+        m_Engine->GetLogger()->Info("Recording setup from menu.");
         Close(); // Close menu so user can load a level
     } else {
-        m_Mod->GetLogger()->Error("Failed to setup recording from menu.");
+        m_Engine->GetLogger()->Error("Failed to setup recording from menu.");
     }
 }
 
@@ -193,7 +175,7 @@ void TASMenu::StopRecording() {
 
     if (m_Engine->IsRecording() || m_Engine->IsPendingRecord()) {
         m_Engine->StopRecording();
-        m_Mod->GetLogger()->Info("Recording stopped from menu.");
+        m_Engine->GetLogger()->Info("Recording stopped from menu.");
 
         // Refresh projects as a new one might have been generated
         RefreshProjects();
@@ -349,7 +331,7 @@ bool TASListPage::OnDrawEntry(size_t index, bool *v) {
 
     auto &project = projects[index];
 
-    bool currentLegacyMode = engine->GetMod()->IsLegacyMode();
+    bool currentLegacyMode = engine->GetGameInterface()->IsLegacyMode();
 
     bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
     bool isInvalid = !project->IsValid();
@@ -480,7 +462,7 @@ void TASDetailsPage::DrawProjectInfo() {
     auto requirements = project->GetRequirements();
 
     // Get current BML settings for compatibility check
-    bool currentLegacyMode = m_Menu->GetEngine()->GetMod()->IsLegacyMode();
+    bool currentLegacyMode = m_Menu->GetEngine()->GetGameInterface()->IsLegacyMode();
     bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
 
     if (!requirements.empty()) {
@@ -789,16 +771,16 @@ void TASRecordingPage::StartRecording() {
     }
 
     if (engine->StartRecording()) {
-        engine->GetMod()->GetLogger()->Info("Recording setup for project: %s", projectName.c_str());
-        engine->GetMod()->GetLogger()->Info("  Author: %s", m_AuthorName);
-        engine->GetMod()->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
-        engine->GetMod()->GetLogger()->Info("  Description: %s", m_Description);
-        engine->GetMod()->GetLogger()->Info("  Generation Options: frameComments=%s, physicsComments=%s",
+        engine->GetLogger()->Info("Recording setup for project: %s", projectName.c_str());
+        engine->GetLogger()->Info("  Author: %s", m_AuthorName);
+        engine->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
+        engine->GetLogger()->Info("  Description: %s", m_Description);
+        engine->GetLogger()->Info("  Generation Options: frameComments=%s, physicsComments=%s",
                                             m_AddFrameComments ? "true" : "false",
                                             m_AddPhysicsComments ? "true" : "false");
         m_Menu->Close();
     } else {
-        engine->GetMod()->GetLogger()->Error("Failed to setup recording.");
+        engine->GetLogger()->Error("Failed to setup recording.");
     }
 }
 
@@ -809,6 +791,6 @@ void TASRecordingPage::StopRecording() {
     if (!engine || (!engine->IsRecording() && !engine->IsPendingRecord())) return;
 
     engine->StopRecording();
-    engine->GetMod()->GetLogger()->Info("Recording stopped from recording page.");
+    engine->GetLogger()->Info("Recording stopped from recording page.");
     m_Menu->ShowPrevPage();
 }

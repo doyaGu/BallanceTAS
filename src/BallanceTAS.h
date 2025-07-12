@@ -1,12 +1,12 @@
 #pragma once
 
-#include <BML/BMLAll.h>
 #include <memory>
 
-#define BML_TAS_PATH "..\\ModLoader\\TAS\\"
+#include <BML/BMLAll.h>
 
 // Forward-declare the core engine to avoid including its full header here.
 // This reduces compile times and keeps dependencies clean.
+class GameInterface;
 class TASEngine;
 class UIManager;
 
@@ -133,12 +133,6 @@ public:
     //================================================================
 
     /**
-     * @brief Sets the UI mode (called by TASEngine to update UI state).
-     * @param mode The new UI mode.
-     */
-    void SetUIMode(int mode);
-
-    /**
      * @brief Sets OSD visibility (called via config changes).
      * @param visible Whether the OSD should be visible.
      */
@@ -189,6 +183,8 @@ private:
     void Shutdown();
 
     void OnMenuStart();
+
+    std::unique_ptr<GameInterface> m_GameInterface;
 
     // The single, top-level instance of the TAS framework's core engine.
     std::unique_ptr<TASEngine> m_Engine;

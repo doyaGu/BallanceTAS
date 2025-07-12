@@ -4,11 +4,12 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+
 #include <sol/sol.hpp>
 
 #include "TASProject.h"
 
-class BallanceTAS;
+class TASEngine;
 
 /**
  * @class ProjectManager
@@ -17,7 +18,7 @@ class BallanceTAS;
  */
 class ProjectManager {
 public:
-    ProjectManager(BallanceTAS *mod, sol::state &lua_state);
+    explicit ProjectManager(TASEngine *engine);
     ~ProjectManager();
 
     /**
@@ -150,8 +151,7 @@ private:
      */
     bool ValidateProjectStructure(const std::string &projectPath);
 
-    BallanceTAS *m_Mod;
-    sol::state &m_LuaState; // Reference to the main Lua state for creating sandboxes.
+    TASEngine *m_Engine;
     std::string m_TASRootPath;
     std::string m_TempDir; // Base directory for temporary extractions
 

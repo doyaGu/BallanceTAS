@@ -6,6 +6,10 @@
 
 #include <sol/sol.hpp>
 
+#include <BML/ILogger.h>
+
+#define BML_TAS_PATH "..\\ModLoader\\TAS\\"
+
 class TASProject;
 // Forward declarations of our subsystems and managers
 class BallanceTAS;
@@ -16,6 +20,7 @@ class EventManager;
 
 // Script and record execution subsystems
 class ScriptExecutor;
+class LuaScheduler;
 class RecordPlayer;
 
 // Recording subsystems
@@ -56,7 +61,7 @@ enum class PlaybackType {
  */
 class TASEngine {
 public:
-    explicit TASEngine(BallanceTAS *mod);
+    explicit TASEngine(GameInterface *gameInterface);
     ~TASEngine();
 
     // TASEngine is not copyable or movable
@@ -157,15 +162,18 @@ public:
     // These are used by other parts of the framework (e.g., LuaApi) to get handles
     // to the necessary systems.
 
-    BallanceTAS *GetMod() const { return m_Mod; }
+    GameInterface *GetGameInterface() const { return m_GameInterface; }
+
+    ILogger *GetLogger() const;
+    void AddTimer(size_t tick, const std::function<void()> &callback);
 
     // For Lua API compatibility, delegate to ScriptExecutor
     sol::state &GetLuaState();
     const sol::state &GetLuaState() const;
+    LuaScheduler *GetScheduler() const;
 
     ProjectManager *GetProjectManager() const { return m_ProjectManager.get(); }
     InputSystem *GetInputSystem() const { return m_InputSystem.get(); }
-    GameInterface *GetGameInterface() const { return m_GameInterface.get(); }
     EventManager *GetEventManager() const { return m_EventManager.get(); }
 
     // Script execution subsystem
@@ -174,16 +182,18 @@ public:
     // Record playback subsystem
     RecordPlayer *GetRecordPlayer() const { return m_RecordPlayer.get(); }
 
-    // For Lua API compatibility, delegate to ScriptExecutor
-    class LuaScheduler *GetScheduler() const;
-
     // Recording subsystem accessors
     Recorder *GetRecorder() const { return m_Recorder.get(); }
     ScriptGenerator *GetScriptGenerator() const { return m_ScriptGenerator.get(); }
 
+    // --- Tick Management ---
     size_t GetCurrentTick() const;
     void SetCurrentTick(size_t tick);
     void IncrementCurrentTick() { ++m_CurrentTick; }
+
+    // --- Path Management ---
+    const std::string &GetPath() const { return m_Path; }
+    void SetPath(const std::string &path) { m_Path = path; }
 
 private:
     /**
@@ -273,7 +283,7 @@ private:
         }
     }
 
-    BallanceTAS *m_Mod;
+    GameInterface *m_GameInterface;
 
     // --- Managers ---
     std::unique_ptr<ProjectManager> m_ProjectManager;
@@ -281,7 +291,6 @@ private:
 
     // --- Core Logic Modules ---
     std::unique_ptr<InputSystem> m_InputSystem;
-    std::unique_ptr<GameInterface> m_GameInterface;
 
     // --- Execution Modules ---
     std::unique_ptr<ScriptExecutor> m_ScriptExecutor;
@@ -296,4 +305,5 @@ private:
     PlaybackType m_PlaybackType = PlaybackType::None;
     std::atomic<bool> m_ShuttingDown;
     size_t m_CurrentTick = 0;
+    std::string m_Path = BML_TAS_PATH;
 };

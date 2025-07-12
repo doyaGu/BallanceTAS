@@ -8,9 +8,8 @@
 #include <memory>
 
 // Forward declarations
-class TASProject;
 class TASEngine;
-class BallanceTAS;
+class TASProject;
 
 /**
  * @enum KeyTransition
@@ -231,7 +230,6 @@ private:
 
     // Core references
     TASEngine *m_Engine;
-    BallanceTAS *m_Mod;
 
     // State
     std::string m_LastGeneratedPath;

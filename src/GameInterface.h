@@ -3,11 +3,16 @@
 #include <CKAll.h>
 #include <sol/sol.hpp>
 
+#include <BML/ILogger.h>
+#include <BML/InputHook.h>
+
 #include "physics_RT.h"
 
 // Forward declarations
-class CKIpionManager;
 class BallanceTAS;
+class CKIpionManager;
+class UIManager;
+class IBML;
 
 /**
  * @class GameInterface
@@ -23,12 +28,18 @@ public:
     GameInterface(const GameInterface &) = delete;
     GameInterface &operator=(const GameInterface &) = delete;
 
+    ILogger *GetLogger() const;
+    void AddTimer(size_t tick, const std::function<void()> &callback);
+
+    CKContext *GetCKContext() const { return m_CKContext; }
+    CKRenderContext *GetRenderContext() const { return m_RenderContext; }
+    CKTimeManager *GetTimeManager() const { return m_TimeManager; }
+    InputHook *GetInputManager() const { return m_InputManager; }
+    CKIpionManager *GetIpionManager() const { return m_IpionManager; }
+    UIManager *GetUIManager() const;
+
     void AcquireGameplayInfo();
     void AcquireKeyBindings();
-
-    void SetActiveBall(CKParameter *param);
-
-    CKCamera *GetActiveCamera();
 
     void SetMapName(const std::string &name) { m_MapName = name; }
     const std::string &GetMapName() const { return m_MapName; }
@@ -46,6 +57,17 @@ public:
      */
     CK3dEntity *GetActiveBall() const;
 
+    /**
+     * @brief Sets the active ball parameter.
+     * @param param The CKParameter that holds the active ball entity.
+     */
+    void SetActiveBall(CKParameter *param);
+
+    /**
+     * @brief Gets the active camera in the scene.
+     * @return A pointer to the active CKCamera, or nullptr if not found.
+     */
+    CKCamera *GetActiveCamera() const;
     /**
      * @brief Gets a game object by its name.
      * @param name The name of the CK3dEntity.
@@ -108,11 +130,12 @@ public:
 
     bool IsLegacyMode() const;
 
-    /**
-     * @brief Gets the current frame count since the level started.
-     * @return The current game tick.
-     */
+    bool IsIngame() const;
+    bool IsPaused() const;
+    bool IsPlaying() const;
 
+    float GetSRScore() const;
+    int GetHSScore() const;
 
     int GetPoints() const;
 
@@ -124,10 +147,18 @@ public:
 
     void PrintMessage(const char *message) const;
 
+    void SkipRenderForNextTick();
+
+    void OnCloseMenu();
+
 private:
     BallanceTAS *m_Mod = nullptr;
+    IBML *m_BML = nullptr;
 
+    CKContext *m_CKContext = nullptr;
+    CKRenderContext *m_RenderContext = nullptr;
     CKTimeManager *m_TimeManager = nullptr;
+    InputHook *m_InputManager = nullptr;
     CKIpionManager *m_IpionManager = nullptr;
 
     std::string m_MapName;

@@ -7,7 +7,6 @@
 #include <deque>
 
 class TASEngine;
-class BallanceTAS;
 struct PhysicsObject;
 class CKIpionManager;
 
@@ -182,7 +181,6 @@ private:
 
     // --- Core References ---
     TASEngine *m_Engine;
-    BallanceTAS *m_Mod;
 
     // --- Panel Visibility ---
     std::array<bool, 5> m_PanelVisible = {true, true, true, false, true}; // Status, Velocity, Position, Physics, Keys

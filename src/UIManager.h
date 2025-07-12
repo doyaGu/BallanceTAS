@@ -5,8 +5,6 @@
 #include <BML/Bui.h>
 
 // Forward declarations
-class BallanceTAS;
-class IBML;
 class TASEngine;
 class TASMenu;
 class InGameOSD;
@@ -245,8 +243,6 @@ private:
 
     // --- Core References ---
     TASEngine *m_Engine;
-    BallanceTAS *m_Mod;
-    IBML *m_BML;
 
     // --- UI Components ---
     std::unique_ptr<TASMenu> m_TASMenu;

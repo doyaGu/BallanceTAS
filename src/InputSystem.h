@@ -1,7 +1,5 @@
 #pragma once
 
-#include <BML/BMLAll.h>
-
 #include <string>
 #include <set>
 #include <unordered_map>
@@ -136,10 +134,10 @@ public:
     // --- Core Method for Hooking ---
 
     /**
-     * @brief Applies TAS input by replicating DX8InputManager state transitions
+     * @brief Applies TAS input by replicating state transitions
      * This now properly handles state accumulation and frame lifecycle
      */
-    void Apply(unsigned char *keyboardState, size_t currentTick);
+    void Apply(size_t currentTick, unsigned char *keyboardState);
 
     /**
      * @brief Prepares for next frame (mimics PostProcess cleanup)

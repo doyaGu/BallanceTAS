@@ -151,8 +151,9 @@ public:
     /**
      * @brief Captures the data for the current frame. Called by TASEngine::Tick().
      * @param currentTick The current game tick/frame index.
+     * @param keyboardState The current keyboard state array.
      */
-    void Tick(size_t &currentTick);
+    void Tick(size_t &currentTick, const unsigned char *keyboardState);
 
     /**
      * @brief A callback for the TASEngine to notify the recorder of a game event.
@@ -239,9 +240,10 @@ private:
     /**
      * @brief Captures the current state of the physical keyboard.
      * This uses the original input methods to get unmodified player input.
+     * @param keyboardState The current keyboard state array.
      * @return A RawInputState struct.
      */
-    RawInputState CaptureRealInput() const;
+    RawInputState CaptureRealInput(const unsigned char *keyboardState) const;
 
     /**
      * @brief Captures comprehensive physics data for analysis.
@@ -257,8 +259,6 @@ private:
 
     // Core references
     TASEngine *m_Engine;
-    BallanceTAS *m_Mod;
-    IBML *m_BML;
 
     // Recording state
     bool m_IsRecording = false;

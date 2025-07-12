@@ -3,43 +3,66 @@
 #include "BallanceTAS.h"
 
 GameInterface::GameInterface(BallanceTAS *mod) : m_Mod(mod) {
-    if (!m_Mod) return;
+    if (!m_Mod) {
+        throw std::runtime_error("GameInterface requires a valid BallanceTAS instance.");
+    }
 
-    auto *bml = m_Mod->GetBML();
+    m_BML = m_Mod->GetBML();
+    if (!m_BML) {
+        throw std::runtime_error("GameInterface requires a valid IBML instance.");
+    }
 
-    // Cache pointers to frequently accessed managers and parameters for performance.
-    CKContext *context = bml->GetCKContext();
-    if (!context) return;
+    m_CKContext = m_BML->GetCKContext();
+    if (!m_CKContext) {
+        throw std::runtime_error("GameInterface requires a valid CKContext instance.");
+    }
 
-    m_TimeManager = context->GetTimeManager();
-    m_IpionManager = static_cast<CKIpionManager *>(context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148)));
+    m_RenderContext = m_BML->GetRenderContext();
+    if (!m_RenderContext) {
+        throw std::runtime_error("GameInterface requires a valid CKRenderContext instance.");
+    }
+
+    m_TimeManager = m_CKContext->GetTimeManager();
+    if (!m_TimeManager) {
+        throw std::runtime_error("GameInterface requires a valid CKTimeManager instance.");
+    }
+
+    m_InputManager = m_BML->GetInputManager();
+    if (!m_InputManager) {
+        throw std::runtime_error("GameInterface requires a valid CKInputManager instance.");
+    }
+
+    m_IpionManager = (CKIpionManager *) m_CKContext->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
+    if (!m_IpionManager) {
+        throw std::runtime_error("GameInterface requires a valid CKIpionManager instance.");
+    }
+}
+
+ILogger *GameInterface::GetLogger() const {
+    return m_Mod->GetLogger();
+}
+
+void GameInterface::AddTimer(size_t tick, const std::function<void()> &callback) {
+    m_BML->AddTimer(static_cast<CKDWORD>(tick), callback);
+}
+
+UIManager *GameInterface::GetUIManager() const {
+    return m_Mod->GetUIManager();
 }
 
 void GameInterface::AcquireGameplayInfo() {
-    auto *bml = m_Mod->GetBML();
-
     // 3D Entities\Gameplay.nmo
-    m_CurrentLevel = bml->GetArrayByName("CurrentLevel");
-    m_Energy = bml->GetArrayByName("Energy");
-    m_CheckPoints = bml->GetArrayByName("Checkpoints");
-    m_IngameParam = bml->GetArrayByName("IngameParameter");
-    CKBehavior *events = bml->GetScriptByName("Gameplay_Events");
+    m_CurrentLevel = m_BML->GetArrayByName("CurrentLevel");
+    m_Energy = m_BML->GetArrayByName("Energy");
+    m_CheckPoints = m_BML->GetArrayByName("Checkpoints");
+    m_IngameParam = m_BML->GetArrayByName("IngameParameter");
+    CKBehavior *events = m_BML->GetScriptByName("Gameplay_Events");
     CKBehavior *id = ScriptHelper::FindNextBB(events, events->GetInput(0));
     m_CurrentSector = id->GetOutputParameter(0)->GetDestination(0);
 }
 
 void GameInterface::AcquireKeyBindings() {
-    auto *bml = m_Mod->GetBML();
-
-    m_Keyboard = bml->GetArrayByName("Keyboard");
-}
-
-void GameInterface::SetActiveBall(CKParameter *param) {
-    m_ActiveBallParam = param;
-}
-
-CKCamera *GameInterface::GetActiveCamera() {
-    return m_Mod->GetBML()->GetRenderContext()->GetAttachedCamera();
+    m_Keyboard = m_BML->GetArrayByName("Keyboard");
 }
 
 void GameInterface::ResetPhysicsTime() {
@@ -129,13 +152,20 @@ CK3dEntity *GameInterface::GetActiveBall() const {
     return nullptr;
 }
 
+void GameInterface::SetActiveBall(CKParameter *param) {
+    m_ActiveBallParam = param;
+}
+
+CKCamera *GameInterface::GetActiveCamera() const {
+    return m_RenderContext->GetAttachedCamera();
+}
+
 CK3dEntity *GameInterface::GetObjectByName(const std::string &name) const {
-    return m_Mod->GetBML()->Get3dEntityByName(name.c_str());
+    return m_BML->Get3dEntityByName(name.c_str());
 }
 
 CK3dEntity *GameInterface::GetObjectByID(int id) const {
-    auto *context = m_Mod->GetBML()->GetCKContext();
-    CKObject *obj = context->GetObject(id);
+    CKObject *obj = m_CKContext->GetObject(id);
     if (CKIsChildClassOf(obj,CKCID_3DENTITY)) {
         return static_cast<CK3dEntity *>(obj);
     }
@@ -200,6 +230,26 @@ bool GameInterface::IsLegacyMode() const {
     return m_Mod->IsLegacyMode();
 }
 
+bool GameInterface::IsIngame() const {
+    return m_BML->IsIngame();
+}
+
+bool GameInterface::IsPaused() const {
+    return m_BML->IsPaused();
+}
+
+bool GameInterface::IsPlaying() const {
+    return m_BML->IsPlaying();
+}
+
+float GameInterface::GetSRScore() const {
+    return m_BML->GetSRScore();
+}
+
+int GameInterface::GetHSScore() const {
+    return m_BML->GetHSScore();
+}
+
 int GameInterface::GetPoints() const {
     int points = 0;
     if (m_Energy) {
@@ -228,13 +278,12 @@ XObjectArray GameInterface::GetFloors(CK3dEntity *ent, float zoom, float maxHeig
     const VxBbox &Bbox_obj = ent->GetBoundingBox();
     float inv_zoom = 1.0f / (zoom * (Bbox_obj.Max.x - Bbox_obj.Min.x));
 
-    CKContext *context = m_Mod->GetBML()->GetCKContext();
-    if (!context) return floors;
+    if (!m_CKContext) return floors;
 
-    auto *FloorManager = (CKFloorManager *) context->GetManagerByGuid(FLOOR_MANAGER_GUID);
+    auto *FloorManager = (CKFloorManager *) m_CKContext->GetManagerByGuid(FLOOR_MANAGER_GUID);
     int floorAttribute = FloorManager->GetFloorAttribute();
 
-    CKAttributeManager *attman = context->GetAttributeManager();
+    CKAttributeManager *attman = m_CKContext->GetAttributeManager();
     const XObjectPointerArray &floor_objects = attman->GetGlobalAttributeListPtr(floorAttribute);
 
     VxVector vPos, scale;
@@ -300,5 +349,23 @@ XObjectArray GameInterface::GetFloors(CK3dEntity *ent, float zoom, float maxHeig
 }
 
 void GameInterface::PrintMessage(const char *message) const {
-    m_Mod->GetBML()->SendIngameMessage(message);
+    m_BML->SendIngameMessage(message);
+}
+
+void GameInterface::SkipRenderForNextTick() {
+    m_BML->SkipRenderForNextTick();
+}
+
+void GameInterface::OnCloseMenu() {
+    CKBehavior *beh = m_BML->GetScriptByName("Menu_Start");
+    if (beh) {
+        m_CKContext->GetCurrentScene()->Activate(beh, true);
+    }
+
+    m_BML->AddTimerLoop(1ul, [this] {
+        if (m_InputManager->oIsKeyDown(CKKEY_ESCAPE) || m_InputManager->oIsKeyDown(CKKEY_RETURN))
+            return true;
+        m_InputManager->Unblock(CK_INPUT_DEVICE_KEYBOARD);
+        return false;
+    });
 }

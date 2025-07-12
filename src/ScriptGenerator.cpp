@@ -513,7 +513,7 @@ std::string ScriptGenerator::GenerateManifest(const GenerationOptions &options) 
     if (m_Engine->GetGameInterface()->IsLegacyMode()) {
         ss << "  legacy_mode = true,\n";
     }
-    ss << "  \n";
+    ss << "\n";
     ss << "  -- Generation metadata\n";
     ss << "  generated_by = \"BallanceTAS ScriptGenerator\",\n";
     ss << "  generation_date = \"" << []() {

@@ -1,7 +1,6 @@
 #include "InputSystem.h"
 
 #include <algorithm>
-#include <cctype>
 #include <sstream>
 
 // Helper function to convert a string to lowercase

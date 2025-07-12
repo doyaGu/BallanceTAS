@@ -9,10 +9,10 @@
 
 // Exact state representation
 struct KeyState {
-    uint8_t currentState = KS_IDLE;  // Current accumulated state
-    bool hadPressEvent = false;      // KS_PRESSED was added this frame
-    bool hadReleaseEvent = false;    // KS_RELEASED was added this frame
-    size_t timestamp = 0;            // Event timestamp
+    uint8_t currentState = KS_IDLE; // Current accumulated state
+    bool hadPressEvent = false;     // KS_PRESSED was added this frame
+    bool hadReleaseEvent = false;   // KS_RELEASED was added this frame
+    size_t timestamp = 0;           // Event timestamp
 
     // Reset for new frame (mimics PostProcess cleanup)
     void PrepareNextFrame() {

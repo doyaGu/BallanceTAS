@@ -41,9 +41,9 @@ typedef enum TASState {
  * @brief The type of playback currently active.
  */
 enum class PlaybackType {
-    None,     // No playback active
-    Script,   // Lua script playback via ScriptExecutor
-    Record    // Binary record playback via RecordPlayer
+    None,   // No playback active
+    Script, // Lua script playback via ScriptExecutor
+    Record  // Binary record playback via RecordPlayer
 };
 
 /**

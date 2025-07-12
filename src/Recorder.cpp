@@ -215,7 +215,7 @@ void Recorder::OnGameEvent(size_t currentTick, const std::string &eventName, int
         m_PendingEvents.emplace_back(currentTick, eventName, eventData);
 
         m_Engine->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
-                                 eventName.c_str(), eventData, currentTick);
+                                    eventName.c_str(), eventData, currentTick);
     } catch (const std::exception &e) {
         m_Engine->GetLogger()->Error("Error recording game event: %s", e.what());
     }

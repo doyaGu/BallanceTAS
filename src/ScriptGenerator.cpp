@@ -167,14 +167,14 @@ bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const Gener
         std::string finalProjectName = FindAvailableProjectName(options.projectName);
         if (finalProjectName != options.projectName) {
             m_Engine->GetLogger()->Info("Project name '%s' already exists, using '%s' instead.",
-                                     options.projectName.c_str(), finalProjectName.c_str());
+                                        options.projectName.c_str(), finalProjectName.c_str());
         }
 
         GenerationOptions finalOptions = options;
         finalOptions.projectName = finalProjectName;
 
         m_Engine->GetLogger()->Info("Generating TAS script '%s' from %zu frames...",
-                                 finalOptions.projectName.c_str(), frames.size());
+                                    finalOptions.projectName.c_str(), frames.size());
 
         // Create project directory
         std::string projectDir = m_Engine->GetPath() + finalOptions.projectName;

@@ -16,7 +16,7 @@ ProjectManager::ProjectManager(TASEngine *engine)
     if (!m_Engine) {
         throw std::runtime_error("ProjectManager requires a valid TASEngine instance.");
     }
-    
+
     // Define the root directory for all TAS projects.
     m_TASRootPath = m_Engine->GetPath();
 
@@ -101,7 +101,7 @@ void ProjectManager::RefreshProjects() {
     });
 
     m_Engine->GetLogger()->Info("Found %d valid TAS projects (%d directories, %d zip files, %d record files).",
-                             static_cast<int>(m_Projects.size()), directoryProjects, zipProjects, recordProjects);
+                                static_cast<int>(m_Projects.size()), directoryProjects, zipProjects, recordProjects);
 }
 
 std::unique_ptr<TASProject> ProjectManager::LoadDirectoryProject(const std::string &projectPath) {
@@ -173,8 +173,8 @@ std::unique_ptr<TASProject> ProjectManager::LoadRecordProject(const std::string 
 
         if (project->IsValid()) {
             m_Engine->GetLogger()->Info("Record project loaded: %s (%zu frames)",
-                                     project->GetName().c_str(),
-                                     project->IsValid() ? 0 : 0); // We could parse frame count here if needed
+                                        project->GetName().c_str(),
+                                        project->IsValid() ? 0 : 0); // We could parse frame count here if needed
             return project;
         } else {
             m_Engine->GetLogger()->Warn("Invalid record project: %s", recordPath.c_str());
@@ -241,7 +241,7 @@ std::string ProjectManager::PrepareProjectForExecution(TASProject *project) {
     m_ProjectTempDirectories[project] = tempDirPath;
 
     m_Engine->GetLogger()->Info("Successfully prepared zip project for execution: %s -> %s",
-                             project->GetPath().c_str(), tempDirPath.c_str());
+                                project->GetPath().c_str(), tempDirPath.c_str());
 
     return tempDirPath;
 }
@@ -452,7 +452,7 @@ bool ProjectManager::ValidateZipProject(const std::string &zipPath) {
     bool isValid = hasManifest && hasMainScript;
     if (!isValid) {
         m_Engine->GetLogger()->Warn("Zip project validation failed: %s (manifest: %s, main: %s)",
-                                 zipPath.c_str(), hasManifest ? "yes" : "no", hasMainScript ? "yes" : "no");
+                                    zipPath.c_str(), hasManifest ? "yes" : "no", hasMainScript ? "yes" : "no");
     }
 
     return isValid;
@@ -571,7 +571,7 @@ void ProjectManager::CleanupProjectTempDirectory(TASProject *project) {
         if (fs::exists(tempDir)) {
             if (RemoveDirectory(tempDir)) {
                 m_Engine->GetLogger()->Info("Cleaned up temp directory for project %s: %s",
-                                         project->GetName().c_str(), tempDir.c_str());
+                                            project->GetName().c_str(), tempDir.c_str());
             }
         }
         m_ProjectTempDirectories.erase(it);

@@ -462,8 +462,8 @@ void TASEngine::StartReplayInternal() {
 
     m_GameInterface->SetUIMode(UIMode::Playing);
     GetLogger()->Info("Started playing TAS project: %s (%s mode)",
-                             project->GetName().c_str(),
-                             playbackType == PlaybackType::Script ? "Script" : "Record");
+                      project->GetName().c_str(),
+                      playbackType == PlaybackType::Script ? "Script" : "Record");
 }
 
 PlaybackType TASEngine::DeterminePlaybackType(const TASProject *project) const {
@@ -639,6 +639,7 @@ ILogger *TASEngine::GetLogger() const { return m_GameInterface->GetLogger(); }
 void TASEngine::AddTimer(size_t tick, const std::function<void()> &callback) {
     m_GameInterface->AddTimer(tick, callback);
 }
+
 // === Lua API Compatibility Delegates ===
 
 sol::state &TASEngine::GetLuaState() {

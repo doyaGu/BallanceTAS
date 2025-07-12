@@ -8,7 +8,7 @@ void LuaApi::RegisterVxRect(sol::state &lua) {
     // ===================================================================
     auto rectType = lua.new_usertype<VxRect>(
         "VxRect",
-        sol::constructors<VxRect(), VxRect(Vx2DVector&, Vx2DVector&), VxRect(float, float, float, float)>(),
+        sol::constructors<VxRect(), VxRect(Vx2DVector &, Vx2DVector &), VxRect(float, float, float, float)>(),
 
         // Members as properties
         "left", &VxRect::left,
@@ -73,8 +73,12 @@ void LuaApi::RegisterVxRect(sol::state &lua) {
         "h_translate", &VxRect::HTranslate,
         "v_translate", &VxRect::VTranslate,
         "transform_to_homogeneous", &VxRect::TransformToHomogeneous,
-        "transform_from_homogeneous", sol::overload([](VxRect &r, Vx2DVector &dest, const Vx2DVector &srchom) { r.TransformFromHomogeneous(dest, srchom); },
-                                                     [](VxRect &r, const VxRect &screen) { r.TransformFromHomogeneous(screen); }),
+        "transform_from_homogeneous", sol::overload([](VxRect &r, Vx2DVector &dest, const Vx2DVector &srchom) {
+                                                        r.TransformFromHomogeneous(dest, srchom);
+                                                    },
+                                                    [](VxRect &r, const VxRect &screen) {
+                                                        r.TransformFromHomogeneous(screen);
+                                                    }),
         "scale", &VxRect::Scale,
         "inflate", &VxRect::Inflate,
         "interpolate", &VxRect::Interpolate,
@@ -99,7 +103,7 @@ void LuaApi::RegisterVxRect(sol::state &lua) {
         sol::meta_function::equal_to, [](const VxRect &a, const VxRect &b) { return a == b; },
         sol::meta_function::to_string, [](const VxRect &r) {
             return "VxRect(" + std::to_string(r.left) + ", " + std::to_string(r.top) +
-                   ", " + std::to_string(r.right) + ", " + std::to_string(r.bottom) + ")";
+                ", " + std::to_string(r.right) + ", " + std::to_string(r.bottom) + ")";
         }
     );
 }

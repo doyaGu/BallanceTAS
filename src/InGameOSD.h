@@ -1,10 +1,11 @@
 #pragma once
 
-#include <BML/Bui.h>
 #include <string>
 #include <vector>
 #include <array>
 #include <deque>
+
+#include <BML/Bui.h>
 
 class TASEngine;
 struct PhysicsObject;
@@ -15,11 +16,11 @@ class CKIpionManager;
  * @brief Different information panels available in the OSD.
  */
 enum class OSDPanel {
-    Status,       // Basic TAS status and frame info
-    Velocity,     // Real-time velocity graphs (X, Y, Z components + magnitude)
-    Position,     // Position tracking and trajectory
-    Physics,      // Angular velocity, mass, physics state
-    Keys,         // Real-time key state display
+    Status,   // Basic TAS status and frame info
+    Velocity, // Real-time velocity graphs (X, Y, Z components + magnitude)
+    Position, // Position tracking and trajectory
+    Physics,  // Angular velocity, mass, physics state
+    Keys,     // Real-time key state display
 };
 
 /**
@@ -27,12 +28,12 @@ enum class OSDPanel {
  * @brief Different viewing planes for the trajectory graph.
  */
 enum class TrajectoryPlane {
-    XZ = 0,  // X-Z plane (default for Ballance)
-    XY = 1,  // X-Y plane
-    YZ = 2,  // Y-Z plane
-    ZX = 3,  // Z-X plane (X and Z swapped)
-    YX = 4,  // Y-X plane (X and Y swapped)
-    ZY = 5,  // Z-Y plane (Y and Z swapped)
+    XZ = 0, // X-Z plane (default for Ballance)
+    XY = 1, // X-Y plane
+    YZ = 2, // Y-Z plane
+    ZX = 3, // Z-X plane (X and Z swapped)
+    YX = 4, // Y-X plane (X and Y swapped)
+    ZY = 5, // Z-Y plane (Y and Z swapped)
 };
 
 /**
@@ -186,10 +187,10 @@ private:
     std::array<bool, 5> m_PanelVisible = {true, true, true, false, true}; // Status, Velocity, Position, Physics, Keys
 
     // --- Display Configuration ---
-    float m_PosX = 0.02f;        // Screen position X (percentage)
-    float m_PosY = 0.02f;        // Screen position Y (percentage)
-    float m_Opacity = 0.9f;      // Window opacity
-    float m_Scale = 1.0f;        // Text/UI scale factor
+    float m_PosX = 0.02f;          // Screen position X (percentage)
+    float m_PosY = 0.02f;          // Screen position Y (percentage)
+    float m_Opacity = 0.9f;        // Window opacity
+    float m_Scale = 1.0f;          // Text/UI scale factor
     float m_GraphTimeRange = 5.0f; // Graph time range in seconds
 
     // --- Trajectory Configuration ---

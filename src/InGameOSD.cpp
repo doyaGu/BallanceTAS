@@ -149,7 +149,7 @@ void InGameOSD::DrawStatusPanel() {
     const char *modeText = "IDLE";
     ImVec4 modeColor = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
 
-    auto* uiManager = m_Engine->GetGameInterface()->GetUIManager();
+    auto *uiManager = m_Engine->GetGameInterface()->GetUIManager();
     if (uiManager) {
         switch (uiManager->GetMode()) {
         case UIMode::Playing:
@@ -256,8 +256,8 @@ void InGameOSD::DrawKeysPanel() {
     ImVec2 basePos = ImVec2(windowPos.x + cursorPos.x, windowPos.y + cursorPos.y);
 
     // Button styling - padding relative to font size
-    ImVec2 fontSize = ImGui::CalcTextSize("M"); // Use 'M' as reference for font size
-    float padding = fontSize.y * 0.4f * m_Scale; // 40% of font height for padding
+    ImVec2 fontSize = ImGui::CalcTextSize("M");    // Use 'M' as reference for font size
+    float padding = fontSize.y * 0.4f * m_Scale;   // 40% of font height for padding
     float minHeight = fontSize.y * 1.8f * m_Scale; // 1.8x font height for button height
     float horizontalSpacing = 5.0f * m_Scale;
     float verticalSpacing = 5.0f * m_Scale;
@@ -376,12 +376,12 @@ void InGameOSD::DrawPositionTrajectory() {
                 float coord1_prev, coord2_prev, coord1_curr, coord2_curr;
 
                 // Get coordinates for previous and current points
-                VxVector prevPos(m_PhysicsHistory.positionX[i-1],
-                                m_PhysicsHistory.positionY[i-1],
-                                m_PhysicsHistory.positionZ[i-1]);
+                VxVector prevPos(m_PhysicsHistory.positionX[i - 1],
+                                 m_PhysicsHistory.positionY[i - 1],
+                                 m_PhysicsHistory.positionZ[i - 1]);
                 VxVector currPos(m_PhysicsHistory.positionX[i],
-                                m_PhysicsHistory.positionY[i],
-                                m_PhysicsHistory.positionZ[i]);
+                                 m_PhysicsHistory.positionY[i],
+                                 m_PhysicsHistory.positionZ[i]);
 
                 GetTrajectoryCoordinates(prevPos, coord1_prev, coord2_prev);
                 GetTrajectoryCoordinates(currPos, coord1_curr, coord2_curr);
@@ -406,8 +406,8 @@ void InGameOSD::DrawPositionTrajectory() {
             // Current position marker
             if (!m_PhysicsHistory.positionX.empty()) {
                 VxVector currentPos(m_PhysicsHistory.positionX.back(),
-                                   m_PhysicsHistory.positionY.back(),
-                                   m_PhysicsHistory.positionZ.back());
+                                    m_PhysicsHistory.positionY.back(),
+                                    m_PhysicsHistory.positionZ.back());
 
                 float currentCoord1, currentCoord2;
                 GetTrajectoryCoordinates(currentPos, currentCoord1, currentCoord2);
@@ -713,59 +713,59 @@ void InGameOSD::GetTrajectoryBounds(float &min1, float &max1, float &min2, float
     }
 
     switch (m_TrajectoryPlane) {
-        case TrajectoryPlane::XZ: {
-            auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
-            auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
-            min1 = *minMaxX.first;
-            max1 = *minMaxX.second;
-            min2 = *minMaxZ.first;
-            max2 = *minMaxZ.second;
-            break;
-        }
-        case TrajectoryPlane::XY: {
-            auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
-            auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
-            min1 = *minMaxX.first;
-            max1 = *minMaxX.second;
-            min2 = *minMaxY.first;
-            max2 = *minMaxY.second;
-            break;
-        }
-        case TrajectoryPlane::YZ: {
-            auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
-            auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
-            min1 = *minMaxY.first;
-            max1 = *minMaxY.second;
-            min2 = *minMaxZ.first;
-            max2 = *minMaxZ.second;
-            break;
-        }
-        case TrajectoryPlane::ZX: {
-            auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
-            auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
-            min1 = *minMaxZ.first;
-            max1 = *minMaxZ.second;
-            min2 = *minMaxX.first;
-            max2 = *minMaxX.second;
-            break;
-        }
-        case TrajectoryPlane::YX: {
-            auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
-            auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
-            min1 = *minMaxY.first;
-            max1 = *minMaxY.second;
-            min2 = *minMaxX.first;
-            max2 = *minMaxX.second;
-            break;
-        }
-        case TrajectoryPlane::ZY: {
-            auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
-            auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
-            min1 = *minMaxZ.first;
-            max1 = *minMaxZ.second;
-            min2 = *minMaxY.first;
-            max2 = *minMaxY.second;
-            break;
-        }
+    case TrajectoryPlane::XZ: {
+        auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
+        auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
+        min1 = *minMaxX.first;
+        max1 = *minMaxX.second;
+        min2 = *minMaxZ.first;
+        max2 = *minMaxZ.second;
+        break;
+    }
+    case TrajectoryPlane::XY: {
+        auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
+        auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
+        min1 = *minMaxX.first;
+        max1 = *minMaxX.second;
+        min2 = *minMaxY.first;
+        max2 = *minMaxY.second;
+        break;
+    }
+    case TrajectoryPlane::YZ: {
+        auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
+        auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
+        min1 = *minMaxY.first;
+        max1 = *minMaxY.second;
+        min2 = *minMaxZ.first;
+        max2 = *minMaxZ.second;
+        break;
+    }
+    case TrajectoryPlane::ZX: {
+        auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
+        auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
+        min1 = *minMaxZ.first;
+        max1 = *minMaxZ.second;
+        min2 = *minMaxX.first;
+        max2 = *minMaxX.second;
+        break;
+    }
+    case TrajectoryPlane::YX: {
+        auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
+        auto minMaxX = std::minmax_element(m_PhysicsHistory.positionX.begin(), m_PhysicsHistory.positionX.end());
+        min1 = *minMaxY.first;
+        max1 = *minMaxY.second;
+        min2 = *minMaxX.first;
+        max2 = *minMaxX.second;
+        break;
+    }
+    case TrajectoryPlane::ZY: {
+        auto minMaxZ = std::minmax_element(m_PhysicsHistory.positionZ.begin(), m_PhysicsHistory.positionZ.end());
+        auto minMaxY = std::minmax_element(m_PhysicsHistory.positionY.begin(), m_PhysicsHistory.positionY.end());
+        min1 = *minMaxZ.first;
+        max1 = *minMaxZ.second;
+        min2 = *minMaxY.first;
+        max2 = *minMaxY.second;
+        break;
+    }
     }
 }

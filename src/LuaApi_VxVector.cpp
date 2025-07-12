@@ -8,7 +8,7 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
     // ===================================================================
     auto vec3Type = lua.new_usertype<VxVector>(
         "VxVector",
-        sol::constructors<VxVector(), VxVector(float), VxVector(float, float, float), VxVector(const float[3])>(),
+        sol::constructors<VxVector(), VxVector(float), VxVector(float, float, float), VxVector(const float [3])>(),
 
         // Members as properties
         "x", &VxVector::x,
@@ -96,7 +96,7 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
     // ===================================================================
     auto vec4Type = lua.new_usertype<VxVector4>(
         "VxVector4",
-        sol::constructors<VxVector4(), VxVector4(float), VxVector4(float, float, float, float), VxVector4(const float[4])>(),
+        sol::constructors<VxVector4(), VxVector4(float), VxVector4(float, float, float, float), VxVector4(const float [4])>(),
         sol::base_classes, sol::bases<VxVector>(),
 
         // Members as properties
@@ -106,8 +106,12 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
         "w", &VxVector4::w,
 
         // Computed properties
-        "magnitude", sol::property([](const VxVector4 &v) { return sqrtf(v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w); }),
-        "square_magnitude", sol::property([](const VxVector4 &v) { return v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w; }),
+        "magnitude", sol::property([](const VxVector4 &v) {
+            return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w);
+        }),
+        "square_magnitude", sol::property([](const VxVector4 &v) {
+            return v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
+        }),
 
         // Methods
         "set", sol::overload(
@@ -116,8 +120,13 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
         ),
         "dot", &VxVector4::Dot,
         "normalize", [](VxVector4 &v) {
-            float mag = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z + v.w*v.w);
-            if (mag > 0.0f) { v.x /= mag; v.y /= mag; v.z /= mag; v.w /= mag; }
+            float mag = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w);
+            if (mag > 0.0f) {
+                v.x /= mag;
+                v.y /= mag;
+                v.z /= mag;
+                v.w /= mag;
+            }
             return v;
         },
 
@@ -155,7 +164,7 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
         sol::meta_function::equal_to, [](const VxVector4 &a, const VxVector4 &b) { return a == b; },
         sol::meta_function::to_string, [](const VxVector4 &v) {
             return "VxVector4(" + std::to_string(v.x) + ", " + std::to_string(v.y) +
-                   ", " + std::to_string(v.z) + ", " + std::to_string(v.w) + ")";
+                ", " + std::to_string(v.z) + ", " + std::to_string(v.w) + ")";
         }
     );
 
@@ -164,7 +173,7 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
     // ===================================================================
     auto vec2Type = lua.new_usertype<Vx2DVector>(
         "Vx2DVector",
-        sol::constructors<Vx2DVector(), Vx2DVector(float), Vx2DVector(float, float), Vx2DVector(int, int), Vx2DVector(const float[2])>(),
+        sol::constructors<Vx2DVector(), Vx2DVector(float), Vx2DVector(float, float), Vx2DVector(int, int), Vx2DVector(const float [2])>(),
 
         // Members as properties
         "x", &Vx2DVector::x,

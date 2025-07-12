@@ -8,7 +8,7 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
     // ===================================================================
     auto quatType = lua.new_usertype<VxQuaternion>(
         "VxQuaternion",
-        sol::constructors<VxQuaternion(), VxQuaternion(const VxVector&, float), VxQuaternion(float, float, float, float)>(),
+        sol::constructors<VxQuaternion(), VxQuaternion(const VxVector &, float), VxQuaternion(float, float, float, float)>(),
 
         // Members as properties
         "x", &VxQuaternion::x,
@@ -19,7 +19,11 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
         // Computed properties
         "magnitude", sol::property([](const VxQuaternion &q) { return Magnitude(q); }),
         "conjugate", sol::property([](const VxQuaternion &q) { return Vx3DQuaternionConjugate(q); }),
-        "matrix", sol::property([](const VxQuaternion &q) { VxMatrix m; q.ToMatrix(m); return m; }),
+        "matrix", sol::property([](const VxQuaternion &q) {
+            VxMatrix m;
+            q.ToMatrix(m);
+            return m;
+        }),
         "euler_angles", sol::property([](const VxQuaternion &q) {
             float x, y, z;
             q.ToEulerAngles(&x, &y, &z);
@@ -27,8 +31,14 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
         }),
 
         // Methods
-        "from_matrix", [](VxQuaternion &q, const VxMatrix &m, bool is_unit, bool restore) { q.FromMatrix(m, is_unit, restore); },
-        "to_matrix", [](const VxQuaternion &q) { VxMatrix m; q.ToMatrix(m); return m; },
+        "from_matrix", [](VxQuaternion &q, const VxMatrix &m, bool is_unit, bool restore) {
+            q.FromMatrix(m, is_unit, restore);
+        },
+        "to_matrix", [](const VxQuaternion &q) {
+            VxMatrix m;
+            q.ToMatrix(m);
+            return m;
+        },
         "multiply", &VxQuaternion::Multiply,
         "from_rotation", &VxQuaternion::FromRotation,
         "from_euler_angles", &VxQuaternion::FromEulerAngles,
@@ -73,7 +83,7 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
         sol::meta_function::equal_to, [](const VxQuaternion &a, const VxQuaternion &b) { return a == b; },
         sol::meta_function::to_string, [](const VxQuaternion &q) {
             return "VxQuaternion(" + std::to_string(q.x) + ", " + std::to_string(q.y) +
-                   ", " + std::to_string(q.z) + ", " + std::to_string(q.w) + ")";
+                ", " + std::to_string(q.z) + ", " + std::to_string(q.w) + ")";
         }
     );
 }

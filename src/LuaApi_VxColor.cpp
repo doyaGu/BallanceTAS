@@ -82,7 +82,7 @@ void LuaApi::RegisterVxColor(sol::state &lua) {
         sol::meta_function::equal_to, [](const VxColor &a, const VxColor &b) { return a == b; },
         sol::meta_function::to_string, [](const VxColor &c) {
             return "VxColor(" + std::to_string(c.r) + ", " + std::to_string(c.g) +
-                   ", " + std::to_string(c.b) + ", " + std::to_string(c.a) + ")";
+                ", " + std::to_string(c.b) + ", " + std::to_string(c.a) + ")";
         }
     );
 }

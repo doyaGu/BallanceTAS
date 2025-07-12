@@ -27,7 +27,7 @@ void TASMenuPage::OnClose() {
 }
 
 // TASMenu Implementation
-TASMenu::TASMenu(TASEngine *engine) : m_Engine(engine){
+TASMenu::TASMenu(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::runtime_error("TASMenu requires valid TASEngine instances");
     }
@@ -776,8 +776,8 @@ void TASRecordingPage::StartRecording() {
         engine->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
         engine->GetLogger()->Info("  Description: %s", m_Description);
         engine->GetLogger()->Info("  Generation Options: frameComments=%s, physicsComments=%s",
-                                            m_AddFrameComments ? "true" : "false",
-                                            m_AddPhysicsComments ? "true" : "false");
+                                  m_AddFrameComments ? "true" : "false",
+                                  m_AddPhysicsComments ? "true" : "false");
         m_Menu->Close();
     } else {
         engine->GetLogger()->Error("Failed to setup recording.");

@@ -16,7 +16,7 @@ void EventManager::RegisterListener(const std::string &eventName, sol::function 
     m_Listeners[eventName].push_back(std::move(callback));
 }
 
-template <typename ... Args>
+template <typename... Args>
 void EventManager::FireEvent(const std::string &eventName, Args... args) {
     auto it = m_Listeners.find(eventName);
     if (it == m_Listeners.end()) {

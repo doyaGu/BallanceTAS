@@ -53,8 +53,8 @@ public:
     void OnModifyConfig(const char *category, const char *key, IProperty *prop) override;
 
     void OnLoadObject(const char *filename, CKBOOL isMap, const char *masterName, CK_CLASSID filterClass,
-                  CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
-                  XObjectArray *objArray, CKObject *masterObj) override;
+                      CKBOOL addToScene, CKBOOL reuseMeshes, CKBOOL reuseMaterials, CKBOOL dynamic,
+                      XObjectArray *objArray, CKObject *masterObj) override;
     void OnLoadScript(const char *filename, CKBehavior *script) override;
 
     //================================================================

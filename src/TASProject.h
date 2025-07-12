@@ -120,6 +120,29 @@ public:
      */
     std::string GetCompatibilityMessage(bool currentLegacyMode) const;
 
+    // --- Translation Compatibility ---
+
+    /**
+     * @brief Checks if the record project can be accurately translated to script format.
+     * Only records with constant delta time can be translated accurately.
+     * @return True if the record has constant delta time and can be translated.
+     */
+    bool CanBeTranslated() const {
+        return IsRecordProject() && IsValid() && m_HasConstantDeltaTime;
+    }
+
+    /**
+     * @brief Gets whether the record has constant delta time across all frames.
+     * @return True if delta time is constant (required for accurate translation).
+     */
+    bool HasConstantDeltaTime() const { return m_HasConstantDeltaTime; }
+
+    /**
+     * @brief Gets a detailed message about translation compatibility.
+     * @return Explanation of why translation may not be possible.
+     */
+    std::string GetTranslationCompatibilityMessage() const;
+
     /**
      * @brief Gets all requirement strings for UI display.
      * @return Vector of requirement strings.
@@ -147,4 +170,5 @@ private:
 
     bool m_IsValid = false;
     bool m_IsZipProject = false;
+    bool m_HasConstantDeltaTime = true; // Whether delta time is constant across frames
 };

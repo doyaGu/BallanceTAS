@@ -29,11 +29,13 @@ class ScriptGenerator;
 struct GenerationOptions;
 
 typedef enum TASState {
-    TAS_IDLE           = 0,
-    TAS_PLAYING        = 0x1,
-    TAS_PLAY_PENDING   = 0x2,
-    TAS_RECORDING      = 0x4,
-    TAS_RECORD_PENDING = 0x8,
+    TAS_IDLE              = 0,
+    TAS_PLAYING           = 0x1,
+    TAS_PLAY_PENDING      = 0x2,
+    TAS_RECORDING         = 0x4,
+    TAS_RECORD_PENDING    = 0x8,
+    TAS_TRANSLATING       = 0x10,
+    TAS_TRANSLATE_PENDING = 0x20,
 } TASState;
 
 /**
@@ -73,6 +75,8 @@ public:
     bool IsPendingPlay() const { return (m_State & TAS_PLAY_PENDING) != 0; }
     bool IsRecording() const { return (m_State & TAS_RECORDING) != 0; }
     bool IsPendingRecord() const { return (m_State & TAS_RECORD_PENDING) != 0; }
+    bool IsTranslating() const { return (m_State & TAS_TRANSLATING) != 0; }
+    bool IsPendingTranslate() const { return (m_State & TAS_TRANSLATE_PENDING) != 0; }
     bool IsIdle() const { return m_State == TAS_IDLE; }
     bool IsShuttingDown() const { return m_ShuttingDown; }
 
@@ -158,6 +162,20 @@ public:
      */
     void StopReplay();
 
+    // === Translation Control (Record to Script Conversion) ===
+
+    /**
+     * @brief Sets up translation to start when next level loads.
+     * Translation simultaneously plays a record and records it to generate a script.
+     * @return True if translation mode was set successfully.
+     */
+    bool StartTranslation();
+
+    /**
+     * @brief Stops translation and generates the script.
+     */
+    void StopTranslation();
+
     // --- Subsystem Accessors ---
     // These are used by other parts of the framework (e.g., LuaApi) to get handles
     // to the necessary systems.
@@ -208,6 +226,12 @@ private:
     void StartReplayInternal();
 
     /**
+     * @brief Internal method to start translation when level loads.
+     * Sets up both record playback and recording simultaneously.
+     */
+    void StartTranslationInternal();
+
+    /**
      * @brief Immediately stops recording without timers (for shutdown).
      */
     void StopRecordingImmediate();
@@ -216,6 +240,11 @@ private:
      * @brief Immediately stops replay without timers (for shutdown).
      */
     void StopReplayImmediate();
+
+    /**
+     * @brief Immediately stops translation without timers (for shutdown).
+     */
+    void StopTranslationImmediate();
 
     /**
      * @brief Clears all registered callbacks to prevent duplicates.
@@ -237,6 +266,16 @@ private:
      * @brief Sets up callbacks for record playback mode.
      */
     void SetupRecordPlaybackCallbacks();
+
+    /**
+     * @brief Sets up callbacks for translation mode (combined recording + playback).
+     */
+    void SetupTranslationCallbacks();
+
+    /**
+     * @brief Handles automatic completion when record playback finishes during translation.
+     */
+    void OnTranslationPlaybackComplete();
 
     /**
      * @brief Determines the appropriate playback type for a project.
@@ -280,6 +319,24 @@ private:
             m_State &= ~(TAS_PLAYING | TAS_PLAY_PENDING); // Can't record and play simultaneously
         } else {
             m_State &= ~TAS_RECORDING;
+        }
+    }
+
+    void SetTranslatePending(bool pending) {
+        if (pending) {
+            m_State |= TAS_TRANSLATE_PENDING;
+            m_State &= ~(TAS_PLAY_PENDING | TAS_RECORD_PENDING); // Clear other pending states
+        } else {
+            m_State &= ~TAS_TRANSLATE_PENDING;
+        }
+    }
+
+    void SetTranslating(bool translating) {
+        if (translating) {
+            m_State |= TAS_TRANSLATING;
+            m_State &= ~(TAS_PLAYING | TAS_RECORDING); // Clear individual states
+        } else {
+            m_State &= ~TAS_TRANSLATING;
         }
     }
 

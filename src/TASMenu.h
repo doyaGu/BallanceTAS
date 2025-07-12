@@ -46,6 +46,8 @@ public:
     void StopTAS();
     void StartRecording();
     void StopRecording();
+    void TranslateProject(TASProject *project);
+    void StopTranslation();
 
     // State queries
     bool IsTASActive() const;
@@ -118,6 +120,7 @@ private:
     char m_AuthorName[128] = "Player";
     char m_Description[512] = "Recorded TAS run";
     int m_TargetLevelIndex = 0;
+    float m_UpdateRate = 132.0f;
 
     // Generation options
     bool m_AddFrameComments = true;

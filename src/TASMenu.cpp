@@ -125,8 +125,12 @@ void TASMenu::StopTAS() {
 
     bool wasRecording = m_Engine->IsRecording() || m_Engine->IsPendingRecord();
     bool wasPlaying = m_Engine->IsPlaying() || m_Engine->IsPendingPlay();
+    bool wasTranslating = m_Engine->IsTranslating() || m_Engine->IsPendingTranslate();
 
-    if (wasRecording) {
+    if (wasTranslating) {
+        m_Engine->StopTranslation();
+        m_Engine->GetLogger()->Info("Translation stopped from menu.");
+    } else if (wasRecording) {
         m_Engine->StopRecording();
         m_Engine->GetLogger()->Info("Recording stopped from menu.");
     } else if (wasPlaying) {
@@ -135,14 +139,14 @@ void TASMenu::StopTAS() {
     }
 
     // Clear project selection after stopping
-    if (wasPlaying) {
+    if (wasPlaying || wasTranslating) {
         m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
         m_CurrentProject = nullptr;
     }
 
     // Return to appropriate page
-    if (wasRecording) {
-        // If we were recording, refresh projects (new one might have been generated)
+    if (wasRecording || wasTranslating) {
+        // Refresh projects (new one might have been generated)
         RefreshProjects();
     }
 
@@ -183,11 +187,60 @@ void TASMenu::StopRecording() {
     }
 }
 
+void TASMenu::TranslateProject(TASProject *project) {
+    if (!project || !project->IsRecordProject() || !project->IsValid() || !m_Engine) {
+        m_Engine->GetLogger()->Error("Cannot translate: invalid record project or engine unavailable.");
+        return;
+    }
+
+    // Check if record can be accurately translated
+    if (!project->CanBeTranslated()) {
+        m_Engine->GetLogger()->Error("Cannot translate record: %s",
+                                   project->GetTranslationCompatibilityMessage().c_str());
+        return;
+    }
+
+    // Stop any current TAS activity
+    if (IsTASActive()) {
+        StopTAS();
+    }
+
+    m_Engine->GetLogger()->Info("Translating record to script: %s (%.1f Hz, constant timing)",
+                             project->GetName().c_str(), project->GetUpdateRate());
+
+    // Set the current project and start translation via TASEngine
+    m_Engine->GetProjectManager()->SetCurrentProject(project);
+    m_CurrentProject = project;
+
+    if (m_Engine->StartTranslation()) {
+        Close(); // Close menu so user can load a level
+    } else {
+        m_Engine->GetLogger()->Error("Failed to start translation from menu.");
+        // Reset project selection on failure
+        m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
+        m_CurrentProject = nullptr;
+    }
+}
+
+void TASMenu::StopTranslation() {
+    if (!m_Engine) return;
+
+    if (m_Engine->IsTranslating() || m_Engine->IsPendingTranslate()) {
+        m_Engine->StopTranslation();
+        m_Engine->GetLogger()->Info("Translation stopped from menu.");
+
+        // Refresh projects as a new script might have been generated
+        RefreshProjects();
+        ShowPage("TAS Projects");
+    }
+}
+
 bool TASMenu::IsTASActive() const {
     if (!m_Engine) return false;
 
     return m_Engine->IsPlaying() || m_Engine->IsPendingPlay() ||
-        m_Engine->IsRecording() || m_Engine->IsPendingRecord();
+        m_Engine->IsRecording() || m_Engine->IsPendingRecord() ||
+        m_Engine->IsTranslating() || m_Engine->IsPendingTranslate();
 }
 
 // TASListPage Implementation
@@ -270,6 +323,21 @@ void TASListPage::DrawTASStatus() {
         ImGui::SameLine();
         if (Bui::SmallButton("Stop")) {
             m_Menu->StopTAS();
+        }
+    } else if (engine->IsTranslating() || engine->IsPendingTranslate()) {
+        // Animated effect for translation
+        static float animTimer = 0.0f;
+        animTimer += ImGui::GetIO().DeltaTime;
+        float alpha = 0.6f + 0.4f * sin(animTimer * 3.0f); // Pulsing effect
+
+        ImVec4 translateColor = ImVec4(0.2f, 0.8f, 1.0f, alpha);
+        ImGui::PushStyleColor(ImGuiCol_Text, translateColor);
+        ImGui::Text("[TRANSLATING]");
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+        if (Bui::SmallButton("Stop")) {
+            m_Menu->StopTranslation();
         }
     } else if (engine->IsRecording() || engine->IsPendingRecord()) {
         // Blinking effect for recording
@@ -527,18 +595,18 @@ void TASDetailsPage::DrawActionButtons() {
     // Check current TAS state
     bool isTASActive = m_Menu->IsTASActive();
     bool canPlay = project->IsValid() && !isTASActive;
+    bool canTranslate = project->CanBeTranslated() && !isTASActive;
 
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
 
     ImGui::NewLine();
 
-    const ImVec2 buttonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
-
-    ImGui::SetCursorPosX(buttonPos.x);
-
     if (isTASActive) {
         // Show stop button if any TAS is active
+        const ImVec2 buttonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
+        ImGui::SetCursorPosX(buttonPos.x);
+
         if (Bui::MainButton("Stop TAS")) {
             m_Menu->StopTAS();
         }
@@ -547,8 +615,12 @@ void TASDetailsPage::DrawActionButtons() {
 
         ImGui::SetCursorPosX(menuPos.x);
 
-        // Show status
-        if (engine->IsPlaying() || engine->IsPendingPlay()) {
+        // Show status based on what's active
+        if (engine->IsTranslating() || engine->IsPendingTranslate()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 1.0f, 1.0f));
+            Page::WrappedText("Translation in progress", menuSize.x);
+            ImGui::PopStyleColor();
+        } else if (engine->IsPlaying() || engine->IsPendingPlay()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
             Page::WrappedText("TAS is currently playing", menuSize.x);
             ImGui::PopStyleColor();
@@ -558,32 +630,108 @@ void TASDetailsPage::DrawActionButtons() {
             ImGui::PopStyleColor();
         }
     } else {
-        // Show play button when idle
-        if (!canPlay) {
-            ImGui::BeginDisabled();
-        }
+        // Show action buttons when idle
+        if (project->IsRecordProject()) {
+            // For record projects, show both Play and Translate options
 
-        if (Bui::MainButton("Play TAS")) {
-            m_Menu->PlayProject(project);
-        }
+            // Play button
+            const ImVec2 playButtonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
+            ImGui::SetCursorPosX(playButtonPos.x);
 
-        if (!canPlay) {
-            ImGui::EndDisabled();
-        }
+            if (!canPlay) {
+                ImGui::BeginDisabled();
+            }
 
-        ImGui::NewLine();
+            if (Bui::MainButton("Play Record")) {
+                m_Menu->PlayProject(project);
+            }
 
-        // Show status information
-        ImGui::SetCursorPosX(menuPos.x * 1.05f);
+            if (!canPlay) {
+                ImGui::EndDisabled();
+            }
 
-        if (!project->IsValid()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
-            Page::WrappedText("Cannot play: Project has validation issues", menuSize.x);
-            ImGui::PopStyleColor();
+            ImGui::NewLine();
+
+            // Translate button (below play button)
+            ImGui::SetCursorPosX(playButtonPos.x);
+
+            if (!canTranslate) {
+                ImGui::BeginDisabled();
+            }
+
+            if (Bui::MainButton("Translate to Script")) {
+                m_Menu->TranslateProject(project);
+            }
+
+            if (!canTranslate) {
+                ImGui::EndDisabled();
+            }
+
+            ImGui::NewLine();
+
+            // Status information
+            ImGui::SetCursorPosX(menuPos.x * 1.05f);
+
+            if (!project->IsValid()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
+                Page::WrappedText("Cannot use: Project has validation issues", menuSize.x);
+                ImGui::PopStyleColor();
+            } else if (!engine->GetGameInterface()->IsLegacyMode()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
+                Page::WrappedText("Note: Record projects require legacy mode to be enabled", menuSize.x);
+                ImGui::PopStyleColor();
+            } else if (!project->CanBeTranslated()) {
+                // Show translation compatibility issue
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.3f, 1.0f));
+                std::string compatMsg = "Translation not recommended: " + project->GetTranslationCompatibilityMessage();
+                Page::WrappedText(compatMsg.c_str(), menuSize.x);
+                ImGui::PopStyleColor();
+
+                ImGui::SetCursorPosX(menuPos.x * 1.05f);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
+                Page::WrappedText("Playing the record is still possible for viewing", menuSize.x, 0.9f);
+                ImGui::PopStyleColor();
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
+                Page::WrappedText("Ready - Load a level after clicking an option", menuSize.x);
+                ImGui::PopStyleColor();
+
+                ImGui::SetCursorPosX(menuPos.x * 1.05f);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
+                Page::WrappedText("Translate converts .tas records to script format", menuSize.x, 0.9f);
+                ImGui::PopStyleColor();
+            }
         } else {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
-            Page::WrappedText("Ready to play - Load a level after clicking Play TAS", menuSize.x);
-            ImGui::PopStyleColor();
+            // For script projects, show only Play button (existing behavior)
+            const ImVec2 buttonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
+            ImGui::SetCursorPosX(buttonPos.x);
+
+            if (!canPlay) {
+                ImGui::BeginDisabled();
+            }
+
+            if (Bui::MainButton("Play TAS")) {
+                m_Menu->PlayProject(project);
+            }
+
+            if (!canPlay) {
+                ImGui::EndDisabled();
+            }
+
+            ImGui::NewLine();
+
+            // Show status information
+            ImGui::SetCursorPosX(menuPos.x * 1.05f);
+
+            if (!project->IsValid()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
+                Page::WrappedText("Cannot play: Project has validation issues", menuSize.x);
+                ImGui::PopStyleColor();
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
+                Page::WrappedText("Ready to play - Load a level after clicking Play TAS", menuSize.x);
+                ImGui::PopStyleColor();
+            }
         }
     }
 }

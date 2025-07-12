@@ -3,6 +3,10 @@
 #include <filesystem>
 #include <fstream>
 
+#include <CKGlobals.h>
+
+#include "RecordPlayer.h"
+
 namespace fs = std::filesystem;
 
 // Constructor for script-based projects
@@ -68,30 +72,102 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     // Record projects ALWAYS require legacy mode
     m_LegacyMode = true;
 
-    // Try to parse some basic info from the file if possible
+    // Try to parse timing and basic info from the file
     try {
         std::ifstream file(tasFilePath, std::ios::binary);
-        if (file) {
-            // Read just the header to verify it's a valid .tas file
-            uint32_t uncompressedSize;
-            file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
-
-            if (file.gcount() == sizeof(uncompressedSize) && uncompressedSize > 0) {
-                // File appears to be valid
-
-                // Update description with file size info
-                auto fileSize = fs::file_size(tasFilePath);
-                auto frameCount = uncompressedSize / 8; // Each FrameData is 8 bytes
-
-                m_Description = "Legacy TAS record (" + std::to_string(frameCount) + " frames, " +
-                    std::to_string(fileSize) + " bytes)";
-
-                m_IsValid = true;
-            }
+        if (!file.is_open()) {
+            m_IsValid = false;
+            return;
         }
+
+        // Read the 4-byte header for uncompressed size
+        uint32_t uncompressedSize;
+        file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
+        if (file.gcount() != sizeof(uncompressedSize)) {
+            m_IsValid = false;
+            return;
+        }
+
+        if (uncompressedSize == 0) {
+            // Empty file - technically valid but no useful data
+            m_Description = "Empty TAS record file";
+            m_IsValid = true;
+            return;
+        }
+
+        // Validate that uncompressed size makes sense
+        const size_t frameDataSize = sizeof(float) + sizeof(int); // deltaTime + keyStates
+        if (uncompressedSize % frameDataSize != 0) {
+            m_IsValid = false;
+            return;
+        }
+
+        // Calculate frame count
+        size_t frameCount = uncompressedSize / frameDataSize;
+
+        // Read the compressed payload
+        file.seekg(0, std::ios::end);
+        std::streampos fileSize = file.tellg();
+        file.seekg(sizeof(uncompressedSize), std::ios::beg);
+
+        size_t compressedSize = static_cast<size_t>(fileSize) - sizeof(uncompressedSize);
+        if (compressedSize == 0) {
+            m_IsValid = false;
+            return;
+        }
+
+        std::vector<char> compressedData(compressedSize);
+        file.read(compressedData.data(), compressedSize);
+        if (static_cast<size_t>(file.gcount()) != compressedSize) {
+            m_IsValid = false;
+            return;
+        }
+        file.close();
+
+        // Decompress the data
+        char *uncompressedData = CKUnPackData(static_cast<int>(uncompressedSize), compressedData.data(), compressedSize);
+        if (!uncompressedData) {
+            m_IsValid = false;
+            return;
+        }
+
+        // Parse timing information from the frames
+        if (frameCount > 0) {
+            // Cast to frame data array
+            const auto *frames = reinterpret_cast<const RecordFrameData *>(uncompressedData);
+
+            bool hasConstantDeltaTime = true;
+            float initialDeltaTime = frames[0].deltaTime;
+            for (size_t i = 1; i < frameCount; ++i) {
+                float deltaTime = frames[i].deltaTime;
+                if (deltaTime != initialDeltaTime) {
+                    // If delta time varies from the first frame, we need to check consistency
+                    hasConstantDeltaTime = false;
+                }
+            }
+
+            m_UpdateRate = 1000.0f / initialDeltaTime; // Convert from ms to Hz
+
+            // Store delta time consistency information
+            m_HasConstantDeltaTime = hasConstantDeltaTime;
+        } else {
+            m_HasConstantDeltaTime = true; // Empty record is technically constant
+        }
+
+        // Clean up decompressed data
+        CKDeletePointer(uncompressedData);
+
+        // Update description
+        std::ostringstream desc;
+        desc << "Legacy TAS record (" << frameCount << " frames)";
+        m_Description = desc.str();
+
+        m_IsValid = true;
     } catch (const std::exception &) {
-        // If we can't read the file, mark as invalid
+        // If we can't read the file properly, mark as invalid
         m_IsValid = false;
+        m_HasConstantDeltaTime = false;
+        m_Description = "Invalid TAS record file";
     }
 }
 
@@ -165,11 +241,37 @@ std::string TASProject::GetCompatibilityMessage(bool currentLegacyMode) const {
     return message;
 }
 
+std::string TASProject::GetTranslationCompatibilityMessage() const {
+    if (!IsRecordProject()) {
+        return "Not a record project";
+    }
+
+    if (!IsValid()) {
+        return "Invalid record file";
+    }
+
+    if (!m_HasConstantDeltaTime) {
+        std::ostringstream msg;
+        msg << "Variable timing detected"
+            << "Only records with constant delta time can be translated accurately to scripts.";
+        return msg.str();
+    }
+
+    return "Compatible - constant timing detected";
+}
+
 std::vector<std::string> TASProject::GetRequirements() const {
     std::vector<std::string> requirements;
 
     if (m_LegacyMode) {
         requirements.emplace_back("Legacy Mode");
+    }
+
+    // Add translation-specific requirements for record projects
+    if (IsRecordProject() && IsValid()) {
+        if (!m_HasConstantDeltaTime) {
+            requirements.emplace_back("Variable Timing (Translation Not Recommended)");
+        }
     }
 
     return requirements;

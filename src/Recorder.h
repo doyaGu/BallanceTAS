@@ -202,6 +202,19 @@ public:
     const GenerationOptions &GetGenerationOptions() const { return *m_GenerationOptions; }
 
     /**
+     * @brief Sets whether this recording session is part of a translation.
+     * This affects metadata and generation options.
+     * @param isTranslation True if this is a translation session.
+     */
+    void SetTranslationMode(bool isTranslation) { m_IsTranslationMode = isTranslation; }
+
+    /**
+     * @brief Gets whether this is a translation session.
+     * @return True if recording as part of translation.
+     */
+    bool IsTranslationMode() const { return m_IsTranslationMode; }
+
+    /**
      * @brief Sets a callback to be called when recording starts/stops.
      * @param callback Function to call with recording state.
      */
@@ -262,6 +275,7 @@ private:
 
     // Recording state
     bool m_IsRecording = false;
+    bool m_IsTranslationMode = false;
 
     // Configuration
     bool m_AutoGenerateOnStop = true; // Auto-generate by default

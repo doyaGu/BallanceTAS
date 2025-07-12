@@ -218,6 +218,44 @@ bool UIManager::IsReplaying() const {
     return m_Engine && (m_Engine->IsPlaying() || m_Engine->IsPendingPlay());
 }
 
+// === Translation Control ===
+
+bool UIManager::StartTranslation() {
+    if (!m_Engine) return false;
+
+    bool success = m_Engine->StartTranslation();
+    if (success && m_Engine) {
+        m_Engine->GetLogger()->Info("Translation started via UI.");
+    }
+    return success;
+}
+
+bool UIManager::StopTranslation() {
+    if (!m_Engine) return false;
+
+    if (!m_Engine->IsTranslating() && !m_Engine->IsPendingTranslate()) {
+        return false;
+    }
+
+    m_Engine->StopTranslation();
+    if (m_Engine) {
+        m_Engine->GetLogger()->Info("Translation stopped via UI.");
+    }
+    return true;
+}
+
+void UIManager::ToggleTranslation() {
+    if (IsTranslating()) {
+        StopTranslation();
+    } else {
+        StartTranslation();
+    }
+}
+
+bool UIManager::IsTranslating() const {
+    return m_Engine && (m_Engine->IsTranslating() || m_Engine->IsPendingTranslate());
+}
+
 // === OSD Control ===
 
 void UIManager::SetOSDVisible(bool visible) {
@@ -302,9 +340,11 @@ void UIManager::SetMode(UIMode mode) {
 void UIManager::UpdateHotkeys() {
     if (!m_Engine) return;
 
-    // Handle stop key for both playback and recording
+    // Handle stop key for playback, recording, and translation
     if (ImGui::IsKeyPressed(m_StopHotkey)) {
-        if (m_Engine->IsRecording()) {
+        if (m_Engine->IsTranslating()) {
+            StopTranslation();
+        } else if (m_Engine->IsRecording()) {
             StopRecording();
         } else if (m_Engine->IsPlaying()) {
             StopReplay();

@@ -135,6 +135,31 @@ public:
      */
     bool IsReplaying() const;
 
+    // === Translation Control ===
+
+    /**
+     * @brief Starts translating the current record project to script format.
+     * @return True if translation started successfully.
+     */
+    bool StartTranslation();
+
+    /**
+     * @brief Stops translation.
+     * @return True if translation was stopped.
+     */
+    bool StopTranslation();
+
+    /**
+     * @brief Toggles translation state.
+     */
+    void ToggleTranslation();
+
+    /**
+     * @brief Checks if currently translating.
+     * @return True if translation is active or pending.
+     */
+    bool IsTranslating() const;
+
     // --- OSD Control ---
 
     /**

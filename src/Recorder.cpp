@@ -58,6 +58,9 @@ void Recorder::Start() {
 
     m_IsRecording = true;
     NotifyStatusChange(true);
+
+    const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
+    m_Engine->GetLogger()->Info("Started %s session.", modeStr);
 }
 
 std::vector<FrameData> Recorder::Stop() {
@@ -139,32 +142,39 @@ bool Recorder::GenerateScript() {
             }
         }
 
-        // Ensure description is not empty
-        if (options.description.empty()) {
+        // Update description for translation mode
+        if (m_IsTranslationMode) {
+            if (options.description.find("Translated from") == std::string::npos) {
+                options.description = "Translated from legacy record: " + options.description;
+            }
+        } else if (options.description.empty()) {
             options.description = "Auto-recorded TAS run";
         }
 
-        m_Engine->GetLogger()->Info("Auto-generating TAS script: %s", options.projectName.c_str());
+        const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
+        m_Engine->GetLogger()->Info("Auto-generating TAS script from %s: %s", modeStr, options.projectName.c_str());
 
         // Generate the script
         scriptGenerator->GenerateAsync(
             m_Frames, options,
-            [this, options](bool success) {
+            [this, options, modeStr](bool success) {
                 if (success) {
-                    m_Engine->GetLogger()->Info("Script auto-generated successfully: %s", options.projectName.c_str());
+                    m_Engine->GetLogger()->Info("Script auto-generated successfully from %s: %s", modeStr,
+                                                options.projectName.c_str());
                     // Refresh projects in project manager
                     if (auto *projectManager = m_Engine->GetProjectManager()) {
                         projectManager->RefreshProjects();
                     }
                 } else {
-                    m_Engine->GetLogger()->Error(
-                        "Failed to auto-generate script: %s", options.projectName.c_str());
+                    m_Engine->GetLogger()->Error("Failed to auto-generate script from %s: %s", modeStr,
+                                                 options.projectName.c_str());
                 }
             });
 
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception during script auto-generation: %s", e.what());
+        const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
+        m_Engine->GetLogger()->Error("Exception during script auto-generation from %s: %s", modeStr, e.what());
         return false;
     }
 }

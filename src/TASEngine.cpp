@@ -129,7 +129,7 @@ void TASEngine::Shutdown() {
 }
 
 void TASEngine::Start() {
-    if (m_ShuttingDown || (m_State & (TAS_PLAYING | TAS_RECORDING))) {
+    if (m_ShuttingDown || (m_State & (TAS_PLAYING | TAS_RECORDING | TAS_TRANSLATING))) {
         return; // Already active or shutting down
     }
 
@@ -138,6 +138,12 @@ void TASEngine::Start() {
             m_GameInterface->ResetPhysicsTime();
         }
     });
+
+    // Check for translation mode first
+    if (IsPendingTranslate()) {
+        StartTranslationInternal();
+        return;
+    }
 
     // Check if we should start recording instead of playing
     if (IsPendingRecord()) {
@@ -157,7 +163,9 @@ void TASEngine::Stop() {
         return;
     }
 
-    if (IsRecording()) {
+    if (IsTranslating()) {
+        StopTranslation();
+    } else if (IsRecording()) {
         StopRecording();
     } else if (IsPlaying()) {
         StopReplay();
@@ -347,6 +355,115 @@ void TASEngine::StopReplayImmediate() {
     }
 }
 
+// === Translation Control ===
+
+bool TASEngine::StartTranslation() {
+    if (m_ShuttingDown || IsTranslating() || IsPlaying() || IsRecording() ||
+        IsPendingPlay() || IsPendingRecord()) {
+        GetLogger()->Warn("Cannot start translation: TAS is already active or shutting down.");
+        return false;
+    }
+
+    TASProject *project = m_ProjectManager->GetCurrentProject();
+    if (!project || !project->IsRecordProject() || !project->IsValid()) {
+        GetLogger()->Error("Translation requires a valid record project (.tas file).");
+        return false;
+    }
+
+    // Check if record can be accurately translated
+    if (!project->CanBeTranslated()) {
+        GetLogger()->Error("Record cannot be accurately translated: %s",
+                           project->GetTranslationCompatibilityMessage().c_str());
+        return false;
+    }
+
+    // Check legacy mode requirement for record projects
+    if (!m_GameInterface->IsLegacyMode()) {
+        GetLogger()->Error("Translation of record projects requires legacy mode to be enabled.");
+        return false;
+    }
+
+    if (!m_Recorder || !m_RecordPlayer) {
+        GetLogger()->Error("Translation subsystems not initialized.");
+        return false;
+    }
+
+    SetTranslatePending(true);
+    GetLogger()->Info("Translation setup complete. Will start when level loads.");
+    GetLogger()->Info("Translating record: %s", project->GetName().c_str());
+    return true;
+}
+
+void TASEngine::StopTranslation() {
+    if (m_ShuttingDown) {
+        StopTranslationImmediate();
+        return;
+    }
+
+    if (!IsTranslating() && !IsPendingTranslate()) {
+        return;
+    }
+
+    try {
+        // Stop both record playback and recording
+        if (m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
+            m_RecordPlayer->Stop();
+        }
+
+        if (m_Recorder && m_Recorder->IsRecording()) {
+            // This will auto-generate the script if configured
+            m_Recorder->Stop();
+        }
+    } catch (const std::exception &e) {
+        GetLogger()->Error("Exception stopping translation: %s", e.what());
+    }
+
+    // Clean up state
+    if (m_InputSystem) {
+        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->SetEnabled(false);
+    }
+
+    // Reset keyboard state to ensure clean state
+    memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+
+    ClearCallbacks();
+    SetTranslating(false);
+    SetTranslatePending(false);
+
+    m_GameInterface->SetUIMode(UIMode::Idle);
+    GetLogger()->Info("Translation completed and script generated.");
+}
+
+void TASEngine::StopTranslationImmediate() {
+    try {
+        // Stop both subsystems immediately
+        if (m_RecordPlayer) {
+            m_RecordPlayer->Stop();
+        }
+        if (m_Recorder) {
+            m_Recorder->Stop();
+        }
+
+        // Clean up input state
+        if (m_InputSystem) {
+            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->SetEnabled(false);
+        }
+
+        // Reset keyboard state
+        memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+
+        SetTranslating(false);
+        SetTranslatePending(false);
+
+        m_GameInterface->SetUIMode(UIMode::Idle);
+        GetLogger()->Info("Translation stopped immediately.");
+    } catch (const std::exception &e) {
+        GetLogger()->Error("Exception during immediate translation stop: %s", e.what());
+    }
+}
+
 // === Internal Start Methods ===
 
 void TASEngine::StartRecordingInternal() {
@@ -462,6 +579,77 @@ void TASEngine::StartReplayInternal() {
     GetLogger()->Info("Started playing TAS project: %s (%s mode)",
                       project->GetName().c_str(),
                       playbackType == PlaybackType::Script ? "Script" : "Record");
+}
+
+void TASEngine::StartTranslationInternal() {
+    if (m_ShuttingDown) {
+        return;
+    }
+
+    TASProject *project = m_ProjectManager->GetCurrentProject();
+    if (!project || !project->IsRecordProject() || !project->IsValid()) {
+        GetLogger()->Error("No valid record project selected for translation.");
+        Stop();
+        return;
+    }
+
+    // Clear any existing callbacks first to prevent duplicates
+    ClearCallbacks();
+
+    // Set up translation callbacks (combines recording and playback)
+    SetupTranslationCallbacks();
+
+    SetCurrentTick(0);
+
+    m_GameInterface->AcquireKeyBindings();
+
+    // For translation, InputSystem should be DISABLED
+    // We want RecordPlayer to control input directly, and Recorder to capture it
+    if (m_InputSystem) {
+        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->SetEnabled(false);
+    }
+
+    try {
+        // Configure recorder for translation
+        if (m_Recorder) {
+            // Set up generation options for translation
+            GenerationOptions options;
+            options.projectName = project->GetName() + "_Script";
+            options.authorName = project->GetAuthor();
+            options.targetLevel = project->GetTargetLevel();
+            options.description = "Translated from legacy record: " + project->GetName();
+            options.updateRate = project->GetUpdateRate();
+            options.addFrameComments = true;
+            options.addPhysicsComments = false;
+
+            m_Recorder->SetGenerationOptions(options);
+            m_Recorder->SetUpdateRate(project->GetUpdateRate());
+            m_Recorder->SetAutoGenerate(true);
+            m_Recorder->SetTranslationMode(true); // Mark as translation mode
+        }
+
+        // Start both record playback and recording
+        bool recordSuccess = m_RecordPlayer && m_RecordPlayer->LoadAndPlay(project);
+        bool recordingSuccess = m_Recorder && !m_Recorder->IsRecording() &&
+            (m_Recorder->Start(), m_Recorder->IsRecording());
+
+        if (!recordSuccess || !recordingSuccess) {
+            GetLogger()->Error("Failed to start translation subsystems.");
+            Stop();
+            return;
+        }
+    } catch (const std::exception &e) {
+        GetLogger()->Error("Exception during translation start: %s", e.what());
+        Stop();
+        return;
+    }
+
+    SetTranslatePending(false);
+    SetTranslating(true);
+
+    m_GameInterface->SetUIMode(UIMode::Recording); // Show as recording since we're generating a script
+    GetLogger()->Info("Started translation of record: %s", project->GetName().c_str());
 }
 
 PlaybackType TASEngine::DeterminePlaybackType(const TASProject *project) const {
@@ -598,6 +786,71 @@ void TASEngine::SetupRecordPlaybackCallbacks() {
                 if (m_RecordPlayer) {
                     m_RecordPlayer->Stop();
                 }
+            }
+        }
+    });
+}
+
+void TASEngine::SetupTranslationCallbacks() {
+    if (m_ShuttingDown) {
+        return;
+    }
+
+    // TimeManager callback: Use delta time from record data
+    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!m_ShuttingDown && IsTranslating()) {
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            TASProject *project = m_ProjectManager->GetCurrentProject();
+            if (project && project->IsValid()) {
+                timeManager->SetLastDeltaTime(project->GetDeltaTime());
+            }
+        }
+    });
+
+    // InputManager callback: Apply record input and capture it for recording
+    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!m_ShuttingDown && IsTranslating()) {
+            try {
+                auto *inputManager = static_cast<CKInputManager *>(man);
+                unsigned char *keyboardState = inputManager->GetKeyboardState();
+
+                // STEP 1: Apply input from record player
+                if (m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
+                    m_RecordPlayer->Tick(m_CurrentTick, keyboardState);
+                }
+
+                // STEP 2: Capture the applied input with recorder
+                if (m_Recorder && m_Recorder->IsRecording()) {
+                    m_Recorder->Tick(m_CurrentTick, keyboardState);
+                }
+
+                // STEP 3: Increment the current tick for next frame
+                IncrementCurrentTick();
+
+                // STEP 4: Check if record playback has finished
+                if (m_RecordPlayer && !m_RecordPlayer->IsPlaying() && IsTranslating()) {
+                    // Record playback completed, finish translation
+                    OnTranslationPlaybackComplete();
+                }
+            } catch (const std::exception &e) {
+                GetLogger()->Error("Translation callback error: %s", e.what());
+                StopTranslation();
+            }
+        }
+    });
+}
+
+void TASEngine::OnTranslationPlaybackComplete() {
+    GetLogger()->Info("Record playback completed during translation. Generating script...");
+
+    // Add a small delay to ensure all data is captured, then stop translation
+    AddTimer(2ul, [this]() {
+        if (IsTranslating()) {
+            StopTranslation();
+
+            // Refresh projects to show the newly generated script
+            if (m_ProjectManager) {
+                m_ProjectManager->RefreshProjects();
             }
         }
     });

@@ -329,12 +329,7 @@ std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState 
 
         KeyTransition transition = KeyTransition::NoChange;
 
-        // Check for the special case: pressed and released in the same frame
-        if (isCurrentPressed && isCurrentReleased) {
-            // Key was pressed and released in the same frame
-            // This happens when the key was pressed and released within a single frame
-            transition = KeyTransition::PressedAndReleased;
-        } else if (!wasPrevPressed && isCurrentPressed) {
+        if (!wasPrevPressed && isCurrentPressed) {
             // Check for key press transition
             // Key went from not-pressed to pressed
             transition = KeyTransition::Pressed;
@@ -449,16 +444,6 @@ std::string ScriptGenerator::BuildScript(const std::vector<FrameData> &frames,
                     builder.AddComment("Release " + keyEvent.key + " at frame " + std::to_string(keyEvent.frame));
                 }
                 builder.AddLine("tas.key_up(\"" + keyEvent.key + "\")");
-            } else if (keyEvent.transition == KeyTransition::PressedAndReleased) {
-                // Key was pressed and released in the same frame
-                // Use tas.press() for single-frame press/release
-                if (options.addFrameComments) {
-                    builder.AddComment(
-                        "Press and release " + keyEvent.key + " in single frame " + std::to_string(keyEvent.frame));
-                }
-                builder.AddLine("tas.press(\"" + keyEvent.key + "\")");
-
-                // Don't track this in currentlyPressed since it's immediately released
             }
         } else if (std::holds_alternative<GameEvent>(event)) {
             const auto &gameEvent = std::get<GameEvent>(event);

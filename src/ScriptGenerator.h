@@ -19,7 +19,6 @@ enum class KeyTransition {
     NoChange,          // Key state didn't change
     Pressed,           // Key was just pressed (IDLE -> PRESSED)
     Released,          // Key was just released (PRESSED -> RELEASED/IDLE)
-    PressedAndReleased // Key was pressed and released in the same frame
 };
 
 /**

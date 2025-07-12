@@ -111,12 +111,11 @@ private:
     bool LoadRecord(const std::string &recordPath);
 
     /**
-     * @brief Applies legacy keyboard state input for the current frame.
-     * @param currentFrame The current frame's input data.
-     * @param nextFrame The next frame's input data (for state transitions).
+     * @brief Applies legacy keyboard state directly to the keyboard buffer.
+     * @param frameData The frame data containing key states.
      * @param keyboardState The game's keyboard state buffer.
      */
-    void ApplyFrameInput(const RecordFrameData &currentFrame, const RecordFrameData &nextFrame, unsigned char *keyboardState);
+    void ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState);
 
     /**
      * @brief Converts the current and next key states to a keyboard state byte.

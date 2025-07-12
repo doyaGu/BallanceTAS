@@ -124,6 +124,8 @@ void TASEngine::Shutdown() {
     } catch (const std::exception &e) {
         GetLogger()->Error("Exception during TASEngine shutdown: %s", e.what());
     }
+
+    m_GameInterface = nullptr;
 }
 
 void TASEngine::Start() {
@@ -360,9 +362,7 @@ void TASEngine::StartRecordingInternal() {
 
     SetCurrentTick(0);
 
-    if (m_GameInterface) {
-        m_GameInterface->AcquireKeyBindings();
-    }
+    m_GameInterface->AcquireKeyBindings();
 
     // Ensure InputSystem is DISABLED during recording
     // We want to capture the user's actual input, not override it
@@ -418,9 +418,7 @@ void TASEngine::StartReplayInternal() {
 
     SetCurrentTick(0);
 
-    if (m_GameInterface) {
-        m_GameInterface->AcquireKeyBindings();
-    }
+    m_GameInterface->AcquireKeyBindings();
 
     // Handle InputSystem differently for different playback types
     if (m_InputSystem) {

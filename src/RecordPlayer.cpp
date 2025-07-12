@@ -48,7 +48,7 @@ bool RecordPlayer::LoadAndPlay(const TASProject *project) {
     m_IsPlaying = true;
 
     m_Engine->GetLogger()->Info("Record '%s' loaded and playback started (%zu frames).",
-                                          project->GetName().c_str(), m_Frames.size());
+                                project->GetName().c_str(), m_TotalFrames);
     return true;
 }
 
@@ -56,6 +56,7 @@ void RecordPlayer::Stop() {
     if (!m_IsPlaying) return;
 
     m_IsPlaying = false;
+    m_TotalFrames = 0;
     m_Frames.clear();
     m_Frames.shrink_to_fit();
 
@@ -68,19 +69,18 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
     }
 
     // Check if we've reached the end
-    if (currentTick >= m_Frames.size()) {
+    if (currentTick >= m_TotalFrames) {
         m_Engine->GetLogger()->Info("Record playback completed naturally.");
         Stop();
         return;
     }
 
     // Apply input for the current frame and advance
-    const RecordFrameData &frameData = m_Frames[currentTick];
-    ApplyFrameInput(frameData, keyboardState);
+    ApplyFrameInput(m_Frames[currentTick], m_Frames[currentTick + 1], keyboardState);
 }
 
 float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {
-    if (!m_IsPlaying || currentTick >= m_Frames.size()) {
+    if (!m_IsPlaying || currentTick >= m_TotalFrames) {
         return 1000.0f / 132.0f; // Default delta time
     }
     return m_Frames[currentTick].deltaTime;
@@ -133,7 +133,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         file.close();
 
         // --- 4. Decompress using CKUnPackData function ---
-        char *uncompressedData = CKUnPackData(uncompressedSize, compressedData.data(), compressedSize);
+        char *uncompressedData = CKUnPackData(static_cast<int>(uncompressedSize), compressedData.data(), compressedSize);
         if (!uncompressedData) {
             m_Engine->GetLogger()->Error("Failed to decompress TAS record data using CKUnPackData.");
             return false;
@@ -141,13 +141,14 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
 
         // --- 5. Copy the decompressed data to our frame vector ---
         size_t frameCount = uncompressedSize / sizeof(RecordFrameData);
-        m_Frames.resize(frameCount);
+        m_TotalFrames = frameCount;
+        m_Frames.resize(frameCount + 1); // +1 for the empty frame at the end
         memcpy(m_Frames.data(), uncompressedData, uncompressedSize);
 
         // Clean up the decompressed data
         CKDeletePointer(uncompressedData);
 
-        m_Engine->GetLogger()->Info("Record loaded successfully: %zu frames", m_Frames.size());
+        m_Engine->GetLogger()->Info("Record loaded successfully: %zu frames", m_TotalFrames);
         return true;
     } catch (const std::exception &e) {
         m_Engine->GetLogger()->Error("Exception loading record: %s", e.what());
@@ -155,17 +156,35 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
     }
 }
 
-void RecordPlayer::ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState) {
-    // We directly set the keyboard state bytes based on the key state bits
-    const RecordKeyState &state = frameData.keyState;
+void RecordPlayer::ApplyFrameInput(const RecordFrameData &currentFrame, const RecordFrameData &nextFrame,
+                                   unsigned char *keyboardState) {
+    if (!keyboardState) {
+        m_Engine->GetLogger()->Error("Keyboard state buffer is null. Cannot apply input.");
+        return;
+    }
 
-    // Set keyboard state bytes directly to 0 or 1 based on bit fields
-    keyboardState[m_KeyUp] = state.key_up;
-    keyboardState[m_KeyDown] = state.key_down;
-    keyboardState[m_KeyLeft] = state.key_left;
-    keyboardState[m_KeyRight] = state.key_right;
-    keyboardState[CKKEY_Q] = state.key_q;
-    keyboardState[m_KeyShift] = state.key_shift;
-    keyboardState[m_KeySpace] = state.key_space;
-    keyboardState[CKKEY_ESCAPE] = state.key_esc;
+    // We directly set the keyboard state bytes based on the key state bits
+    const RecordKeyState &current = currentFrame.keyState;
+    const RecordKeyState &next = nextFrame.keyState;
+
+    // Set keyboard state
+    keyboardState[m_KeyUp] = ConvertKeyState(current.key_up, next.key_up);
+    keyboardState[m_KeyDown] = ConvertKeyState(current.key_down, next.key_down);
+    keyboardState[m_KeyLeft] = ConvertKeyState(current.key_left, next.key_left);
+    keyboardState[m_KeyRight] = ConvertKeyState(current.key_right, next.key_right);
+    keyboardState[CKKEY_Q] = ConvertKeyState(current.key_q, next.key_q);
+    keyboardState[m_KeyShift] = ConvertKeyState(current.key_shift, next.key_shift);
+    keyboardState[m_KeySpace] = ConvertKeyState(current.key_space, next.key_space);
+    keyboardState[CKKEY_ESCAPE] = ConvertKeyState(current.key_esc, next.key_esc);
+}
+
+int RecordPlayer::ConvertKeyState(bool current, bool next) {
+    int state = KS_IDLE; // Default to idle state
+    if (current) {
+        state |= KS_PRESSED; // Key is currently pressed
+    }
+    if (!next) {
+        state |= KS_RELEASED; // Key was just released
+    }
+    return state;
 }

@@ -252,8 +252,8 @@ std::string TASProject::GetTranslationCompatibilityMessage() const {
 
     if (!m_HasConstantDeltaTime) {
         std::ostringstream msg;
-        msg << "Variable timing detected"
-            << "Only records with constant delta time can be translated accurately to scripts.";
+        msg << "Variable timing detected. "
+            << "Only records with constant delta time can be translated to scripts.";
         return msg.str();
     }
 

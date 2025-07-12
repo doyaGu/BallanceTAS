@@ -81,7 +81,7 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
 
 float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {
     if (!m_IsPlaying || currentTick >= m_Frames.size()) {
-        return 1.0f / 132.0f * 1000.0f; // Default delta time
+        return 1000.0f / 132.0f; // Default delta time
     }
     return m_Frames[currentTick].deltaTime;
 }

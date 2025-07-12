@@ -138,6 +138,7 @@ std::string ScriptGenerator::FindAvailableProjectName(const std::string &baseNam
 void ScriptGenerator::GenerateAsync(const std::vector<FrameData> &frames,
                                     const GenerationOptions &options,
                                     const std::function<void(bool)> &onComplete) {
+    // TODO: Need wait after pressing Alt-F4
     std::thread([this, frames, options, onComplete]() {
         bool success = Generate(frames, options);
 
@@ -508,7 +509,7 @@ std::string ScriptGenerator::GenerateManifest(const GenerationOptions &options) 
     ss << "  level = \"" << options.targetLevel << "\",\n";
     ss << "  entry_script = \"main.lua\",\n";
     ss << "  description = \"" << options.description << "\",\n";
-    ss << "  update_rate = 132, -- Standard Ballance physics rate\n";
+    ss << "  update_rate = " << options.updateRate << ",\n";
     if (m_Engine->GetGameInterface()->IsLegacyMode()) {
         ss << "  legacy_mode = true,\n";
     }

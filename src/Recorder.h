@@ -265,7 +265,7 @@ private:
 
     // Configuration
     bool m_AutoGenerateOnStop = true; // Auto-generate by default
-    float m_DeltaTime = 1 / 132.0f * 1000;
+    float m_DeltaTime = 1000 / 132.0f; // Default to 132 FPS
     std::unique_ptr<GenerationOptions> m_GenerationOptions;
 
     // Recorded data

@@ -62,6 +62,7 @@ struct GenerationOptions {
     std::string authorName = "Recorder";
     std::string targetLevel = "Level_01";
     std::string description = "Auto-generated TAS script";
+    float updateRate = 132.0f; // Default update rate in seconds (132 FPS)
 
     // Generation preferences
     bool addFrameComments = true;    // Add frame number comments

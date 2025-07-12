@@ -30,7 +30,7 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     m_EntryScript = manifest.get_or<std::string>("entry_script", "main.lua");
     m_Description = manifest.get_or<std::string>("description", "No description.");
     m_UpdateRate = manifest.get_or<float>("update_rate", 132);
-    m_DeltaTime = 1.0f / m_UpdateRate * 1000.0f; // Convert to milliseconds
+    m_DeltaTime = 1000.0f / m_UpdateRate; // Convert to milliseconds
 
     // Parse legacy mode settings
     if (manifest["legacy_mode"].get_type() == sol::type::boolean) {
@@ -65,7 +65,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     m_Description = "Legacy TAS record file";
     m_TargetLevel = "";    // Will be determined during playback if possible
     m_UpdateRate = 132.0f; // Standard Physics rate
-    m_DeltaTime = 1.0f / 132.0f * 1000.0f;
+    m_DeltaTime = 1000.0f / 132.0f;
 
     // Record projects ALWAYS require legacy mode
     m_LegacyMode = true;

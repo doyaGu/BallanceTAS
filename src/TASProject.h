@@ -143,7 +143,7 @@ private:
     std::string m_EntryScript = "main.lua";
     std::string m_TargetLevel;
     float m_UpdateRate = 132.0f; // Default to 132 = 66 * 2 (game's physics update rate)
-    float m_DeltaTime = 1 / 132.0f * 1000;
+    float m_DeltaTime = 1000.0f / 132.0f;
     bool m_LegacyMode = false;
 
     bool m_IsValid = false;

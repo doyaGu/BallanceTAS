@@ -685,6 +685,12 @@ void TASRecordingPage::DrawRecordingControls() {
     ImGui::Combo("##TargetLevel", &m_TargetLevelIndex, LEVEL_OPTIONS, LEVEL_COUNT);
 
     ImGui::SetCursorPosX(menuPos.x);
+    ImGui::Text("Update Rate:");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(menuSize.x * 0.4f);
+    ImGui::InputFloat("##UpdateRate", &m_UpdateRate);
+
+    ImGui::SetCursorPosX(menuPos.x);
     ImGui::Text("Description:");
     ImGui::SetCursorPosX(menuPos.x);
     ImGui::SetNextItemWidth(menuSize.x);
@@ -697,7 +703,6 @@ void TASRecordingPage::DrawGenerationOptions() {
 
     const auto menuPos = Bui::GetMenuPos();
     const auto menuSize = Bui::GetMenuSize();
-
 
     ImGui::SetCursorPosX(menuPos.x);
     ImGui::SetNextItemWidth(menuSize.x * 0.6f);
@@ -763,17 +768,20 @@ void TASRecordingPage::StartRecording() {
         options.authorName = m_AuthorName;
         options.targetLevel = targetLevel;
         options.description = m_Description;
+        options.updateRate = m_UpdateRate;
         options.addFrameComments = m_AddFrameComments;
         options.addPhysicsComments = m_AddPhysicsComments;
 
         // Set the generation options on the recorder
         recorder->SetGenerationOptions(options);
+        recorder->SetUpdateRate(m_UpdateRate);
     }
 
     if (engine->StartRecording()) {
         engine->GetLogger()->Info("Recording setup for project: %s", projectName.c_str());
         engine->GetLogger()->Info("  Author: %s", m_AuthorName);
         engine->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
+        engine->GetLogger()->Info("  Update Rate: %.3f Hz", m_UpdateRate);
         engine->GetLogger()->Info("  Description: %s", m_Description);
         engine->GetLogger()->Info("  Generation Options: frameComments=%s, physicsComments=%s",
                                   m_AddFrameComments ? "true" : "false",

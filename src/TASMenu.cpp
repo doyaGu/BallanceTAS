@@ -459,7 +459,7 @@ void TASDetailsPage::OnAfterBegin() {
     const auto menuSize = Bui::GetMenuSize();
 
     ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
+    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.05f)));
 
     ImGui::SetCursorPosX(menuPos.x);
     Page::WrappedText(project->GetName().c_str(), menuSize.x, 1.2f);
@@ -526,27 +526,9 @@ void TASDetailsPage::DrawProjectInfo() {
     ImGui::SetCursorPosX(menuPos.x);
     Page::WrappedText(project->GetDescription().c_str(), menuSize.x);
 
-    // Show requirements
-    auto requirements = project->GetRequirements();
-
     // Get current BML settings for compatibility check
     bool currentLegacyMode = m_Menu->GetEngine()->GetGameInterface()->IsLegacyMode();
     bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
-
-    if (!requirements.empty()) {
-        ImGui::NewLine();
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.9f, 0.7f, 1.0f));
-        Page::WrappedText("Requirements:", menuSize.x, 1.1f);
-        ImGui::PopStyleColor();
-
-        for (const auto &requirement : requirements) {
-            ImGui::SetCursorPosX(menuPos.x);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
-            Page::WrappedText(requirement.c_str(), menuSize.x);
-            ImGui::PopStyleColor();
-        }
-    }
 
     // Compatibility status
     if (!isCompatible) {
@@ -670,7 +652,7 @@ void TASDetailsPage::DrawActionButtons() {
             ImGui::NewLine();
 
             // Status information
-            ImGui::SetCursorPosX(menuPos.x * 1.05f);
+            ImGui::SetCursorPosX(menuPos.x);
 
             if (!project->IsValid()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
@@ -721,7 +703,7 @@ void TASDetailsPage::DrawActionButtons() {
             ImGui::NewLine();
 
             // Show status information
-            ImGui::SetCursorPosX(menuPos.x * 1.05f);
+            ImGui::SetCursorPosX(menuPos.x);
 
             if (!project->IsValid()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
@@ -729,7 +711,7 @@ void TASDetailsPage::DrawActionButtons() {
                 ImGui::PopStyleColor();
             } else {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
-                Page::WrappedText("Ready to play - Load a level after clicking Play TAS", menuSize.x);
+                Page::WrappedText("Ready - Load a level after clicking Play TAS", menuSize.x);
                 ImGui::PopStyleColor();
             }
         }

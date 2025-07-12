@@ -45,7 +45,7 @@ public:
     const std::string &GetTargetLevel() const { return m_TargetLevel; }
     const std::string &GetEntryScript() const { return m_EntryScript; }
     float GetUpdateRate() const { return m_UpdateRate; }
-    float GetDeltaTime() const { return m_DeltaTime; }
+    float GetDeltaTime() const { return 1000.0f / m_UpdateRate; }
 
     // --- Legacy Mode Settings ---
     bool RequiresLegacyMode() const { return m_LegacyMode; }
@@ -143,7 +143,6 @@ private:
     std::string m_EntryScript = "main.lua";
     std::string m_TargetLevel;
     float m_UpdateRate = 132.0f; // Default to 132 = 66 * 2 (game's physics update rate)
-    float m_DeltaTime = 1000.0f / 132.0f;
     bool m_LegacyMode = false;
 
     bool m_IsValid = false;

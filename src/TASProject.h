@@ -53,6 +53,9 @@ public:
     // --- Path Accessors ---
     const std::string &GetPath() const { return m_ProjectPath; }
 
+    std::string GetFileName() const;
+    std::string GetFileNameWithoutExtension() const;
+
     /**
      * @brief Gets the path to the TAS record file (for record projects).
      * @return Path to the .tas file, or empty string for script projects.

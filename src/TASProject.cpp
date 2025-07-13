@@ -171,6 +171,14 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     }
 }
 
+std::string TASProject::GetFileName() const {
+    return fs::path(m_ProjectPath).filename().string();
+}
+
+std::string TASProject::GetFileNameWithoutExtension() const {
+    return fs::path(m_ProjectPath).stem().string();
+}
+
 std::string TASProject::GetRecordFilePath() const {
     if (IsRecordProject()) {
         return m_ProjectPath; // For record projects, the project path IS the .tas file

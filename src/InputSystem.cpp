@@ -1,5 +1,6 @@
 #include "InputSystem.h"
 
+#include <set>
 #include <algorithm>
 #include <sstream>
 
@@ -276,13 +277,27 @@ void InputSystem::ReleaseKeys(const std::string &keyString) {
 
 void InputSystem::ReleaseAllKeys() {
     // Generate release events for all currently pressed keys
-    for (auto &[keyCode, keyState] : m_KeyStates) {
+    for (auto &keyState : m_KeyStates) {
         if (keyState.currentState & KS_PRESSED) {
             keyState.ApplyReleaseEvent(m_CurrentTick);
         }
     }
 
     m_HeldKeys.clear();
+}
+
+void InputSystem::Reset() {
+    m_CurrentTick = 0;
+
+    for (auto &keyState : m_KeyStates) {
+        keyState.Reset();
+    }
+
+    m_HeldKeys.clear();
+}
+
+void InputSystem::SetEnabled(bool enabled) {
+    m_Enabled = enabled;
 }
 
 bool InputSystem::AreKeysPressed(const std::string &keyString) const {
@@ -293,8 +308,7 @@ bool InputSystem::AreKeysPressed(const std::string &keyString) const {
         CKKEYBOARD code = GetKeyCode(key);
         if (!IsValidKeyCode(code) || code == 0) return false;
 
-        auto it = m_KeyStates.find(code);
-        if (it == m_KeyStates.end() || !(it->second.currentState & KS_PRESSED)) {
+        if (!(m_KeyStates[code].currentState & KS_PRESSED)) {
             return false;
         }
     }
@@ -323,61 +337,23 @@ void InputSystem::Apply(size_t currentTick, unsigned char *keyboardState) {
 
     // Step 1: Process held keys timers and generate press/release events
     for (auto it = m_HeldKeys.begin(); it != m_HeldKeys.end();) {
-        CKKEYBOARD key = it->first;
-        int &remainingTicks = it->second;
+        auto key = it->first;
+        int &ticks = it->second;
 
-        if (remainingTicks == 1) {
+        if (ticks == 1) {
             // This is the last frame - generate release event
-            if (m_KeyStates.find(key) != m_KeyStates.end()) {
-                m_KeyStates[key].ApplyReleaseEvent(currentTick);
-            }
+            m_KeyStates[key].ApplyReleaseEvent(currentTick);
             it = m_HeldKeys.erase(it);
         } else {
-            --remainingTicks;
+            m_KeyStates[key].ApplyPressEvent(currentTick);
+            --ticks;
             ++it;
         }
     }
 
     // Step 2: Apply TAS state changes
-    for (auto &[keyCode, keyState] : m_KeyStates) {
-        if (!IsValidKeyCode(keyCode)) continue;
-
-        // Start with previous frame's state (after PostProcess cleanup)
-        uint8_t previousState = keyboardState[keyCode];
-        if (previousState & KS_RELEASED) {
-            previousState = KS_IDLE;
-        }
-
-        // Begin this frame with cleaned state
-        keyboardState[keyCode] = previousState;
-
-        // Apply press event if needed
-        if (keyState.hadPressEvent) {
-            keyboardState[keyCode] |= KS_PRESSED;
-        }
-
-        // Apply release event if needed
-        if (keyState.hadReleaseEvent) {
-            keyboardState[keyCode] |= KS_RELEASED;
-        }
-
-        // Update our internal state to match
-        keyState.currentState = keyboardState[keyCode];
-    }
-
-    // Step 3: Handle keys not in our TAS control - reset to idle
-    // This ensures we have complete control during replay
-    for (int i = 0; i < 256; ++i) {
-        if (m_KeyStates.find(static_cast<CKKEYBOARD>(i)) == m_KeyStates.end()) {
-            keyboardState[i] = KS_IDLE;
-        }
-    }
-}
-
-void InputSystem::PrepareNextFrame() {
-    // Simulate PostProcess() cleanup for next frame
-    for (auto &[keyCode, keyState] : m_KeyStates) {
-        keyState.PrepareNextFrame();
+    for (int code = 0; code < 256; ++code) {
+        keyboardState[code] = m_KeyStates[code].currentState;
     }
 }
 

@@ -315,31 +315,22 @@ std::vector<KeyEvent> ScriptGenerator::DetectKeyTransitions(const RawInputState 
     std::vector<KeyEvent> events;
 
     for (int keyIdx = 0; keyIdx < KEY_COUNT; ++keyIdx) {
-        uint8_t prevKeyState = GetKeyState(prevState, keyIdx);
-        uint8_t currentKeyState = GetKeyState(currentState, keyIdx);
+        uint8_t prevKS = GetKeyState(prevState, keyIdx);
+        uint8_t currKS = GetKeyState(currentState, keyIdx);
 
         // Skip if no change
-        if (prevKeyState == currentKeyState) {
+        if (prevKS == currKS) {
             continue;
         }
 
         KeyTransition transition = KeyTransition::NoChange;
-
-        bool wasPrevPressed = (prevKeyState & KS_PRESSED) != 0;
-        bool isCurrentPressed = (currentKeyState & KS_PRESSED) != 0;
-        bool isCurrentReleased = (currentKeyState & KS_RELEASED) != 0;
-        bool isCurrentIdle = (currentKeyState == KS_IDLE);
-
-        if (!wasPrevPressed && isCurrentPressed) {
-            // Key was just pressed (IDLE -> PRESSED or RELEASED -> PRESSED)
+        if (prevKS != KS_PRESSED && currKS == KS_PRESSED) {
             transition = KeyTransition::Pressed;
-        } else if (wasPrevPressed && (isCurrentReleased || isCurrentIdle)) {
-            // Key was just released (PRESSED -> RELEASED or PRESSED -> IDLE)
+        } else if (prevKS == KS_PRESSED && currKS != KS_PRESSED) {
             transition = KeyTransition::Released;
         }
 
-        // Only add events for press/release transitions
-        if (transition == KeyTransition::Pressed || transition == KeyTransition::Released) {
+        if (transition != KeyTransition::NoChange) {
             events.emplace_back(frameIndex, GetKeyName(keyIdx), transition);
         }
     }
@@ -557,14 +548,24 @@ bool ScriptGenerator::CreateProjectFiles(const std::string &projectPath,
     }
 }
 
-std::string ScriptGenerator::GetKeyName(int keyIndex) const {
+void ScriptGenerator::UpdateProgress(float progress) {
+    if (m_ProgressCallback) {
+        try {
+            m_ProgressCallback(std::max(0.0f, std::min(1.0f, progress)));
+        } catch (const std::exception &e) {
+            m_Engine->GetLogger()->Error("Error in progress callback: %s", e.what());
+        }
+    }
+}
+
+std::string ScriptGenerator::GetKeyName(int keyIndex) {
     if (keyIndex >= 0 && keyIndex < static_cast<int>(KEY_NAMES.size())) {
         return KEY_NAMES[keyIndex];
     }
     return "unknown";
 }
 
-uint8_t ScriptGenerator::GetKeyState(const RawInputState &state, int keyIndex) const {
+uint8_t ScriptGenerator::GetKeyState(const RawInputState &state, int keyIndex) {
     switch (keyIndex) {
     case 0: return state.keyUp;
     case 1: return state.keyDown;
@@ -575,15 +576,5 @@ uint8_t ScriptGenerator::GetKeyState(const RawInputState &state, int keyIndex) c
     case 6: return state.keyQ;
     case 7: return state.keyEsc;
     default: return KS_IDLE;
-    }
-}
-
-void ScriptGenerator::UpdateProgress(float progress) {
-    if (m_ProgressCallback) {
-        try {
-            m_ProgressCallback(std::max(0.0f, std::min(1.0f, progress)));
-        } catch (const std::exception &e) {
-            m_Engine->GetLogger()->Error("Error in progress callback: %s", e.what());
-        }
     }
 }

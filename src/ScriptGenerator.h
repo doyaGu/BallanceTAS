@@ -16,9 +16,9 @@ class TASProject;
  * @brief Represents a key state transition between frames.
  */
 enum class KeyTransition {
-    NoChange,          // Key state didn't change
-    Pressed,           // Key was just pressed (IDLE -> PRESSED)
-    Released,          // Key was just released (PRESSED -> RELEASED/IDLE)
+    NoChange, // Key state didn't change
+    Pressed,  // Key was just pressed (IDLE -> PRESSED)
+    Released, // Key was just released (PRESSED -> RELEASED)
 };
 
 /**
@@ -181,11 +181,17 @@ private:
                             const std::string &manifestContent);
 
     /**
+     * @brief Update progress callback if set.
+     * @param progress Progress value from 0.0 to 1.0.
+     */
+    void UpdateProgress(float progress);
+
+    /**
      * @brief Get the string name for a key from the input state.
      * @param keyIndex Index of the key in the RawInputState structure.
      * @return String name of the key.
      */
-    std::string GetKeyName(int keyIndex) const;
+    static std::string GetKeyName(int keyIndex);
 
     /**
      * @brief Get the keyboard state value for a specific key from RawInputState.
@@ -193,13 +199,7 @@ private:
      * @param keyIndex Index of the key.
      * @return The keyboard state value (KS_IDLE, KS_PRESSED, etc.).
      */
-    uint8_t GetKeyState(const RawInputState &state, int keyIndex) const;
-
-    /**
-     * @brief Update progress callback if set.
-     * @param progress Progress value from 0.0 to 1.0.
-     */
-    void UpdateProgress(float progress);
+    static uint8_t GetKeyState(const RawInputState &state, int keyIndex);
 
     /**
      * @brief A helper class to build the Lua script string with proper indentation.
@@ -237,7 +237,7 @@ private:
 
     // Key mapping for consistent naming
     static const std::vector<std::string> KEY_NAMES;
-    static const int KEY_COUNT = 8; // Number of tracked keys
+    static constexpr int KEY_COUNT = 8; // Number of tracked keys
 
     // Statistics
     struct GenerationStats {

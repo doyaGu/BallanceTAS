@@ -223,7 +223,7 @@ void TASEngine::StopRecording() {
 
     // Ensure InputSystem remains disabled after recording
     if (m_InputSystem) {
-        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->Reset();
         m_InputSystem->SetEnabled(false);
     }
 
@@ -308,7 +308,7 @@ void TASEngine::StopReplay() {
     if (m_InputSystem) {
         if (m_PlaybackType == PlaybackType::Script) {
             // For script playback, InputSystem was enabled - disable it and clean up
-            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->Reset();
             m_InputSystem->SetEnabled(false);
         }
         // For record playback, InputSystem was already disabled, but ensure keys are clean
@@ -338,7 +338,7 @@ void TASEngine::StopReplayImmediate() {
 
         // Immediately disable InputSystem and clean up
         if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->Reset();
             m_InputSystem->SetEnabled(false);
         }
 
@@ -420,7 +420,7 @@ void TASEngine::StopTranslation() {
 
     // Clean up state
     if (m_InputSystem) {
-        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->Reset();
         m_InputSystem->SetEnabled(false);
     }
 
@@ -447,7 +447,7 @@ void TASEngine::StopTranslationImmediate() {
 
         // Clean up input state
         if (m_InputSystem) {
-            m_InputSystem->ReleaseAllKeys();
+            m_InputSystem->Reset();
             m_InputSystem->SetEnabled(false);
         }
 
@@ -484,7 +484,7 @@ void TASEngine::StartRecordingInternal() {
     // Ensure InputSystem is DISABLED during recording
     // We want to capture the user's actual input, not override it
     if (m_InputSystem) {
-        m_InputSystem->ReleaseAllKeys(); // Start with clean state
+        m_InputSystem->Reset(); // Start with clean state
         m_InputSystem->SetEnabled(false);
     }
 
@@ -542,12 +542,12 @@ void TASEngine::StartReplayInternal() {
         if (playbackType == PlaybackType::Script) {
             // For script playback, enable InputSystem for deterministic replay
             m_InputSystem->SetEnabled(true);
-            m_InputSystem->ReleaseAllKeys(); // Start with clean state
+            m_InputSystem->Reset(); // Start with clean state
         } else if (playbackType == PlaybackType::Record) {
             // For record playback, DISABLE InputSystem completely
             // Record playback applies input directly to keyboard state buffer
             m_InputSystem->SetEnabled(false);
-            m_InputSystem->ReleaseAllKeys(); // Ensure clean state
+            m_InputSystem->Reset(); // Ensure clean state
         }
     }
 
@@ -606,7 +606,7 @@ void TASEngine::StartTranslationInternal() {
     // For translation, InputSystem should be DISABLED
     // We want RecordPlayer to control input directly, and Recorder to capture it
     if (m_InputSystem) {
-        m_InputSystem->ReleaseAllKeys();
+        m_InputSystem->Reset();
         m_InputSystem->SetEnabled(false);
     }
 
@@ -743,11 +743,6 @@ void TASEngine::SetupScriptPlaybackCallbacks() {
 
                 // STEP 3: Increment frame counter for next iteration
                 IncrementCurrentTick();
-
-                // STEP 4: Prepare InputSystem for next frame
-                if (m_InputSystem && m_InputSystem->IsEnabled()) {
-                    m_InputSystem->PrepareNextFrame();
-                }
             } catch (const std::exception &e) {
                 GetLogger()->Error("Script playback callback error: %s", e.what());
             }

@@ -157,7 +157,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
     }
 }
 
-void RecordPlayer::ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState) {
+void RecordPlayer::ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState) const {
     if (!keyboardState) {
         m_Engine->GetLogger()->Error("Keyboard state buffer is null. Cannot apply input.");
         return;

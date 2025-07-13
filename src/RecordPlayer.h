@@ -115,17 +115,7 @@ private:
      * @param frameData The frame data containing key states.
      * @param keyboardState The game's keyboard state buffer.
      */
-    void ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState);
-
-    /**
-     * @brief Converts the current and next key states to a keyboard state byte.
-     * @param current The current key state (pressed or not).
-     * @param next The next key state (pressed or not).
-     * @return KS_PRESSED if the key is currently pressed,
-     *         KS_RELEASED if it was just released,
-     *         KS_IDLE if it is not pressed.
-     */
-    static int ConvertKeyState(bool current, bool next) ;
+    void ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState) const;
 
     // Core references
     TASEngine *m_Engine;

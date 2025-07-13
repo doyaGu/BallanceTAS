@@ -1,7 +1,7 @@
 #pragma once
 
+#include <array>
 #include <string>
-#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -10,30 +10,22 @@
 // Exact state representation
 struct KeyState {
     uint8_t currentState = KS_IDLE; // Current accumulated state
-    bool hadPressEvent = false;     // KS_PRESSED was added this frame
-    bool hadReleaseEvent = false;   // KS_RELEASED was added this frame
     size_t timestamp = 0;           // Event timestamp
 
-    // Reset for new frame (mimics PostProcess cleanup)
-    void PrepareNextFrame() {
-        if (currentState & KS_RELEASED) {
-            currentState = KS_IDLE;
-        }
-        hadPressEvent = false;
-        hadReleaseEvent = false;
-    }
-
-    // Apply events (mimics PreProcess accumulation)
+    // Apply events
     void ApplyPressEvent(size_t ts) {
-        currentState |= KS_PRESSED;
-        hadPressEvent = true;
+        currentState = KS_PRESSED;
         timestamp = ts;
     }
 
     void ApplyReleaseEvent(size_t ts) {
-        currentState |= KS_RELEASED;
-        hadReleaseEvent = true;
+        currentState = KS_RELEASED;
         timestamp = ts;
+    }
+
+    void Reset() {
+        currentState = KS_IDLE;
+        timestamp = 0;
     }
 };
 
@@ -97,11 +89,17 @@ public:
     void ReleaseAllKeys();
 
     /**
+     * @brief Resets the InputSystem state, clearing all key states.
+     * This is called at the start of each frame to prepare for new input.
+     */
+    void Reset();
+
+    /**
      * @brief Sets whether the InputSystem should take complete control of input.
      * When enabled, the system completely overrides ALL keyboard input.
      * @param enabled True to enable preemptive control (TAS replay mode).
      */
-    void SetEnabled(bool enabled) { m_Enabled = enabled; }
+    void SetEnabled(bool enabled);
 
     /**
      * @brief Checks if preemptive control is currently enabled.
@@ -138,11 +136,6 @@ public:
      * This now properly handles state accumulation and frame lifecycle
      */
     void Apply(size_t currentTick, unsigned char *keyboardState);
-
-    /**
-     * @brief Prepares for next frame (mimics PostProcess cleanup)
-     */
-    void PrepareNextFrame();
 
     /**
      * @brief Resets the game's keyboard state buffer.
@@ -182,7 +175,7 @@ private:
     std::unordered_map<std::string, CKKEYBOARD> m_Keymap;
 
     // State tracking
-    std::unordered_map<CKKEYBOARD, KeyState> m_KeyStates;
+    std::array<KeyState, 256> m_KeyStates;
 
     // Current frame tracking
     size_t m_CurrentTick = 0;

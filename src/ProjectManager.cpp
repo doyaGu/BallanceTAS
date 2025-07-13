@@ -296,7 +296,8 @@ bool ProjectManager::ExtractZipProject(const std::string &zipPath, const std::st
         }
 
         std::string normalizedEntryName = NormalizePath(entryName);
-        std::string outputPath = tempDir + "\\" + normalizedEntryName;
+        std::string outputPath = tempDir;
+        outputPath.append("\\").append(normalizedEntryName);
 
         // Create parent directories if needed
         fs::path outputFilePath(outputPath);

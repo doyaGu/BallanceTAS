@@ -175,6 +175,50 @@ public:
      */
     size_t GetTotalFrames() const { return m_Frames.size(); }
 
+    /**
+     * @brief Dumps the recorded input states to a text file.
+     * @param filePath Path where to save the text dump.
+     * @param includePhysics Whether to include physics data in the dump.
+     * @return True if the dump was successful.
+     */
+    bool DumpFrameData(const std::string &filePath, bool includePhysics = false) const;
+
+    /**
+     * @brief Loads frame data from a text file.
+     * @param filePath Path to the text file to load.
+     * @param includePhysics Whether the file contains physics data.
+     * @return True if the load was successful.
+     */
+    bool LoadFrameData(const std::string &filePath, bool includePhysics = false);
+
+
+    /**
+     * @brief Dumps the recorded frame data to a modern binary file.
+     * @param filePath Path where to save the binary dump.
+     * @return True if the dump was successful.
+     */
+    bool DumpFrameDataBinary(const std::string &filePath) const;
+
+    /**
+     * @brief Loads frame data from a modern binary file.
+     * @param filePath Path to the binary file to load.
+     * @return True if the load was successful.
+     */
+    bool LoadFrameDataBinary(const std::string &filePath);
+
+    /**
+     * @brief Dumps both text and binary formats with automatic file naming.
+     * @param basePath Base path for the files (without extension).
+     * @param includePhysics Whether to include physics data in text dump.
+     * @return Pair of (text_success, binary_success).
+     */
+    std::pair<bool, bool> DumpFrameDataBoth(const std::string &basePath, bool includePhysics = false) const;
+
+    /**
+     * @brief Clears all recorded frame data.
+     */
+    void ClearFrameData();
+
     // --- Configuration ---
 
     /**
@@ -269,6 +313,41 @@ private:
      * @param isRecording New recording state.
      */
     void NotifyStatusChange(bool isRecording);
+
+    /**
+     * @brief Formats a RawInputState as a human-readable string.
+     * @param rawInput The input state to format.
+     * @return Formatted string representation.
+     */
+    static std::string FormatInputStateText(const RawInputState &rawInput);
+    /**
+     * @brief Parses a text representation back to RawInputState.
+     * @param inputText The text representation to parse.
+     * @return Parsed RawInputState.
+     */
+    static RawInputState ParseInputStateText(const std::string &inputText);
+
+    /**
+     * @brief Parses a position string like "(x,y,z)" to VxVector.
+     * @param posText The position text to parse.
+     * @return Parsed VxVector.
+     */
+    static VxVector ParseVectorText(const std::string &posText);
+
+    /**
+     * @brief Trims whitespace from both ends of a string.
+     * @param str The string to trim.
+     * @return Trimmed string.
+     */
+    static std::string TrimString(const std::string &str);
+
+    /**
+     * @brief Splits a string by delimiter.
+     * @param str The string to split.
+     * @param delimiter The delimiter character.
+     * @return Vector of split parts.
+     */
+    static std::vector<std::string> SplitString(const std::string &str, char delimiter);
 
     // Core references
     TASEngine *m_Engine;

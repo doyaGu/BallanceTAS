@@ -42,7 +42,7 @@ public:
      * @param project The script-based TAS project to execute.
      * @return True if the script was loaded and started successfully.
      */
-    bool LoadAndExecute(const TASProject *project);
+    bool LoadAndExecute(TASProject *project);
 
     /**
      * @brief Stops script execution and cleans up.
@@ -93,7 +93,7 @@ private:
      * @param project The project to prepare.
      * @return The execution path, or empty string on failure.
      */
-    std::string PrepareProjectForExecution(const TASProject *project);
+    std::string PrepareProjectForExecution(TASProject *project);
 
     /**
      * @brief Cleans up any temporary resources for the current project.
@@ -108,7 +108,7 @@ private:
     std::unique_ptr<LuaScheduler> m_Scheduler;
 
     // Current execution state
-    const TASProject *m_CurrentProject = nullptr;
+    TASProject *m_CurrentProject = nullptr;
     std::string m_CurrentExecutionPath;
     bool m_IsExecuting = false;
     bool m_IsInitialized = false;

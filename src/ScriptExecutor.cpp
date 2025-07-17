@@ -81,7 +81,7 @@ void ScriptExecutor::Shutdown() {
     }
 }
 
-bool ScriptExecutor::LoadAndExecute(const TASProject *project) {
+bool ScriptExecutor::LoadAndExecute(TASProject *project) {
     if (!m_IsInitialized) {
         m_Engine->GetLogger()->Error("ScriptExecutor not initialized.");
         return false;
@@ -219,7 +219,7 @@ void ScriptExecutor::FireGameEvent(const std::string &eventName, Args... args) {
 template void ScriptExecutor::FireGameEvent(const std::string &);
 template void ScriptExecutor::FireGameEvent(const std::string &, int);
 
-std::string ScriptExecutor::PrepareProjectForExecution(const TASProject *project) {
+std::string ScriptExecutor::PrepareProjectForExecution(TASProject *project) {
     if (!project || !project->IsScriptProject()) {
         return "";
     }
@@ -258,8 +258,8 @@ void ScriptExecutor::CleanupCurrentProject() {
 
     // Clean up temporary directories for zip projects
     if (m_CurrentProject->IsZipProject() && m_Engine->GetProjectManager()) {
-        m_Engine->GetProjectManager()->CleanupProjectTempDirectory(const_cast<TASProject *>(m_CurrentProject));
-        const_cast<TASProject *>(m_CurrentProject)->SetExecutionBasePath(""); // Clear execution base path
+        m_Engine->GetProjectManager()->CleanupProjectTempDirectory(m_CurrentProject);
+        m_CurrentProject->SetExecutionBasePath(""); // Clear execution base path
     }
 
     m_CurrentProject = nullptr;

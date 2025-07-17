@@ -87,13 +87,6 @@ std::vector<FrameData> Recorder::Stop() {
     // Auto-generate script if we have frames
     if (!m_Frames.empty() && m_AutoGenerateOnStop) {
         GenerateScript();
-        std::string path = BML_TAS_PATH;
-        path.append(m_GenerationOptions->projectName).append(".dump");
-        if (DumpFrameData(path, false)) {
-            m_Engine->GetLogger()->Info("Frame data dumped to: %s", path.c_str());
-        } else {
-            m_Engine->GetLogger()->Error("Failed to dump frame data to: %s", path.c_str());
-        }
     }
 
     // Return a copy of the recorded frames

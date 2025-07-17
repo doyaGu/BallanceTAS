@@ -238,6 +238,7 @@ void TASEngine::StopRecording() {
 void TASEngine::StopRecordingImmediate() {
     try {
         if (IsRecording() && m_Recorder) {
+            m_Recorder->SetAutoGenerate(false);
             m_Recorder->Stop();
         }
 

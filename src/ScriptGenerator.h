@@ -19,6 +19,7 @@ enum class KeyTransition {
     NoChange, // Key state didn't change
     Pressed,  // Key was just pressed (IDLE -> PRESSED)
     Released, // Key was just released (PRESSED -> RELEASED)
+    PressedAndReleased, // Key was pressed and then released in the same frame
 };
 
 /**
@@ -142,12 +143,12 @@ private:
 
     /**
      * @brief Detects key state transitions between two consecutive frames.
-     * @param prevState Previous frame's input state.
+     * @param previousState Previous frame's input state.
      * @param currentState Current frame's input state.
      * @param frameIndex Current frame number.
      * @return Vector of key events for this frame.
      */
-    std::vector<KeyEvent> DetectKeyTransitions(const RawInputState &prevState,
+    std::vector<KeyEvent> DetectKeyTransitions(const RawInputState &previousState,
                                                const RawInputState &currentState,
                                                size_t frameIndex);
 

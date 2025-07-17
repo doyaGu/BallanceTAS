@@ -166,12 +166,30 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
         inputSystem->ReleaseAllKeys();
     };
 
-    // tas.is_key_pressed(key_string)
-    tas["is_key_pressed"] = [inputSystem](const std::string &keyString) -> bool {
+    // tas.are_keys_down(key_string)
+    tas["are_keys_down"] = [inputSystem](const std::string &keyString) {
         if (keyString.empty()) {
             return false;
         }
-        return inputSystem->AreKeysPressed(keyString);
+
+        return inputSystem->AreKeysDown(keyString);
+    };
+
+    // tas.are_keys_up(key_string)
+    tas["are_keys_up"] = [inputSystem](const std::string &keyString) {
+        if (keyString.empty()) {
+            return false;
+        }
+
+        return inputSystem->AreKeysUp(keyString);
+    };
+
+    // tas.are_keys_toggled(key_string)
+    tas["are_keys_toggled"] = [inputSystem](const std::string &keyString) -> bool {
+        if (keyString.empty()) {
+            return false;
+        }
+        return inputSystem->AreKeysToggled(keyString);
     };
 }
 

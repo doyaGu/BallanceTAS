@@ -78,6 +78,7 @@ private:
     void DrawTASStatus();
 
     int m_Count = 0;
+    static constexpr int MAX_ENTRIES_PER_PAGE = 8;
 };
 
 class TASDetailsPage : public TASMenuPage {

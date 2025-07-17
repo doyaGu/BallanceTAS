@@ -258,7 +258,7 @@ void TASListPage::OnAfterBegin() {
     const auto &projects = projectManager->GetProjects();
 
     m_Count = static_cast<int>(projects.size());
-    SetMaxPage(m_Count % 8 == 0 ? m_Count / 8 : m_Count / 8 + 1);
+    SetMaxPage(m_Count % MAX_ENTRIES_PER_PAGE == 0 ? m_Count / MAX_ENTRIES_PER_PAGE : m_Count / MAX_ENTRIES_PER_PAGE + 1);
 
     if (m_PageIndex > 0 &&
         LeftButton("PrevPage")) {
@@ -297,11 +297,11 @@ void TASListPage::OnDraw() {
     }
 
     bool v = true;
-    const int n = GetPage() * 4;
+    const int n = GetPage() * MAX_ENTRIES_PER_PAGE;
 
     DrawEntries([&](std::size_t index) {
         return OnDrawEntry(n + index, &v);
-    }, ImVec2(0.4031f, 0.24f), 0.06f, 8);
+    }, ImVec2(0.4031f, 0.24f), 0.06f, MAX_ENTRIES_PER_PAGE);
 }
 
 void TASListPage::DrawTASStatus() {

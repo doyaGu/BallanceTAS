@@ -147,11 +147,7 @@ bool UIManager::IsTASMenuOpen() const {
 bool UIManager::StartRecording() {
     if (!m_Engine) return false;
 
-    bool success = m_Engine->StartRecording();
-    if (success && m_Engine) {
-        m_Engine->GetLogger()->Info("Recording started via UI.");
-    }
-    return success;
+    return m_Engine->StartRecording();
 }
 
 bool UIManager::StopRecording() {
@@ -162,9 +158,6 @@ bool UIManager::StopRecording() {
     }
 
     m_Engine->StopRecording();
-    if (m_Engine) {
-        m_Engine->GetLogger()->Info("Recording stopped via UI.");
-    }
     return true;
 }
 
@@ -184,12 +177,7 @@ bool UIManager::IsRecording() const {
 
 bool UIManager::StartReplay() {
     if (!m_Engine) return false;
-
-    bool success = m_Engine->StartReplay();
-    if (success && m_Engine) {
-        m_Engine->GetLogger()->Info("Replay started via UI.");
-    }
-    return success;
+    return m_Engine->StartReplay();
 }
 
 bool UIManager::StopReplay() {
@@ -200,9 +188,6 @@ bool UIManager::StopReplay() {
     }
 
     m_Engine->StopReplay();
-    if (m_Engine) {
-        m_Engine->GetLogger()->Info("Replay stopped via UI.");
-    }
     return true;
 }
 
@@ -223,11 +208,7 @@ bool UIManager::IsReplaying() const {
 bool UIManager::StartTranslation() {
     if (!m_Engine) return false;
 
-    bool success = m_Engine->StartTranslation();
-    if (success && m_Engine) {
-        m_Engine->GetLogger()->Info("Translation started via UI.");
-    }
-    return success;
+    return m_Engine->StartTranslation();
 }
 
 bool UIManager::StopTranslation() {
@@ -238,9 +219,6 @@ bool UIManager::StopTranslation() {
     }
 
     m_Engine->StopTranslation();
-    if (m_Engine) {
-        m_Engine->GetLogger()->Info("Translation stopped via UI.");
-    }
     return true;
 }
 
@@ -344,12 +322,11 @@ void UIManager::UpdateHotkeys() {
     if (ImGui::IsKeyPressed(m_StopHotkey)) {
         if (m_Engine->IsTranslating()) {
             StopTranslation();
-        } else if (m_Engine->IsRecording()) {
-            StopRecording();
         } else if (m_Engine->IsPlaying()) {
             StopReplay();
+        } else if (m_Engine->IsRecording()) {
+            StopRecording();
         }
-        m_Engine->GetLogger()->Info("TAS stopped via stop hotkey.");
     }
 
     // OSD hotkey handling using IsKeyToggled

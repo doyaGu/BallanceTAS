@@ -97,12 +97,13 @@ void TASEngine::Shutdown() {
         // Clear callbacks first to prevent any timer callbacks from firing
         ClearCallbacks();
 
+        if (IsPlaying()) {
+            StopReplayImmediate();
+        }
+
         // Stop any active recording or playback immediately (without timers)
         if (IsRecording()) {
             StopRecordingImmediate();
-        }
-        if (IsPlaying()) {
-            StopReplayImmediate();
         }
 
         // Shutdown in reverse order
@@ -145,15 +146,15 @@ void TASEngine::Start() {
         return;
     }
 
-    // Check if we should start recording instead of playing
-    if (IsPendingRecord()) {
-        StartRecordingInternal();
-        return;
-    }
-
     // Check if we should start playing
     if (IsPendingPlay()) {
         StartReplayInternal();
+        return;
+    }
+
+    // Check if we should start recording instead of playing
+    if (IsPendingRecord()) {
+        StartRecordingInternal();
         return;
     }
 }
@@ -165,11 +166,11 @@ void TASEngine::Stop() {
 
     if (IsTranslating()) {
         StopTranslation();
-    } else if (IsRecording()) {
-        StopRecording();
     } else if (IsPlaying()) {
         StopReplay();
-    } else {
+    } else if (IsRecording()) {
+        StopRecording();
+    }  else {
         // Stop any pending operations
         m_State = TAS_IDLE;
         m_PlaybackType = PlaybackType::None;

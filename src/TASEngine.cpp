@@ -74,7 +74,6 @@ bool TASEngine::Initialize() {
 
             if (isRecording) {
                 m_State |= TAS_RECORDING;
-                m_State &= ~(TAS_PLAYING | TAS_PLAY_PENDING); // Can't record and play simultaneously
             } else {
                 m_State &= ~TAS_RECORDING;
             }

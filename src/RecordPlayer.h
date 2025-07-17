@@ -111,11 +111,24 @@ private:
     bool LoadRecord(const std::string &recordPath);
 
     /**
-     * @brief Applies legacy keyboard state directly to the keyboard buffer.
-     * @param frameData The frame data containing key states.
+     * @brief Applies legacy keyboard state input for the current frame.
+     * @param currentFrame The current frame's input data.
+     * @param nextFrame The next frame's input data (for state transitions).
      * @param keyboardState The game's keyboard state buffer.
      */
-    void ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState) const;
+    void ApplyFrameInput(const RecordFrameData &currentFrame,
+                         const RecordFrameData &nextFrame,
+                         unsigned char *keyboardState) const;
+
+    /**
+     * @brief Converts the current and next key states to a keyboard state byte.
+     * @param current The current key state (pressed or not).
+     * @param next The next key state (pressed or not).
+     * @return KS_PRESSED if the key is currently pressed,
+     *         KS_RELEASED if it was just released,
+     *         KS_IDLE if it is not pressed.
+     */
+    static int ConvertKeyState(bool current, bool next) ;
 
     // Core references
     TASEngine *m_Engine;

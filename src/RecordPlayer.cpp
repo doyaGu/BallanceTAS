@@ -76,7 +76,7 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
     }
 
     // Apply input for the current frame and advance
-    ApplyFrameInput(m_Frames[currentTick], keyboardState);
+    ApplyFrameInput(m_Frames[currentTick], m_Frames[currentTick + 1], keyboardState);
 }
 
 float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {
@@ -143,7 +143,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         // --- 5. Copy the decompressed data to our frame vector ---
         size_t frameCount = uncompressedSize / sizeof(RecordFrameData);
         m_TotalFrames = frameCount;
-        m_Frames.resize(frameCount);
+        m_Frames.resize(frameCount + 1); // +1 for the next frame input
         memcpy(m_Frames.data(), uncompressedData, uncompressedSize);
 
         // Clean up the decompressed data
@@ -157,22 +157,36 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
     }
 }
 
-void RecordPlayer::ApplyFrameInput(const RecordFrameData &frameData, unsigned char *keyboardState) const {
+void RecordPlayer::ApplyFrameInput(const RecordFrameData &currentFrame,
+                                   const RecordFrameData &nextFrame,
+                                   unsigned char *keyboardState) const {
     if (!keyboardState) {
         m_Engine->GetLogger()->Error("Keyboard state buffer is null. Cannot apply input.");
         return;
     }
 
     // We directly set the keyboard state bytes based on the key state bits
-    const RecordKeyState &state = frameData.keyState;
+    const RecordKeyState &current = currentFrame.keyState;
+    const RecordKeyState &next = nextFrame.keyState;
 
-    // Set keyboard state bytes directly to 0 or 1 based on bit fields
-    keyboardState[m_KeyUp] = state.key_up;
-    keyboardState[m_KeyDown] = state.key_down;
-    keyboardState[m_KeyLeft] = state.key_left;
-    keyboardState[m_KeyRight] = state.key_right;
-    keyboardState[CKKEY_Q] = state.key_q;
-    keyboardState[m_KeyShift] = state.key_shift;
-    keyboardState[m_KeySpace] = state.key_space;
-    keyboardState[CKKEY_ESCAPE] = state.key_esc;
+    // Set keyboard state
+    keyboardState[m_KeyUp] = ConvertKeyState(current.key_up, next.key_up);
+    keyboardState[m_KeyDown] = ConvertKeyState(current.key_down, next.key_down);
+    keyboardState[m_KeyLeft] = ConvertKeyState(current.key_left, next.key_left);
+    keyboardState[m_KeyRight] = ConvertKeyState(current.key_right, next.key_right);
+    keyboardState[CKKEY_Q] = ConvertKeyState(current.key_q, next.key_q);
+    keyboardState[m_KeyShift] = ConvertKeyState(current.key_shift, next.key_shift);
+    keyboardState[m_KeySpace] = ConvertKeyState(current.key_space, next.key_space);
+    keyboardState[CKKEY_ESCAPE] = ConvertKeyState(current.key_esc, next.key_esc);
+}
+
+int RecordPlayer::ConvertKeyState(bool current, bool next) {
+    int state = KS_IDLE; // Default to idle state
+    if (current != KS_IDLE) {
+        state |= KS_PRESSED; // Key is currently pressed
+        if (next == KS_IDLE) {
+            state |= KS_RELEASED; // Key was just released
+        }
+    }
+    return state;
 }

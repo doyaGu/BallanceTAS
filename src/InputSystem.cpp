@@ -296,11 +296,7 @@ void InputSystem::Reset() {
     m_HeldKeys.clear();
 }
 
-void InputSystem::SetEnabled(bool enabled) {
-    m_Enabled = enabled;
-}
-
-bool InputSystem::AreKeysPressed(const std::string &keyString) const {
+bool InputSystem::AreKeysDown(const std::string &keyString) const {
     auto keys = ParseKeyString(keyString);
     if (keys.empty()) return false;
 
@@ -309,6 +305,38 @@ bool InputSystem::AreKeysPressed(const std::string &keyString) const {
         if (!IsValidKeyCode(code) || code == 0) return false;
 
         if (!(m_KeyStates[code].currentState & KS_PRESSED)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool InputSystem::AreKeysUp(const std::string &keyString) const {
+    auto keys = ParseKeyString(keyString);
+    if (keys.empty()) return false;
+
+    for (const auto &key : keys) {
+        CKKEYBOARD code = GetKeyCode(key);
+        if (!IsValidKeyCode(code) || code == 0) return false;
+
+        if (m_KeyStates[code].currentState != KS_IDLE) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool InputSystem::AreKeysToggled(const std::string &keyString) const {
+    auto keys = ParseKeyString(keyString);
+    if (keys.empty()) return false;
+
+    for (const auto &key : keys) {
+        CKKEYBOARD code = GetKeyCode(key);
+        if (!IsValidKeyCode(code) || code == 0) return false;
+
+        if (!(m_KeyStates[code].currentState & KS_RELEASED)) {
             return false;
         }
     }
@@ -345,7 +373,6 @@ void InputSystem::Apply(size_t currentTick, unsigned char *keyboardState) {
             m_KeyStates[key].ApplyReleaseEvent(currentTick);
             it = m_HeldKeys.erase(it);
         } else {
-            m_KeyStates[key].ApplyPressEvent(currentTick);
             --ticks;
             ++it;
         }
@@ -354,6 +381,14 @@ void InputSystem::Apply(size_t currentTick, unsigned char *keyboardState) {
     // Step 2: Apply TAS state changes
     for (int code = 0; code < 256; ++code) {
         keyboardState[code] = m_KeyStates[code].currentState;
+    }
+
+    PrepareNextFrame();
+}
+
+void InputSystem::PrepareNextFrame() {
+    for (auto &keyState : m_KeyStates) {
+        keyState.PrepareNextFrame();
     }
 }
 

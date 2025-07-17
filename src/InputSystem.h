@@ -14,12 +14,12 @@ struct KeyState {
 
     // Apply events
     void ApplyPressEvent(size_t ts) {
-        currentState = KS_PRESSED;
+        currentState |= KS_PRESSED;
         timestamp = ts;
     }
 
     void ApplyReleaseEvent(size_t ts) {
-        currentState = KS_RELEASED;
+        currentState |= KS_RELEASED;
         timestamp = ts;
     }
 
@@ -27,6 +27,14 @@ struct KeyState {
         currentState = KS_IDLE;
         timestamp = 0;
     }
+
+    // Reset for new frame (mimics PostProcess cleanup)
+    void PrepareNextFrame() {
+        if (currentState & KS_RELEASED) {
+            currentState = KS_IDLE;
+        }
+    }
+
 };
 
 /**
@@ -99,7 +107,7 @@ public:
      * When enabled, the system completely overrides ALL keyboard input.
      * @param enabled True to enable preemptive control (TAS replay mode).
      */
-    void SetEnabled(bool enabled);
+    void SetEnabled(bool enabled) { m_Enabled = enabled; }
 
     /**
      * @brief Checks if preemptive control is currently enabled.
@@ -117,11 +125,25 @@ public:
     bool IsValidKey(const std::string &key) const;
 
     /**
-     * @brief Checks if key(s) are currently being pressed by the TAS system.
+     * @brief Checks if key(s) are currently pressed by the TAS system.
      * @param keyString The key name(s) to check. For combinations, returns true if ALL keys are pressed.
      * @return True if all specified keys are currently pressed by TAS.
      */
-    bool AreKeysPressed(const std::string &keyString) const;
+    bool AreKeysDown(const std::string &keyString) const;
+
+    /**
+     * @brief Checks if key(s) are currently released by the TAS system.
+     * @param keyString The key name(s) to check. For combinations, returns true if ALL keys are released.
+     * @return True if all specified keys are currently released by TAS.
+     */
+    bool AreKeysUp(const std::string &keyString) const;
+
+    /**
+     * @brief Checks if key(s) are currently toggled (pressed and released).
+     * @param keyString The key name(s) to check. For combinations, returns true if ALL keys are toggled.
+     * @return True if all specified keys are toggled (pressed and released).
+     */
+    bool AreKeysToggled(const std::string &keyString) const;
 
     /**
      * @brief Gets a list of all available key names.
@@ -136,6 +158,11 @@ public:
      * This now properly handles state accumulation and frame lifecycle
      */
     void Apply(size_t currentTick, unsigned char *keyboardState);
+
+    /**
+     * @brief Prepares for next frame
+     */
+    void PrepareNextFrame();
 
     /**
      * @brief Resets the game's keyboard state buffer.

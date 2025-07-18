@@ -278,7 +278,7 @@ public:
     }
 
     void SetUpdateRate(float tickPerSecond) {
-        m_DeltaTime = 1 / tickPerSecond * 1000; // Convert to milliseconds
+        m_DeltaTime = 1000.0f / tickPerSecond;
     }
 
 private:
@@ -358,7 +358,7 @@ private:
 
     // Configuration
     bool m_AutoGenerateOnStop = true; // Auto-generate by default
-    float m_DeltaTime = 1000 / 132.0f; // Default to 132 FPS
+    float m_DeltaTime = 1000.0f / 132.0f; // Default to 132 FPS
     std::unique_ptr<GenerationOptions> m_GenerationOptions;
 
     // Recorded data

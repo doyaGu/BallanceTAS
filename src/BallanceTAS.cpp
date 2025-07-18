@@ -50,6 +50,11 @@ void BallanceTAS::OnLoad() {
         "This option will disable determinism hooks and explosion effects. Requires restart.");
     m_LegacyMode->SetDefaultBoolean(false);
 
+    m_Validation = GetConfig()->GetProperty("TAS", "Validation");
+    m_Validation->SetComment("Enables validation recording for script playback. "
+        "This will record physics data to validate TAS scripts.");
+    m_Validation->SetDefaultBoolean(false);
+
     m_StopOnFinish = GetConfig()->GetProperty("TAS", "StopOnFinish");
     m_StopOnFinish->SetComment("Automatically stops TAS playback/recording when the level ends.");
     m_StopOnFinish->SetDefaultBoolean(true);
@@ -163,6 +168,10 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
                prop == m_OSDPositionX || prop == m_OSDPositionY ||
                prop == m_OSDOpacity || prop == m_OSDScale) {
         UpdateOSDPanelConfig();
+    } else if (prop == m_Validation) {
+        if (m_Engine) {
+            m_Engine->SetValidationEnabled(m_Validation->GetBoolean());
+        }
     } else if (prop == m_RecordingMaxFrames && m_Initialized) {
         if (m_Engine && m_Engine->GetRecorder()) {
             m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
@@ -349,6 +358,8 @@ bool BallanceTAS::Initialize() {
         if (!m_Engine->Initialize()) {
             throw std::runtime_error("Engine failed to initialize.");
         }
+
+        m_Engine->SetValidationEnabled(m_Validation->GetBoolean());
 
         // Initialize UI Manager
         m_UIManager = std::make_unique<UIManager>(m_Engine.get());

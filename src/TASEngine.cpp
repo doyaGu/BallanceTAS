@@ -243,6 +243,15 @@ void TASEngine::StopRecording() {
         GetLogger()->Error("Exception stopping recording: %s", e.what());
     }
 
+    if (IsValidationEnabled()) {
+        std::string path = m_Path;
+        path.append("\\").append(m_Recorder->GetGenerationOptions().projectName)
+            .append("\\recording_").append(std::to_string(std::time(nullptr))).append(".txt");
+        if (!m_Recorder->DumpFrameData(path, true)) {
+            GetLogger()->Error("Failed to dump frame data to: %s", path.c_str());
+        }
+    }
+
     // Ensure InputSystem remains disabled after recording
     if (m_InputSystem) {
         m_InputSystem->Reset();
@@ -336,6 +345,12 @@ void TASEngine::StopReplay() {
         }
         // For record playback, InputSystem was already disabled, but ensure keys are clean
         // RecordPlayer handles its own keyboard state cleanup
+    }
+
+    // Clean up validation recording if active
+    if (IsValidationEnabled()) {
+        GetLogger()->Info("Stopping validation recording due to playback end.");
+        StopValidationRecording();
     }
 
     ClearCallbacks();
@@ -456,6 +471,66 @@ void TASEngine::StopTranslation() {
 
     m_GameInterface->SetUIMode(UIMode::Idle);
     GetLogger()->Info("Translation completed and script generated.");
+}
+
+bool TASEngine::StartValidationRecording(const std::string &outputPath) {
+    if (!IsPlayingScript()) {
+        GetLogger()->Error("Validation recording can only be enabled during script playback.");
+        return false;
+    }
+
+    if (!m_Recorder) {
+        GetLogger()->Error("Recorder subsystem not available for validation recording.");
+        return false;
+    }
+
+    if (m_Recorder->IsRecording()) {
+        GetLogger()->Error("Cannot enable validation recording while regular recording is active.");
+        return false;
+    }
+
+    m_ValidationOutputPath = outputPath;
+    m_ValidationRecording = true;
+
+    // Start validation recording
+    m_Recorder->SetAutoGenerate(false);
+    m_Recorder->ClearFrameData();
+    m_Recorder->Start();
+
+    GetLogger()->Info("Validation recording enabled - output path: %s", outputPath.c_str());
+    return true;
+}
+
+bool TASEngine::StopValidationRecording() {
+    if (!m_ValidationRecording) {
+        GetLogger()->Warn("Validation recording is not currently enabled.");
+        return false;
+    }
+
+    if (!m_Recorder || !m_Recorder->IsRecording()) {
+        GetLogger()->Error("Validation recording state inconsistent - recorder not active.");
+        m_ValidationRecording = false;
+        return false;
+    }
+
+    // Stop recording and get frame data
+    auto frameData = m_Recorder->Stop();
+
+    // Generate validation dumps with timestamped filename
+    std::string timestampedPath = m_ValidationOutputPath + "validation_" +
+        std::to_string(std::time(nullptr)) + ".txt";
+
+    bool success = m_Recorder->DumpFrameData(timestampedPath, true);
+    if (success) {
+        GetLogger()->Info("Validation recording completed - %zu frames captured, dumps saved to: %s",
+                          frameData.size(), timestampedPath.c_str());
+    } else {
+        GetLogger()->Error("Failed to generate validation dumps to: %s", timestampedPath.c_str());
+    }
+
+    m_ValidationRecording = false;
+    m_ValidationOutputPath.clear();
+    return success;
 }
 
 void TASEngine::StopTranslationImmediate() {
@@ -597,6 +672,12 @@ void TASEngine::StartReplayInternal() {
     SetPlayPending(false);
     SetPlaying(true);
     m_PlaybackType = playbackType;
+
+    if (IsValidationEnabled()) {
+        std::string path = project->GetPath();
+        path.append("\\");
+        StartValidationRecording(path);
+    }
 
     m_GameInterface->SetUIMode(UIMode::Playing);
     GetLogger()->Info("Started playing TAS project: %s (%s mode)",
@@ -764,7 +845,13 @@ void TASEngine::SetupScriptPlaybackCallbacks() {
                     m_InputSystem->Apply(m_CurrentTick, inputManager->GetKeyboardState());
                 }
 
-                // STEP 3: Increment frame counter for next iteration
+                // STEP 3: Validation recording
+                if (m_ValidationRecording && m_Recorder && m_Recorder->IsRecording()) {
+                    auto *inputManager = static_cast<CKInputManager *>(man);
+                    m_Recorder->Tick(m_CurrentTick, inputManager->GetKeyboardState());
+                }
+
+                // STEP 4: Increment frame counter for next iteration
                 IncrementCurrentTick();
             } catch (const std::exception &e) {
                 GetLogger()->Error("Script playback callback error: %s", e.what());

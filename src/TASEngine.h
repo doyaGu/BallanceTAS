@@ -176,6 +176,40 @@ public:
      */
     void StopTranslation();
 
+    // === Validation Recording Control ===
+
+    /**
+     * @brief Starts validation recording during script playback.
+     * @param outputPath Base path for validation dumps (without extension).
+     * @return True if validation recording was enabled successfully.
+     */
+    bool StartValidationRecording(const std::string &outputPath);
+
+    /**
+     * @brief Stop validation recording and generates validation dumps.
+     * @return True if validation dumps were generated successfully.
+     */
+    bool StopValidationRecording();
+
+    /**
+     * @brief Checks if validation recording is currently enabled.
+     * @return True if validation recording is active.
+     */
+    bool IsValidationEnabled() const { return m_ValidationEnabled; }
+
+    /**
+     * @brief Sets whether validation recording is enabled.
+     * This controls if validation dumps are generated during script playback.
+     * @param enabled True to enable validation recording, false to disable.
+     */
+    void SetValidationEnabled(bool enabled) { m_ValidationEnabled = enabled; }
+
+    /**
+     * @brief Gets the current validation output path.
+     * @return The validation output path, or empty string if not set.
+     */
+    const std::string& GetValidationOutputPath() const { return m_ValidationOutputPath; }
+
     // --- Subsystem Accessors ---
     // These are used by other parts of the framework (e.g., LuaApi) to get handles
     // to the necessary systems.
@@ -363,4 +397,8 @@ private:
     std::atomic<bool> m_ShuttingDown;
     size_t m_CurrentTick = 0;
     std::string m_Path = BML_TAS_PATH;
+
+    bool m_ValidationEnabled = false;
+    bool m_ValidationRecording = false;
+    std::string m_ValidationOutputPath;
 };

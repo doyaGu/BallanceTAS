@@ -43,7 +43,7 @@ public:
 
     // Actions
     void PlayProject(TASProject *project);
-    void StopTAS();
+    void StopTAS(bool clearProject = true);
     void StartRecording();
     void StopRecording();
     void TranslateProject(TASProject *project);

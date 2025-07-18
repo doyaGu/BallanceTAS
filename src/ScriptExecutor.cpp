@@ -150,7 +150,7 @@ bool ScriptExecutor::LoadAndExecute(TASProject *project) {
     }
 }
 
-void ScriptExecutor::Stop() {
+void ScriptExecutor::Stop(bool clearProject) {
     if (!m_IsExecuting) return;
 
     m_Engine->GetLogger()->Info("Stopping script execution...");
@@ -161,13 +161,18 @@ void ScriptExecutor::Stop() {
             m_Scheduler->Clear();
         }
 
-        // Clean up project resources
-        CleanupCurrentProject();
+        // Clean up project resources only if requested
+        if (clearProject) {
+            CleanupCurrentProject();
+            m_CurrentProject = nullptr;
+            m_CurrentExecutionPath.clear();
+        } else {
+            // Keep project reference but clear execution path for re-preparation
+            m_CurrentExecutionPath.clear();
+        }
 
-        // Reset state
+        // Reset execution state
         m_IsExecuting = false;
-        m_CurrentProject = nullptr;
-        m_CurrentExecutionPath.clear();
 
         m_Engine->GetLogger()->Info("Script execution stopped.");
     } catch (const std::exception &e) {

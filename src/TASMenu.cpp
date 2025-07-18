@@ -115,35 +115,34 @@ void TASMenu::PlayProject(TASProject *project) {
     }
 }
 
-void TASMenu::StopTAS() {
-    if (!m_Engine) return;
-
+void TASMenu::StopTAS(bool clearProject) {
     bool wasRecording = m_Engine->IsRecording() || m_Engine->IsPendingRecord();
     bool wasPlaying = m_Engine->IsPlaying() || m_Engine->IsPendingPlay();
     bool wasTranslating = m_Engine->IsTranslating() || m_Engine->IsPendingTranslate();
 
     if (wasTranslating) {
-        m_Engine->StopTranslation();
+        m_Engine->StopTranslation(clearProject);
         m_Engine->GetLogger()->Info("Translation stopped from menu.");
     } else if (wasRecording) {
         m_Engine->StopRecording();
         m_Engine->GetLogger()->Info("Recording stopped from menu.");
     } else if (wasPlaying) {
-        m_Engine->StopReplay();
+        m_Engine->StopReplay(clearProject);
         m_Engine->GetLogger()->Info("Replay stopped from menu.");
     }
 
-    // Clear project selection after stopping
-    if (wasPlaying || wasTranslating) {
-        SetCurrentProject(nullptr);
+    if (clearProject) {
+        // Clear project selection after stopping
+        if (wasPlaying || wasTranslating) {
+            SetCurrentProject(nullptr);
+        }
+
+        if (wasRecording || wasTranslating) {
+            // Refresh projects (new one might have been generated)
+            RefreshProjects();
+        }
     }
 
-    if (wasRecording || wasTranslating) {
-        // Refresh projects (new one might have been generated)
-        RefreshProjects();
-    }
-
-    // Navigate back to project list
     ShowPage("TAS Projects");
 }
 

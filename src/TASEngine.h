@@ -160,7 +160,7 @@ public:
     /**
      * @brief Stops replay (works for both script and record playback).
      */
-    void StopReplay();
+    void StopReplay(bool clearProject = true);
 
     // === Translation Control (Record to Script Conversion) ===
 
@@ -174,7 +174,7 @@ public:
     /**
      * @brief Stops translation and generates the script.
      */
-    void StopTranslation();
+    void StopTranslation(bool clearProject = true);
 
     // === Validation Recording Control ===
 
@@ -208,7 +208,7 @@ public:
      * @brief Gets the current validation output path.
      * @return The validation output path, or empty string if not set.
      */
-    const std::string& GetValidationOutputPath() const { return m_ValidationOutputPath; }
+    const std::string &GetValidationOutputPath() const { return m_ValidationOutputPath; }
 
     // --- Subsystem Accessors ---
     // These are used by other parts of the framework (e.g., LuaApi) to get handles

@@ -73,7 +73,6 @@ bool TASEngine::Initialize() {
             if (m_ShuttingDown) return;
 
             if (!isExecuting && IsPlaying() && m_PlaybackType == PlaybackType::Script) {
-                GetLogger()->Info("Script execution completed - stopping TAS replay.");
                 StopReplay();
             }
         });
@@ -84,7 +83,6 @@ bool TASEngine::Initialize() {
             if (m_ShuttingDown) return;
 
             if (!isPlaying && IsPlaying() && m_PlaybackType == PlaybackType::Record) {
-                GetLogger()->Info("Record playback completed - stopping TAS replay.");
                 StopReplay();
             }
         });
@@ -315,7 +313,7 @@ bool TASEngine::StartReplay() {
     return true;
 }
 
-void TASEngine::StopReplay() {
+void TASEngine::StopReplay(bool clearProject) {
     if (m_ShuttingDown) {
         StopReplayImmediate();
         return;
@@ -328,37 +326,39 @@ void TASEngine::StopReplay() {
     try {
         // Stop the appropriate executor
         if (m_PlaybackType == PlaybackType::Script && m_ScriptExecutor) {
-            m_ScriptExecutor->Stop();
+            m_ScriptExecutor->Stop(false);
         } else if (m_PlaybackType == PlaybackType::Record && m_RecordPlayer) {
             m_RecordPlayer->Stop();
         }
     } catch (const std::exception &e) {
         GetLogger()->Error("Exception stopping replay: %s", e.what());
     }
-
-    // Clean up input state based on playback type
-    if (m_InputSystem) {
-        if (m_PlaybackType == PlaybackType::Script) {
-            // For script playback, InputSystem was enabled - disable it and clean up
-            m_InputSystem->Reset();
-            m_InputSystem->SetEnabled(false);
-        }
-        // For record playback, InputSystem was already disabled, but ensure keys are clean
-        // RecordPlayer handles its own keyboard state cleanup
-    }
-
+    
     // Clean up validation recording if active
     if (IsValidationEnabled()) {
         GetLogger()->Info("Stopping validation recording due to playback end.");
         StopValidationRecording();
     }
 
-    ClearCallbacks();
-    SetPlaying(false);
-    SetPlayPending(false);
+    // Clean up input state based on playback type
+    if (m_InputSystem) {
+        if (m_PlaybackType == PlaybackType::Script) {
+            m_InputSystem->Reset();
+            m_InputSystem->SetEnabled(false);
+        }
+    }
 
     // Reset keyboard state to ensure clean state
     memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+
+    // Only clear project if explicitly requested
+    if (clearProject) {
+        m_ProjectManager->SetCurrentProject(nullptr);
+    }
+
+    ClearCallbacks();
+    SetPlaying(false);
+    SetPlayPending(false);
 
     m_GameInterface->SetUIMode(UIMode::Idle);
     GetLogger()->Info("Replay stopped.");
@@ -380,11 +380,11 @@ void TASEngine::StopReplayImmediate() {
             m_InputSystem->SetEnabled(false);
         }
 
-        SetPlaying(false);
-        SetPlayPending(false);
-
         // Reset keyboard state to ensure clean state
         memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+
+        SetPlaying(false);
+        SetPlayPending(false);
 
         m_GameInterface->SetUIMode(UIMode::Idle);
         GetLogger()->Info("Replay stopped immediately.");
@@ -432,7 +432,7 @@ bool TASEngine::StartTranslation() {
     return true;
 }
 
-void TASEngine::StopTranslation() {
+void TASEngine::StopTranslation(bool clearProject) {
     if (m_ShuttingDown) {
         StopTranslationImmediate();
         return;
@@ -449,7 +449,6 @@ void TASEngine::StopTranslation() {
         }
 
         if (m_Recorder && m_Recorder->IsRecording()) {
-            // This will auto-generate the script if configured
             m_Recorder->Stop();
         }
     } catch (const std::exception &e) {
@@ -464,6 +463,11 @@ void TASEngine::StopTranslation() {
 
     // Reset keyboard state to ensure clean state
     memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+    
+    // Only clear project if explicitly requested
+    if (clearProject) {
+        m_ProjectManager->SetCurrentProject(nullptr);
+    }
 
     ClearCallbacks();
     SetTranslating(false);
@@ -471,6 +475,35 @@ void TASEngine::StopTranslation() {
 
     m_GameInterface->SetUIMode(UIMode::Idle);
     GetLogger()->Info("Translation completed and script generated.");
+}
+
+void TASEngine::StopTranslationImmediate() {
+    try {
+        // Stop both subsystems immediately
+        if (m_RecordPlayer) {
+            m_RecordPlayer->Stop();
+        }
+        if (m_Recorder) {
+            m_Recorder->Stop();
+        }
+
+        // Clean up input state
+        if (m_InputSystem) {
+            m_InputSystem->Reset();
+            m_InputSystem->SetEnabled(false);
+        }
+
+        // Reset keyboard state
+        memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
+
+        SetTranslating(false);
+        SetTranslatePending(false);
+
+        m_GameInterface->SetUIMode(UIMode::Idle);
+        GetLogger()->Info("Translation stopped immediately.");
+    } catch (const std::exception &e) {
+        GetLogger()->Error("Exception during immediate translation stop: %s", e.what());
+    }
 }
 
 bool TASEngine::StartValidationRecording(const std::string &outputPath) {
@@ -531,35 +564,6 @@ bool TASEngine::StopValidationRecording() {
     m_ValidationRecording = false;
     m_ValidationOutputPath.clear();
     return success;
-}
-
-void TASEngine::StopTranslationImmediate() {
-    try {
-        // Stop both subsystems immediately
-        if (m_RecordPlayer) {
-            m_RecordPlayer->Stop();
-        }
-        if (m_Recorder) {
-            m_Recorder->Stop();
-        }
-
-        // Clean up input state
-        if (m_InputSystem) {
-            m_InputSystem->Reset();
-            m_InputSystem->SetEnabled(false);
-        }
-
-        // Reset keyboard state
-        memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
-
-        SetTranslating(false);
-        SetTranslatePending(false);
-
-        m_GameInterface->SetUIMode(UIMode::Idle);
-        GetLogger()->Info("Translation stopped immediately.");
-    } catch (const std::exception &e) {
-        GetLogger()->Error("Exception during immediate translation stop: %s", e.what());
-    }
 }
 
 // === Internal Start Methods ===

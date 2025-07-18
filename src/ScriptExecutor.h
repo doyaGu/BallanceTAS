@@ -47,7 +47,7 @@ public:
     /**
      * @brief Stops script execution and cleans up.
      */
-    void Stop();
+    void Stop(bool clearProject = true);
 
     /**
      * @brief Processes one tick of script execution.

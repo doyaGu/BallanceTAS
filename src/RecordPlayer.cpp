@@ -47,6 +47,8 @@ bool RecordPlayer::LoadAndPlay(const TASProject *project) {
 
     m_IsPlaying = true;
 
+    NotifyStatusChange(true);
+
     m_Engine->GetLogger()->Info("Record '%s' loaded and playback started (%zu frames).",
                                 project->GetName().c_str(), m_TotalFrames);
     return true;
@@ -71,7 +73,7 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
     // Check if we've reached the end
     if (currentTick >= m_TotalFrames) {
         m_Engine->GetLogger()->Info("Record playback completed naturally.");
-        Stop();
+        NotifyStatusChange(false);
         return;
     }
 

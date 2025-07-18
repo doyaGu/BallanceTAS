@@ -139,6 +139,8 @@ bool ScriptExecutor::LoadAndExecute(TASProject *project) {
         m_CurrentExecutionPath = executionPath;
         m_IsExecuting = true;
 
+        NotifyStatusChange(true);
+
         m_Engine->GetLogger()->Info("TAS script '%s' loaded and started.", project->GetName().c_str());
         return true;
     } catch (const std::exception &e) {
@@ -185,11 +187,11 @@ void ScriptExecutor::Tick() {
         // Check if script execution has completed
         if (!m_Scheduler->IsRunning()) {
             m_Engine->GetLogger()->Info("Script execution completed naturally.");
-            Stop();
+            NotifyStatusChange(false);
         }
     } catch (const std::exception &e) {
         m_Engine->GetLogger()->Error("Exception during script tick: %s", e.what());
-        Stop(); // Stop on error to prevent further issues
+        NotifyStatusChange(false);
     }
 }
 

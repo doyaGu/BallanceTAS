@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <string>
+#include <functional>
 
 #include <CKDefines.h>
 
@@ -102,7 +103,25 @@ public:
      */
     float GetFrameDeltaTime(size_t currentTick) const;
 
+    /**
+     * @brief Sets a callback to be called when playback status changes.
+     * @param callback Function called with true when starting, false when stopping.
+     */
+    void SetStatusCallback(std::function<void(bool)> callback) {
+        m_StatusCallback = std::move(callback);
+    }
+
 private:
+    /**
+     * @brief Notifies status change via callback.
+     * @param isPlaying True if starting playback, false if stopping.
+     */
+    void NotifyStatusChange(bool isPlaying) const {
+        if (m_StatusCallback) {
+            m_StatusCallback(isPlaying);
+        }
+    }
+
     /**
      * @brief Loads a .tas record file using the legacy format.
      * @param recordPath Path to the .tas file.
@@ -137,6 +156,9 @@ private:
     size_t m_TotalFrames = 0;
     std::vector<RecordFrameData> m_Frames;
     bool m_IsPlaying = false;
+
+    // Callback for execution status changes
+    std::function<void(bool)> m_StatusCallback;
 
     // Cached remapped keys (acquired once when playback starts)
     CKKEYBOARD m_KeyUp = CKKEY_UP;

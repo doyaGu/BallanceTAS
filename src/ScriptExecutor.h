@@ -80,6 +80,14 @@ public:
     LuaScheduler *GetScheduler() const { return m_Scheduler.get(); }
 
     /**
+     * @brief Sets a callback to be called when execution status changes.
+     * @param callback Function called with true when starting, false when stopping.
+     */
+    void SetStatusCallback(std::function<void(bool)> callback) {
+        m_StatusCallback = std::move(callback);
+    }
+
+    /**
      * @brief Fires a game event to any listening Lua scripts.
      * @param eventName The name of the event.
      * @param args Optional arguments to pass to event handlers.
@@ -100,6 +108,16 @@ private:
      */
     void CleanupCurrentProject();
 
+    /**
+     * @brief Notifies status change via callback.
+     * @param isExecuting True if starting execution, false if stopping.
+     */
+    void NotifyStatusChange(bool isExecuting) const {
+        if (m_StatusCallback) {
+            m_StatusCallback(isExecuting);
+        }
+    }
+
     // Core references
     TASEngine *m_Engine;
 
@@ -112,4 +130,7 @@ private:
     std::string m_CurrentExecutionPath;
     bool m_IsExecuting = false;
     bool m_IsInitialized = false;
+
+    // Callback for execution status changes
+    std::function<void(bool)> m_StatusCallback;
 };

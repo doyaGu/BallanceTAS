@@ -67,7 +67,29 @@ bool TASEngine::Initialize() {
         return false;
     }
 
-    // 4. Set up recording callbacks
+    // 4. Set up callbacks
+    if (m_ScriptExecutor) {
+        m_ScriptExecutor->SetStatusCallback([this](bool isExecuting) {
+            if (m_ShuttingDown) return;
+
+            if (!isExecuting && IsPlaying() && m_PlaybackType == PlaybackType::Script) {
+                GetLogger()->Info("Script execution completed - stopping TAS replay.");
+                StopReplay();
+            }
+        });
+    }
+
+    if (m_RecordPlayer) {
+        m_RecordPlayer->SetStatusCallback([this](bool isPlaying) {
+            if (m_ShuttingDown) return;
+
+            if (!isPlaying && IsPlaying() && m_PlaybackType == PlaybackType::Record) {
+                GetLogger()->Info("Record playback completed - stopping TAS replay.");
+                StopReplay();
+            }
+        });
+    }
+
     if (m_Recorder) {
         m_Recorder->SetStatusCallback([this](bool isRecording) {
             if (m_ShuttingDown) return;

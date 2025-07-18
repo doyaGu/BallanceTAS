@@ -71,7 +71,8 @@ void TASMenu::OnOpen() {
         inputManager->Block(CK_INPUT_DEVICE_KEYBOARD);
     }
 
-    RefreshProjects();
+    if (!GetCurrentProject())
+        RefreshProjects();
 }
 
 void TASMenu::OnClose() {
@@ -82,7 +83,7 @@ void TASMenu::RefreshProjects() {
     m_Engine->GetProjectManager()->RefreshProjects();
 }
 
-TASProject * TASMenu::GetCurrentProject() const {
+TASProject *TASMenu::GetCurrentProject() const {
     return m_Engine->GetProjectManager()->GetCurrentProject();
 }
 
@@ -183,7 +184,7 @@ void TASMenu::TranslateProject(TASProject *project) {
     // Check if record can be accurately translated
     if (!project->CanBeTranslated()) {
         m_Engine->GetLogger()->Error("Cannot translate record: %s",
-                                   project->GetTranslationCompatibilityMessage().c_str());
+                                     project->GetTranslationCompatibilityMessage().c_str());
         return;
     }
 
@@ -193,7 +194,7 @@ void TASMenu::TranslateProject(TASProject *project) {
     }
 
     m_Engine->GetLogger()->Info("Translating record to script: %s (%.1f Hz, constant timing)",
-                             project->GetName().c_str(), project->GetUpdateRate());
+                                project->GetName().c_str(), project->GetUpdateRate());
 
     // Set the current project and start translation via TASEngine
     SetCurrentProject(project);

@@ -969,7 +969,7 @@ void TASEngine::OnGameEvent(const std::string &eventName, Args... args) {
     }
 
     // Forward to recorder if recording
-    if (IsRecording() && m_Recorder) {
+    if ((IsRecording() || IsTranslating()) && m_Recorder) {
         if constexpr (sizeof...(args) > 0) {
             // If there are arguments, pass the first one as event data
             auto firstArg = std::get<0>(std::make_tuple(args...));

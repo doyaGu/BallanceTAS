@@ -217,7 +217,7 @@ std::string ScriptExecutor::PrepareProjectForExecution(TASProject *project) {
             return "";
         }
 
-        std::string executionPath = projectManager->PrepareProjectForExecution(const_cast<TASProject *>(project));
+        std::string executionPath = projectManager->PrepareProjectForExecution(project);
         if (executionPath.empty()) {
             m_Engine->GetLogger()->Error("Failed to prepare zip project for execution: %s",
                                                    project->GetName().c_str());
@@ -225,7 +225,7 @@ std::string ScriptExecutor::PrepareProjectForExecution(TASProject *project) {
         }
 
         // Update the project's execution base path for script resolution
-        const_cast<TASProject *>(project)->SetExecutionBasePath(executionPath);
+        project->SetExecutionBasePath(executionPath);
 
         m_Engine->GetLogger()->Info("Zip project prepared for execution: %s -> %s",
                                               project->GetPath().c_str(), executionPath.c_str());

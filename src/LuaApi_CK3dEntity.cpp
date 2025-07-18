@@ -90,17 +90,17 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         "modify_moveable_flags", &CK3dEntity::ModifyMoveableFlags,
 
         // Meshes
-        "get_current_mesh", &CK3dEntity::GetCurrentMesh,
-        "set_current_mesh", sol::overload(
-            [](CK3dEntity &entity, CKMesh *mesh) { return entity.SetCurrentMesh(mesh); },
-            [](CK3dEntity &entity, CKMesh *mesh, CKBOOL addIfNotHere) {
-                return entity.SetCurrentMesh(mesh, addIfNotHere);
-            }
-        ),
-        "get_mesh_count", &CK3dEntity::GetMeshCount,
-        "get_mesh", &CK3dEntity::GetMesh,
-        "add_mesh", &CK3dEntity::AddMesh,
-        "remove_mesh", &CK3dEntity::RemoveMesh,
+        // "get_current_mesh", &CK3dEntity::GetCurrentMesh,
+        // "set_current_mesh", sol::overload(
+        //     [](CK3dEntity &entity, CKMesh *mesh) { return entity.SetCurrentMesh(mesh); },
+        //     [](CK3dEntity &entity, CKMesh *mesh, CKBOOL addIfNotHere) {
+        //         return entity.SetCurrentMesh(mesh, addIfNotHere);
+        //     }
+        // ),
+        // "get_mesh_count", &CK3dEntity::GetMeshCount,
+        // "get_mesh", &CK3dEntity::GetMesh,
+        // "add_mesh", &CK3dEntity::AddMesh,
+        // "remove_mesh", &CK3dEntity::RemoveMesh,
 
         // Position and orientation
         "look_at", sol::overload(

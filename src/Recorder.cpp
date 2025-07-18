@@ -162,10 +162,6 @@ bool Recorder::GenerateScript() {
                 if (success) {
                     m_Engine->GetLogger()->Info("Script auto-generated successfully from %s: %s", modeStr,
                                                 options.projectName.c_str());
-                    // Refresh projects in project manager
-                    if (auto *projectManager = m_Engine->GetProjectManager()) {
-                        projectManager->RefreshProjects();
-                    }
                 } else {
                     m_Engine->GetLogger()->Error("Failed to auto-generate script from %s: %s", modeStr,
                                                  options.projectName.c_str());

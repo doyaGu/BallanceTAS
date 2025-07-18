@@ -551,7 +551,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
             if (arg.is<sol::function>()) {
                 // Convert function to coroutine
                 sol::function func = arg.as<sol::function>();
-                coroutines.push_back(sol::coroutine(func));
+                coroutines.emplace_back(func);
             } else if (arg.is<sol::coroutine>()) {
                 coroutines.push_back(arg.as<sol::coroutine>());
             } else {
@@ -571,7 +571,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
             if (arg.is<sol::function>()) {
                 // Convert function to coroutine
                 sol::function func = arg.as<sol::function>();
-                coroutines.push_back(sol::coroutine(func));
+                coroutines.emplace_back(func);
             } else if (arg.is<sol::coroutine>()) {
                 coroutines.push_back(arg.as<sol::coroutine>());
             } else {

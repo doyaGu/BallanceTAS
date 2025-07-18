@@ -319,7 +319,7 @@ void UIManager::UpdateHotkeys() {
     if (!m_Engine) return;
 
     // Handle stop key for playback, recording, and translation
-    if (ImGui::IsKeyPressed(m_StopHotkey)) {
+    if (ImGui::IsKeyPressed(m_StopHotkey, false)) {
         if (m_Engine->IsTranslating()) {
             StopTranslation();
         } else if (m_Engine->IsPlaying()) {
@@ -330,33 +330,33 @@ void UIManager::UpdateHotkeys() {
     }
 
     // OSD hotkey handling using IsKeyToggled
-    if (ImGui::IsKeyPressed(m_OSDHotkey)) {
+    if (ImGui::IsKeyPressed(m_OSDHotkey, false)) {
         ToggleOSD();
     }
 
     // Panel-specific hotkeys (only when in-game and OSD is enabled)
     if (m_Engine->GetGameInterface()->IsIngame() && m_OSDVisible) {
-        if (ImGui::IsKeyPressed(m_StatusPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_StatusPanelHotkey, false)) {
             ToggleOSDPanel(OSDPanel::Status);
         }
 
-        if (ImGui::IsKeyPressed(m_VelocityPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_VelocityPanelHotkey, false)) {
             ToggleOSDPanel(OSDPanel::Velocity);
         }
 
-        if (ImGui::IsKeyPressed(m_PositionPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_PositionPanelHotkey, false)) {
             ToggleOSDPanel(OSDPanel::Position);
         }
 
-        if (ImGui::IsKeyPressed(m_PhysicsPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_PhysicsPanelHotkey, false)) {
             ToggleOSDPanel(OSDPanel::Physics);
         }
 
-        if (ImGui::IsKeyPressed(m_KeysPanelHotkey)) {
+        if (ImGui::IsKeyPressed(m_KeysPanelHotkey, false)) {
             ToggleOSDPanel(OSDPanel::Keys);
         }
 
-        if (ImGui::IsKeyPressed(m_TrajectoryPlaneHotkey)) {
+        if (ImGui::IsKeyPressed(m_TrajectoryPlaneHotkey, false)) {
             CycleTrajectoryPlane();
         }
     }

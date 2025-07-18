@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 project(BallanceTAS
-        VERSION 1.4.0
+        VERSION 1.5.0
         LANGUAGES CXX
         DESCRIPTION "The TAS system for Ballance "
         HOMEPAGE_URL https://github.com/doyaGu/BallanceTAS)

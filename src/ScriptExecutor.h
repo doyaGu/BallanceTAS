@@ -87,14 +87,6 @@ public:
         m_StatusCallback = std::move(callback);
     }
 
-    /**
-     * @brief Fires a game event to any listening Lua scripts.
-     * @param eventName The name of the event.
-     * @param args Optional arguments to pass to event handlers.
-     */
-    template <typename... Args>
-    void FireGameEvent(const std::string &eventName, Args... args);
-
 private:
     /**
      * @brief Prepares a project for execution by extracting it if needed.

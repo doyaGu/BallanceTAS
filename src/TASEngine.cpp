@@ -952,17 +952,9 @@ void TASEngine::SetupTranslationCallbacks() {
 void TASEngine::OnTranslationPlaybackComplete() {
     GetLogger()->Info("Record playback completed during translation. Generating script...");
 
-    // Add a small delay to ensure all data is captured, then stop translation
-    AddTimer(2ul, [this]() {
-        if (IsTranslating()) {
-            StopTranslation();
-
-            // Refresh projects to show the newly generated script
-            if (m_ProjectManager) {
-                m_ProjectManager->RefreshProjects();
-            }
-        }
-    });
+    if (IsTranslating()) {
+        StopTranslation();
+    }
 }
 
 template <typename... Args>

@@ -50,10 +50,9 @@ void BallanceTAS::OnLoad() {
         "This option will disable determinism hooks and explosion effects. Requires restart.");
     m_LegacyMode->SetDefaultBoolean(false);
 
-    // UI visibility control.
-    m_ShowOSD = GetConfig()->GetProperty("OSD", "ShowInGameOSD");
-    m_ShowOSD->SetComment("Controls the visibility of the in-game On-Screen Display.");
-    m_ShowOSD->SetDefaultBoolean(true);
+    m_StopOnFinish = GetConfig()->GetProperty("TAS", "StopOnFinish");
+    m_StopOnFinish->SetComment("Automatically stops TAS playback/recording when the level ends.");
+    m_StopOnFinish->SetDefaultBoolean(true);
 
     // Hotkey configuration
     m_StopKey = GetConfig()->GetProperty("Hotkeys", "StopKey");
@@ -64,6 +63,11 @@ void BallanceTAS::OnLoad() {
     m_RecordingMaxFrames = GetConfig()->GetProperty("Recording", "MaxFrames");
     m_RecordingMaxFrames->SetComment("Maximum frames to record (prevents memory issues)");
     m_RecordingMaxFrames->SetDefaultInteger(1000000);
+
+    // UI visibility control.
+    m_ShowOSD = GetConfig()->GetProperty("OSD", "ShowOSD");
+    m_ShowOSD->SetComment("Controls the visibility of the in-game On-Screen Display.");
+    m_ShowOSD->SetDefaultBoolean(true);
 
     // --- OSD Panel Configuration ---
     m_ShowOSDStatus = GetConfig()->GetProperty("OSD", "ShowStatusPanel");
@@ -658,7 +662,9 @@ void BallanceTAS::OnPostCheckpointReached() {
 void BallanceTAS::OnLevelFinish() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->OnGameEvent("level_finish");
-        m_Engine->Stop();
+        if (m_StopOnFinish->GetBoolean()) {
+            m_Engine->Stop();
+        }
     }
 }
 

@@ -206,9 +206,10 @@ private:
     // These pointers are owned by BML's config manager.
     IProperty *m_Enabled = nullptr;
     IProperty *m_LegacyMode = nullptr;
-    IProperty *m_ShowOSD = nullptr;
+    IProperty *m_StopOnFinish = nullptr;
     IProperty *m_StopKey = nullptr;
 
+    IProperty *m_ShowOSD = nullptr;
     IProperty *m_ShowOSDStatus = nullptr;
     IProperty *m_ShowOSDVelocity = nullptr;
     IProperty *m_ShowOSDPosition = nullptr;

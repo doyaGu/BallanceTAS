@@ -15,6 +15,7 @@ void LuaApi::Register(TASEngine *engine) {
     RegisterInputApi(tas_table, engine);
     RegisterWorldQueryApi(tas_table, engine);
     RegisterConcurrencyApi(tas_table, engine);
+    RegisterEventApi(tas_table, engine);
     RegisterDebugApi(tas_table, engine);
 }
 

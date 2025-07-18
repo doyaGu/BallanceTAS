@@ -2,80 +2,43 @@
 
 #include "TASEngine.h"
 
-EventManager::EventManager(TASEngine *engine) : m_Engine(engine) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
-    }
-}
+EventManager::EventManager(TASEngine *engine) : m_Engine(engine) {}
 
-void EventManager::RegisterListener(const std::string &eventName, sol::function callback) {
-    if (!callback.valid() || eventName.empty()) {
+void EventManager::RegisterListener(const std::string &eventName, sol::function callback, bool oneTime) {
+    if (eventName.empty()) {
+        HandleError(eventName, "Event name cannot be empty");
         return;
     }
 
-    m_Listeners[eventName].push_back(std::move(callback));
+    if (!callback.valid()) {
+        HandleError(eventName, "Lua callback is invalid");
+        return;
+    }
+
+    m_Listeners[eventName].emplace_back(std::move(callback), oneTime);
 }
 
-template <typename... Args>
-void EventManager::FireEvent(const std::string &eventName, Args... args) {
-    auto it = m_Listeners.find(eventName);
-    if (it == m_Listeners.end()) {
-        return; // No one is listening to this event.
+void EventManager::RegisterListener(const std::string &eventName, std::function<void()> callback, bool oneTime) {
+    if (eventName.empty()) {
+        HandleError(eventName, "Event name cannot be empty");
+        return;
     }
 
-    // Process listeners with error handling
-    for (auto listenerIt = it->second.begin(); listenerIt != it->second.end();) {
-        const auto &listenerFunc = *listenerIt;
-
-        if (!listenerFunc.valid()) {
-            // Remove invalid listeners
-            listenerIt = it->second.erase(listenerIt);
-            continue;
-        }
-
-        try {
-            // Try to call the function directly first
-            auto result = listenerFunc(args...);
-
-            if (result.valid()) {
-                // Function executed successfully without yielding
-                ++listenerIt;
-            } else {
-                // Handle error
-                sol::error err = result;
-                HandleLuaError(eventName, err.what());
-                ++listenerIt;
-            }
-        } catch (const sol::error &) {
-            // This might be thrown if the function yields
-            // For event listeners that need to yield, start them as separate coroutines
-            try {
-                sol::coroutine co(listenerFunc);
-                auto co_result = co(args...);
-
-                if (!co_result.valid()) {
-                    sol::error err = co_result;
-                    HandleLuaError(eventName, err.what());
-                }
-                ++listenerIt;
-            } catch (const std::exception &inner_e) {
-                HandleLuaError(eventName, inner_e.what());
-                ++listenerIt;
-            }
-        } catch (const std::exception &e) {
-            HandleLuaError(eventName, e.what());
-            ++listenerIt;
-        }
+    if (!callback) {
+        HandleError(eventName, "C++ callback is invalid");
+        return;
     }
 
-    // Clean up empty event lists
-    if (it->second.empty()) {
-        m_Listeners.erase(it);
-    }
+    m_Listeners[eventName].emplace_back(std::move(callback), oneTime);
 }
 
-template void EventManager::FireEvent(const std::string &);
-template void EventManager::FireEvent(const std::string &, int);
+void EventManager::RegisterOnceListener(const std::string &eventName, sol::function callback) {
+    RegisterListener(eventName, std::move(callback), true);
+}
+
+void EventManager::RegisterOnceListener(const std::string &eventName, std::function<void()> callback) {
+    RegisterListener(eventName, std::move(callback), true);
+}
 
 void EventManager::ClearListeners() {
     m_Listeners.clear();
@@ -84,7 +47,7 @@ void EventManager::ClearListeners() {
 void EventManager::ClearListeners(const std::string &eventName) {
     auto it = m_Listeners.find(eventName);
     if (it != m_Listeners.end()) {
-        it->second.clear();
+        m_Listeners.erase(it);
     }
 }
 
@@ -93,6 +56,21 @@ size_t EventManager::GetListenerCount(const std::string &eventName) const {
     return it != m_Listeners.end() ? it->second.size() : 0;
 }
 
-void EventManager::HandleLuaError(const std::string &eventName, const std::string &error) {
-    m_Engine->GetLogger()->Error("Error in event '%s': %s\n", eventName.c_str(), error.c_str());
+bool EventManager::HasListeners(const std::string &eventName) const {
+    auto it = m_Listeners.find(eventName);
+    return it != m_Listeners.end() && !it->second.empty();
+}
+
+bool EventManager::IsCallbackValid(const CallbackEntry& entry) {
+    if (std::holds_alternative<sol::function>(entry.callback)) {
+        return std::get<sol::function>(entry.callback).valid();
+    } else {
+        return static_cast<bool>(std::get<std::function<void()>>(entry.callback));
+    }
+}
+
+void EventManager::HandleError(const std::string &eventName, const std::string &error) const {
+    if (m_Engine && m_Engine->GetLogger()) {
+        m_Engine->GetLogger()->Error("Error in event '%s': %s", eventName.c_str(), error.c_str());
+    }
 }

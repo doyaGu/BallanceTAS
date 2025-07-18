@@ -99,16 +99,14 @@ bool ScriptExecutor::LoadAndExecute(TASProject *project) {
         // Prepare project for execution
         std::string executionPath = PrepareProjectForExecution(project);
         if (executionPath.empty()) {
-            m_Engine->GetLogger()->Error("Failed to prepare script project for execution: %s",
-                                                   project->GetName().c_str());
+            m_Engine->GetLogger()->Error("Failed to prepare script project for execution: %s", project->GetName().c_str());
             return false;
         }
 
         // Get the entry script path
         std::string entryScriptPath = project->GetEntryScriptPath(executionPath);
         if (entryScriptPath.empty()) {
-            m_Engine->GetLogger()->Error("No entry script found for project: %s",
-                                                   project->GetName().c_str());
+            m_Engine->GetLogger()->Error("No entry script found for project: %s", project->GetName().c_str());
             return false;
         }
 

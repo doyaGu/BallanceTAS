@@ -52,9 +52,6 @@ void TASMenu::Init() {
 
 void TASMenu::Shutdown() {
     try {
-        // Clear current project reference
-        m_CurrentProject = nullptr;
-
         // Reset pages in reverse order
         m_TASRecordingPage.reset();
         m_TASDetailsPage.reset();
@@ -69,8 +66,6 @@ bool TASMenu::IsOpen() const {
 }
 
 void TASMenu::OnOpen() {
-    if (!m_Engine) return;
-
     auto *inputManager = m_Engine->GetGameInterface()->GetInputManager();
     if (inputManager) {
         inputManager->Block(CK_INPUT_DEVICE_KEYBOARD);
@@ -80,22 +75,24 @@ void TASMenu::OnOpen() {
 }
 
 void TASMenu::OnClose() {
-    if (!m_Engine) return;
-
     m_Engine->GetGameInterface()->OnCloseMenu();
-
-    m_CurrentProject = nullptr;
 }
 
 void TASMenu::RefreshProjects() {
-    if (m_Engine && m_Engine->GetProjectManager()) {
-        m_Engine->GetProjectManager()->RefreshProjects();
-    }
+    m_Engine->GetProjectManager()->RefreshProjects();
+}
+
+TASProject * TASMenu::GetCurrentProject() const {
+    return m_Engine->GetProjectManager()->GetCurrentProject();
+}
+
+void TASMenu::SetCurrentProject(TASProject *project) {
+    m_Engine->GetProjectManager()->SetCurrentProject(project);
 }
 
 void TASMenu::PlayProject(TASProject *project) {
-    if (!project || !project->IsValid() || !m_Engine) {
-        m_Engine->GetLogger()->Error("Cannot play invalid project or engine unavailable.");
+    if (!project || !project->IsValid()) {
+        m_Engine->GetLogger()->Error("Cannot play invalid project.");
         return;
     }
 
@@ -107,16 +104,14 @@ void TASMenu::PlayProject(TASProject *project) {
     m_Engine->GetLogger()->Info("Playing TAS: %s", project->GetName().c_str());
 
     // Set the current project and start replay via TASEngine
-    m_Engine->GetProjectManager()->SetCurrentProject(project);
-    m_CurrentProject = project; // Also set local reference
+    SetCurrentProject(project);
 
     if (m_Engine->StartReplay()) {
         Close(); // Close menu so user can load a level
     } else {
         m_Engine->GetLogger()->Error("Failed to start replay from menu.");
         // Reset project selection on failure
-        m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
-        m_CurrentProject = nullptr;
+        SetCurrentProject(nullptr);
     }
 }
 
@@ -140,11 +135,9 @@ void TASMenu::StopTAS() {
 
     // Clear project selection after stopping
     if (wasPlaying || wasTranslating) {
-        m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
-        m_CurrentProject = nullptr;
+        SetCurrentProject(nullptr);
     }
 
-    // Return to appropriate page
     if (wasRecording || wasTranslating) {
         // Refresh projects (new one might have been generated)
         RefreshProjects();
@@ -155,16 +148,13 @@ void TASMenu::StopTAS() {
 }
 
 void TASMenu::StartRecording() {
-    if (!m_Engine) return;
-
     // Stop any current TAS activity
     if (IsTASActive()) {
         StopTAS();
     }
 
     // Clear any selected project since we're starting fresh
-    m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
-    m_CurrentProject = nullptr;
+    SetCurrentProject(nullptr);
 
     if (m_Engine->StartRecording()) {
         m_Engine->GetLogger()->Info("Recording setup from menu.");
@@ -175,8 +165,6 @@ void TASMenu::StartRecording() {
 }
 
 void TASMenu::StopRecording() {
-    if (!m_Engine) return;
-
     if (m_Engine->IsRecording() || m_Engine->IsPendingRecord()) {
         m_Engine->StopRecording();
         m_Engine->GetLogger()->Info("Recording stopped from menu.");
@@ -188,8 +176,8 @@ void TASMenu::StopRecording() {
 }
 
 void TASMenu::TranslateProject(TASProject *project) {
-    if (!project || !project->IsRecordProject() || !project->IsValid() || !m_Engine) {
-        m_Engine->GetLogger()->Error("Cannot translate: invalid record project or engine unavailable.");
+    if (!project || !project->IsRecordProject() || !project->IsValid()) {
+        m_Engine->GetLogger()->Error("Cannot translate: invalid record project.");
         return;
     }
 
@@ -209,22 +197,18 @@ void TASMenu::TranslateProject(TASProject *project) {
                              project->GetName().c_str(), project->GetUpdateRate());
 
     // Set the current project and start translation via TASEngine
-    m_Engine->GetProjectManager()->SetCurrentProject(project);
-    m_CurrentProject = project;
+    SetCurrentProject(project);
 
     if (m_Engine->StartTranslation()) {
         Close(); // Close menu so user can load a level
     } else {
         m_Engine->GetLogger()->Error("Failed to start translation from menu.");
         // Reset project selection on failure
-        m_Engine->GetProjectManager()->SetCurrentProject(nullptr);
-        m_CurrentProject = nullptr;
+        SetCurrentProject(nullptr);
     }
 }
 
 void TASMenu::StopTranslation() {
-    if (!m_Engine) return;
-
     if (m_Engine->IsTranslating() || m_Engine->IsPendingTranslate()) {
         m_Engine->StopTranslation();
         m_Engine->GetLogger()->Info("Translation stopped from menu.");
@@ -236,8 +220,6 @@ void TASMenu::StopTranslation() {
 }
 
 bool TASMenu::IsTASActive() const {
-    if (!m_Engine) return false;
-
     return m_Engine->IsPlaying() || m_Engine->IsPendingPlay() ||
         m_Engine->IsRecording() || m_Engine->IsPendingRecord() ||
         m_Engine->IsTranslating() || m_Engine->IsPendingTranslate();

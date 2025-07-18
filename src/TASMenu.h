@@ -38,8 +38,8 @@ public:
 
     // Project management
     void RefreshProjects();
-    TASProject *GetCurrentProject() const { return m_CurrentProject; }
-    void SetCurrentProject(TASProject *project) { m_CurrentProject = project; }
+    TASProject *GetCurrentProject() const;
+    void SetCurrentProject(TASProject *project);
 
     // Actions
     void PlayProject(TASProject *project);
@@ -57,7 +57,6 @@ public:
 
 private:
     TASEngine *m_Engine;
-    TASProject *m_CurrentProject = nullptr;
 
     std::unique_ptr<class TASListPage> m_TASListPage;
     std::unique_ptr<class TASDetailsPage> m_TASDetailsPage;

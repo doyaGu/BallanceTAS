@@ -349,7 +349,7 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
 
             // Parse frame components
             FrameData frame;
-            frame.frameIndex = std::stoull(TrimString(parts[0]));
+            frame.frameIndex = std::stoul(TrimString(parts[0]));
             frame.deltaTime = std::stof(TrimString(parts[1]));
             frame.inputState = ParseInputStateText(TrimString(parts[2]));
 

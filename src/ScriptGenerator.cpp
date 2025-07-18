@@ -138,7 +138,6 @@ std::string ScriptGenerator::FindAvailableProjectName(const std::string &baseNam
 void ScriptGenerator::GenerateAsync(const std::vector<FrameData> &frames,
                                     const GenerationOptions &options,
                                     const std::function<void(bool)> &onComplete) {
-    // TODO: Need wait after pressing Alt-F4
     std::thread([this, frames, options, onComplete]() {
         bool success = Generate(frames, options);
 

@@ -62,8 +62,8 @@ void LuaApi::RegisterVxRect(sol::state &lua) {
             [](VxRect &r, const Vx2DVector &center, const Vx2DVector &halfsize) { r.SetCenter(center, halfsize); },
             [](VxRect &r, float cx, float cy, float hw, float hh) { r.SetCenter(cx, cy, hw, hh); }
         ),
-        "copy_from", &VxRect::CopyFrom,
-        "copy_to", &VxRect::CopyTo,
+        // "copy_from", &VxRect::CopyFrom,
+        // "copy_to", &VxRect::CopyTo,
         "bounding", &VxRect::Bounding,
         "normalize", &VxRect::Normalize,
         "move", &VxRect::Move,
@@ -73,25 +73,27 @@ void LuaApi::RegisterVxRect(sol::state &lua) {
         "h_translate", &VxRect::HTranslate,
         "v_translate", &VxRect::VTranslate,
         "transform_to_homogeneous", &VxRect::TransformToHomogeneous,
-        "transform_from_homogeneous", sol::overload([](VxRect &r, Vx2DVector &dest, const Vx2DVector &srchom) {
-                                                        r.TransformFromHomogeneous(dest, srchom);
-                                                    },
-                                                    [](VxRect &r, const VxRect &screen) {
-                                                        r.TransformFromHomogeneous(screen);
-                                                    }),
+        "transform_from_homogeneous", sol::overload(
+            [](VxRect &r, Vx2DVector &dest, const Vx2DVector &srchom) {
+                r.TransformFromHomogeneous(dest, srchom);
+            },
+            [](VxRect &r, const VxRect &screen) {
+                r.TransformFromHomogeneous(screen);
+            }
+        ),
         "scale", &VxRect::Scale,
         "inflate", &VxRect::Inflate,
         "interpolate", &VxRect::Interpolate,
         "merge", &VxRect::Merge,
         "is_inside", sol::overload(
-            [](const VxRect &r, const VxRect &other) { return r.IsInside(other); },
-            [](const VxRect &r, const Vx2DVector &pt) { return r.IsInside(pt); }
+            [](const VxRect &r, const VxRect &other) -> bool { return r.IsInside(other); },
+            [](const VxRect &r, const Vx2DVector &pt) -> bool { return r.IsInside(pt); }
         ),
-        "is_outside", &VxRect::IsOutside,
-        "is_null", &VxRect::IsNull,
-        "is_empty", &VxRect::IsEmpty,
+        "is_outside", [](const VxRect &r, const VxRect &other) -> bool { return r.IsOutside(other); },
+        "is_null", [](const VxRect &r) -> bool { return r.IsNull(); },
+        "is_empty", [](const VxRect &r) -> bool { return r.IsEmpty(); },
         "clip", sol::overload(
-            [](VxRect &r, const VxRect &cliprect) { return r.Clip(cliprect); },
+            [](VxRect &r, const VxRect &cliprect) -> bool { return r.Clip(cliprect); },
             [](const VxRect &r, Vx2DVector &pt, bool exclude) { r.Clip(pt, exclude); }
         ),
         "transform", sol::overload(

@@ -27,16 +27,16 @@ void LuaApi::RegisterCKCamera(sol::state &lua) {
 
         // Aspect ratio
         "set_aspect_ratio", &CKCamera::SetAspectRatio,
-        "get_aspect_ratio", [](CKCamera &camera) {
+        "get_aspect_ratio", [](CKCamera *camera) {
             int width, height;
-            camera.GetAspectRatio(width, height);
+            camera->GetAspectRatio(width, height);
             return Vx2DVector(width, height);
         },
 
         // Projection matrix computation
-        "compute_projection_matrix", [](CKCamera &camera) {
+        "compute_projection_matrix", [](CKCamera *camera) {
             VxMatrix mat;
-            camera.ComputeProjectionMatrix(mat);
+            camera->ComputeProjectionMatrix(mat);
             return mat;
         },
 

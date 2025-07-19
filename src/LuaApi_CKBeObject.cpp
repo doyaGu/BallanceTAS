@@ -15,13 +15,13 @@ void LuaApi::RegisterCKBeObject(sol::state &lua) {
         sol::base_classes, sol::bases<CKSceneObject, CKObject>(),
 
         // Group functions
-        // "is_in_group", &CKBeObject::IsInGroup,
+        // "is_in_group", [](CKBeObject *obj, CKGroup *group) -> bool { return obj->IsInGroup(group); },
 
         // Attribute functions
         // "has_attribute", &CKBeObject::HasAttribute,
         // "set_attribute", sol::overload(
-        //     [](CKBeObject &obj, CKAttributeType type) { return obj.SetAttribute(type); },
-        //     [](CKBeObject &obj, CKAttributeType type, CK_ID param) { return obj.SetAttribute(type, param); }
+        //     [](CKBeObject *obj, CKAttributeType type) { return obj->SetAttribute(type); },
+        //     [](CKBeObject *obj, CKAttributeType type, CK_ID param) { return obj->SetAttribute(type, param); }
         // ),
         // "remove_attribute", &CKBeObject::RemoveAttribute,
         // "get_attribute_parameter", &CKBeObject::GetAttributeParameter,
@@ -33,8 +33,8 @@ void LuaApi::RegisterCKBeObject(sol::state &lua) {
         // Script functions
         // "add_script", &CKBeObject::AddScript,
         // "remove_script", sol::overload(
-        //     [](CKBeObject &obj, CK_ID id) { return obj.RemoveScript(id); },
-        //     [](CKBeObject &obj, int pos) { return obj.RemoveScript(pos); }
+        //     [](CKBeObject *obj, CK_ID id) { return obj->RemoveScript(id); },
+        //     [](CKBeObject *obj, int pos) { return obj->RemoveScript(pos); }
         // ),
         // "remove_all_scripts", &CKBeObject::RemoveAllScripts,
         // "get_script", &CKBeObject::GetScript,
@@ -48,10 +48,10 @@ void LuaApi::RegisterCKBeObject(sol::state &lua) {
         // "get_last_frame_message_count", &CKBeObject::GetLastFrameMessageCount,
         // "get_last_frame_message", &CKBeObject::GetLastFrameMessage,
         // "set_as_waiting_for_messages", sol::overload(
-        //     [](CKBeObject &obj) { obj.SetAsWaitingForMessages(); },
-        //     [](CKBeObject &obj, CKBOOL wait) { obj.SetAsWaitingForMessages(wait); }
+        //     [](CKBeObject *obj) { obj->SetAsWaitingForMessages(); },
+        //     [](CKBeObject *obj, bool wait) { obj->SetAsWaitingForMessages(wait); }
         // ),
-        // "is_waiting_for_messages", &CKBeObject::IsWaitingForMessages,
+        // "is_waiting_for_messages", [](CKBeObject *obj) -> bool { return obj->IsWaitingForMessages(); },
 
         // Profiling
         "get_last_execution_time", &CKBeObject::GetLastExecutionTime

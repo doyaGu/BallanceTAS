@@ -13,11 +13,11 @@ void LuaApi::RegisterCKSceneObject(sol::state &lua) {
         sol::base_classes, sol::bases<CKObject>(),
 
         // Scene activity
-        // "is_active_in_scene", &CKSceneObject::IsActiveInScene,
-        "is_active_in_current_scene", &CKSceneObject::IsActiveInCurrentScene
+        // "is_active_in_scene", [](CKSceneObject *obj, CKScene *scene) -> bool { return obj->IsActiveInScene(scene); },
+        "is_active_in_current_scene", [](CKSceneObject *obj) -> bool { return obj->IsActiveInCurrentScene(); }
 
         // Scene presence
-        // "is_in_scene", &CKSceneObject::IsInScene,
+        // "is_in_scene", [](CKSceneObject *obj, CKScene *scene) -> bool { return obj->IsInScene(scene); },
         // "get_scene_in_count", &CKSceneObject::GetSceneInCount,
         // "get_scene_in", &CKSceneObject::GetSceneIn
     );

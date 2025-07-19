@@ -98,7 +98,7 @@ std::string ScriptGenerator::LuaScriptBuilder::GetScript() const {
 }
 
 // ===================================================================
-// ScriptGenerator Main Implementation
+// ScriptGenerator Implementation
 // ===================================================================
 
 ScriptGenerator::ScriptGenerator(TASEngine *engine)

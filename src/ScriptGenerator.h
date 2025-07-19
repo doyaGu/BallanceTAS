@@ -16,9 +16,9 @@ class TASProject;
  * @brief Represents a key state transition between frames.
  */
 enum class KeyTransition {
-    NoChange, // Key state didn't change
-    Pressed,  // Key was just pressed (IDLE -> PRESSED)
-    Released, // Key was just released (PRESSED -> RELEASED)
+    NoChange,           // Key state didn't change
+    Pressed,            // Key was just pressed (IDLE -> PRESSED)
+    Released,           // Key was just released (PRESSED -> RELEASED)
     PressedAndReleased, // Key was pressed and then released in the same frame
 };
 
@@ -236,10 +236,6 @@ private:
     std::string m_LastGeneratedPath;
     std::function<void(float)> m_ProgressCallback;
 
-    // Key mapping for consistent naming
-    static const std::vector<std::string> KEY_NAMES;
-    static constexpr int KEY_COUNT = 8; // Number of tracked keys
-
     // Statistics
     struct GenerationStats {
         size_t totalFrames = 0;
@@ -248,4 +244,8 @@ private:
         size_t eventsProcessed = 0;
         double generationTime = 0.0;
     } m_LastStats;
+
+    // Key constants
+    static const std::vector<std::string> KEY_NAMES;
+    static constexpr int KEY_COUNT = 8;
 };

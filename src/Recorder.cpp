@@ -28,7 +28,6 @@ Recorder::Recorder(TASEngine *engine)
     m_GenerationOptions->targetLevel = "Level_01";
     m_GenerationOptions->description = "Auto-generated TAS script";
     m_GenerationOptions->addFrameComments = true;
-    m_GenerationOptions->addPhysicsComments = false;
 }
 
 void Recorder::SetGenerationOptions(const GenerationOptions &options) {

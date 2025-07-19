@@ -822,13 +822,6 @@ void TASRecordingPage::DrawGenerationOptions() {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Include frame numbers in generated comments");
     }
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::SetNextItemWidth(menuSize.x * 0.6f);
-    ImGui::Checkbox("Advanced: Add physics comments", &m_AddPhysicsComments);
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Include speed and physics data in comments (verbose)");
-    }
 }
 
 void TASRecordingPage::DrawStartButton() {
@@ -882,7 +875,6 @@ void TASRecordingPage::StartRecording() {
         options.description = m_Description;
         options.updateRate = m_UpdateRate;
         options.addFrameComments = m_AddFrameComments;
-        options.addPhysicsComments = m_AddPhysicsComments;
 
         // Set the generation options on the recorder
         recorder->SetGenerationOptions(options);
@@ -895,9 +887,8 @@ void TASRecordingPage::StartRecording() {
         engine->GetLogger()->Info("  Target Level: %s", targetLevel.c_str());
         engine->GetLogger()->Info("  Update Rate: %.3f Hz", m_UpdateRate);
         engine->GetLogger()->Info("  Description: %s", m_Description);
-        engine->GetLogger()->Info("  Generation Options: frameComments=%s, physicsComments=%s",
-                                  m_AddFrameComments ? "true" : "false",
-                                  m_AddPhysicsComments ? "true" : "false");
+        engine->GetLogger()->Info("  Generation Options: frameComments=%s",
+                                  m_AddFrameComments ? "true" : "false");
         m_Menu->Close();
     } else {
         engine->GetLogger()->Error("Failed to setup recording.");

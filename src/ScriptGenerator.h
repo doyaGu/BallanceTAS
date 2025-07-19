@@ -67,7 +67,6 @@ struct GenerationOptions {
 
     // Generation preferences
     bool addFrameComments = true;    // Add frame number comments
-    bool addPhysicsComments = false; // Add speed/physics info in comments
 
     // Output formatting
     int indentSize = 2;               // Spaces per indent level

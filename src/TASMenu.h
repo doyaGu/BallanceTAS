@@ -124,7 +124,6 @@ private:
 
     // Generation options
     bool m_AddFrameComments = true;
-    bool m_AddPhysicsComments = false;
 
     // Level selection constants
     static constexpr const char *LEVEL_OPTIONS[] = {

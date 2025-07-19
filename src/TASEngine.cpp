@@ -729,7 +729,6 @@ void TASEngine::StartTranslationInternal() {
             options.description = "Translated from legacy record: " + project->GetName();
             options.updateRate = project->GetUpdateRate();
             options.addFrameComments = true;
-            options.addPhysicsComments = false;
 
             m_Recorder->SetGenerationOptions(options);
             m_Recorder->SetUpdateRate(project->GetUpdateRate());

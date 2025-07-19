@@ -160,7 +160,7 @@ public:
     /**
      * @brief Stops replay (works for both script and record playback).
      */
-    void StopReplay(bool clearProject = true);
+    void StopReplay(bool clearProject = false);
 
     // === Translation Control (Record to Script Conversion) ===
 
@@ -174,7 +174,7 @@ public:
     /**
      * @brief Stops translation and generates the script.
      */
-    void StopTranslation(bool clearProject = true);
+    void StopTranslation(bool clearProject = false);
 
     // === Validation Recording Control ===
 
@@ -209,6 +209,29 @@ public:
      * @return The validation output path, or empty string if not set.
      */
     const std::string &GetValidationOutputPath() const { return m_ValidationOutputPath; }
+
+    // === Auto-Restart Control ===
+
+    /**
+     * @brief Checks if auto-restart is enabled.
+     * Auto-restart will automatically restart the current project when it finishes.
+     * @return True if auto-restart is enabled, false otherwise.
+     */
+    bool IsAutoRestartEnabled() const { return m_AutoRestart; }
+
+    /**
+     * @brief Sets whether auto-restart is enabled.
+     * If enabled, the current project will automatically restart when it finishes.
+     * @param enabled True to enable auto-restart, false to disable.
+     */
+    void SetAutoRestartEnabled(bool enabled) { m_AutoRestart = enabled; }
+
+    /**
+     * @brief Restarts the current project if auto-restart is enabled.
+     * This will reload the project and start it again.
+     * @return True if the project was restarted, false if auto-restart is disabled.
+     */
+    bool RestartCurrentProject();
 
     // --- Subsystem Accessors ---
     // These are used by other parts of the framework (e.g., LuaApi) to get handles
@@ -398,6 +421,7 @@ private:
     size_t m_CurrentTick = 0;
     std::string m_Path = BML_TAS_PATH;
 
+    bool m_AutoRestart = false; // Automatically restart current project when enter the same level again
     bool m_ValidationEnabled = false;
     bool m_ValidationRecording = false;
     std::string m_ValidationOutputPath;

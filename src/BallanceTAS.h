@@ -207,6 +207,7 @@ private:
     IProperty *m_Enabled = nullptr;
     IProperty *m_LegacyMode = nullptr;
     IProperty *m_Validation = nullptr;
+    IProperty *m_AutoRestart = nullptr;
     IProperty *m_StopOnFinish = nullptr;
     IProperty *m_StopKey = nullptr;
 

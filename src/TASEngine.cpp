@@ -196,6 +196,10 @@ void TASEngine::Stop() {
         m_GameInterface->SetUIMode(UIMode::Idle);
     }
 
+    if (IsAutoRestartEnabled()) {
+        RestartCurrentProject();
+    }
+
     if (!m_GameInterface->IsLegacyMode()) {
         AddTimer(1ul, [this]() {
             if (m_GameInterface) {
@@ -564,6 +568,35 @@ bool TASEngine::StopValidationRecording() {
     m_ValidationRecording = false;
     m_ValidationOutputPath.clear();
     return success;
+}
+
+bool TASEngine::RestartCurrentProject() {
+    if (m_ShuttingDown) {
+        GetLogger()->Warn("Cannot restart during shutdown.");
+        return false;
+    }
+
+    TASProject *project = m_ProjectManager->GetCurrentProject();
+    if (!project || !project->IsValid()) {
+        GetLogger()->Error("No valid project to restart.");
+        return false;
+    }
+
+    GetLogger()->Info("Restarting TAS project: %s", project->GetName().c_str());
+
+    // Stop current execution without clearing project
+    if (IsPlaying()) {
+        StopReplay(false);
+    }
+    if (IsTranslating()) {
+        StopTranslation(false);
+    }
+
+    if (m_ProjectManager->GetCurrentProject()) {
+        StartReplay();
+    }
+
+    return true;
 }
 
 // === Internal Start Methods ===

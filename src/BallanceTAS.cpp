@@ -55,6 +55,10 @@ void BallanceTAS::OnLoad() {
         "This will record physics data to validate TAS scripts.");
     m_Validation->SetDefaultBoolean(false);
 
+    m_AutoRestart = GetConfig()->GetProperty("TAS", "AutoRestart");
+    m_AutoRestart->SetComment("Automatically restarts the current project when the same level is loaded again.");
+    m_AutoRestart->SetDefaultBoolean(true);
+
     m_StopOnFinish = GetConfig()->GetProperty("TAS", "StopOnFinish");
     m_StopOnFinish->SetComment("Automatically stops TAS playback/recording when the level ends.");
     m_StopOnFinish->SetDefaultBoolean(true);
@@ -171,6 +175,10 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
     } else if (prop == m_Validation) {
         if (m_Engine) {
             m_Engine->SetValidationEnabled(m_Validation->GetBoolean());
+        }
+    } else if (prop == m_AutoRestart) {
+        if (m_Engine) {
+            m_Engine->SetAutoRestartEnabled(m_AutoRestart->GetBoolean());
         }
     } else if (prop == m_RecordingMaxFrames && m_Initialized) {
         if (m_Engine && m_Engine->GetRecorder()) {
@@ -360,6 +368,7 @@ bool BallanceTAS::Initialize() {
         }
 
         m_Engine->SetValidationEnabled(m_Validation->GetBoolean());
+        m_Engine->SetAutoRestartEnabled(m_AutoRestart->GetBoolean());
 
         // Initialize UI Manager
         m_UIManager = std::make_unique<UIManager>(m_Engine.get());

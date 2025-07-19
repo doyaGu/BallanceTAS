@@ -117,19 +117,19 @@ void TASMenu::PlayProject(TASProject *project) {
 }
 
 void TASMenu::StopTAS(bool clearProject) {
-    bool wasRecording = m_Engine->IsRecording() || m_Engine->IsPendingRecord();
-    bool wasPlaying = m_Engine->IsPlaying() || m_Engine->IsPendingPlay();
     bool wasTranslating = m_Engine->IsTranslating() || m_Engine->IsPendingTranslate();
+    bool wasPlaying = m_Engine->IsPlaying() || m_Engine->IsPendingPlay();
+    bool wasRecording = m_Engine->IsRecording() || m_Engine->IsPendingRecord();
 
     if (wasTranslating) {
         m_Engine->StopTranslation(clearProject);
         m_Engine->GetLogger()->Info("Translation stopped from menu.");
-    } else if (wasRecording) {
-        m_Engine->StopRecording();
-        m_Engine->GetLogger()->Info("Recording stopped from menu.");
     } else if (wasPlaying) {
         m_Engine->StopReplay(clearProject);
         m_Engine->GetLogger()->Info("Replay stopped from menu.");
+    } else if (wasRecording) {
+        m_Engine->StopRecording();
+        m_Engine->GetLogger()->Info("Recording stopped from menu.");
     }
 
     if (clearProject) {

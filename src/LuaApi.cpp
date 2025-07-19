@@ -19,6 +19,23 @@ void LuaApi::Register(TASEngine *engine) {
     RegisterDebugApi(tas_table, engine);
 }
 
+void LuaApi::AddLuaPath(sol::state &lua, const std::string &path) {
+    if (path.empty()) {
+        return;
+    }
+    std::string currentPath = lua["package"]["path"];
+    std::string newPath;
+    char sep = path.back();
+    if (sep == '/') {
+        newPath = path + "?.lua;" + path + "?/init.lua;" + currentPath;
+    } else if (sep == '\\') {
+        newPath = path + "?.lua;" + path + "?\\init.lua;" + currentPath;
+    } else {
+        newPath = path + "\\?.lua;" + path + "\\?\\init.lua;" + currentPath;
+    }
+    lua["package"]["path"] = newPath;
+}
+
 void LuaApi::RegisterDataTypes(sol::state &lua) {
     RegisterVxColor(lua);
     RegisterVxMatrix(lua);

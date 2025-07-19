@@ -23,6 +23,8 @@ public:
      */
     static void Register(TASEngine *engine);
 
+    static void AddLuaPath(sol::state &lua, const std::string &path);
+
 private:
     // --- Private helper methods for organized registration ---
     static void RegisterDataTypes(sol::state &lua);

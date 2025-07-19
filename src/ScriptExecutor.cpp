@@ -45,6 +45,9 @@ bool ScriptExecutor::Initialize() {
         // 3. Register Lua APIs
         LuaApi::Register(m_Engine);
 
+        LuaApi::AddLuaPath(GetLuaState(), BML_TAS_PATH);
+        LuaApi::AddLuaPath(GetLuaState(), BML_TAS_PATH "lua");
+
         m_IsInitialized = true;
         m_Engine->GetLogger()->Info("ScriptExecutor initialized successfully.");
         return true;

@@ -274,7 +274,9 @@ int GameInterface::GetLifeCount() const {
 
 int GameInterface::GetCurrentSector() const {
     int sector = -1;
-    m_CurrentSector->GetValue(&sector);
+    if (m_CurrentSector) {
+        m_CurrentSector->GetValue(&sector);
+    }
     return sector;
 }
 

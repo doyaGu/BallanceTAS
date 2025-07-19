@@ -207,6 +207,26 @@ bool ScriptExecutor::IsExecuting() const {
     return m_IsExecuting && m_Scheduler && m_Scheduler->IsRunning();
 }
 
+template <typename... Args>
+void ScriptExecutor::FireGameEvent(const std::string &eventName, Args... args) {
+    if (!m_IsExecuting || !m_Engine) {
+        return;
+    }
+
+    try {
+        auto *eventManager = m_Engine->GetEventManager();
+        if (eventManager) {
+            eventManager->FireEvent(eventName, args...);
+        }
+    } catch (const std::exception &e) {
+        m_Engine->GetLogger()->Error("Exception firing game event to script: %s", e.what());
+    }
+}
+
+// Explicit template instantiations for events used in TASEngine
+template void ScriptExecutor::FireGameEvent(const std::string &);
+template void ScriptExecutor::FireGameEvent(const std::string &, int);
+
 std::string ScriptExecutor::PrepareProjectForExecution(TASProject *project) {
     if (!project || !project->IsScriptProject()) {
         return "";

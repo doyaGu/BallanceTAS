@@ -995,6 +995,11 @@ void TASEngine::OnGameEvent(const std::string &eventName, Args... args) {
         return;
     }
 
+    // Forward to script executor for script-based events
+    if (m_ScriptExecutor) {
+        m_ScriptExecutor->FireGameEvent(eventName, args...);
+    }
+
     // Forward to recorder if recording
     if ((IsRecording() || IsTranslating()) && m_Recorder) {
         if constexpr (sizeof...(args) > 0) {

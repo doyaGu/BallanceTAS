@@ -266,20 +266,36 @@ public:
         m_StatusCallback = std::move(callback);
     }
 
+    /**
+     * @brief Gets the maximum number of frames allowed in a recording.
+     * This is used to prevent excessive memory usage.
+     * @return The maximum frame count.
+     */
     size_t GetMaxFrames() const { return m_MaxFrames; }
 
+    /**
+     * @brief Sets the maximum number of frames allowed in a recording.
+     * If the limit is reached, a warning will be logged.
+     * @param maxFrames The new maximum frame count.
+     */
     void SetMaxFrames(size_t maxFrames) {
         m_MaxFrames = maxFrames;
         m_WarnedMaxFrames = false; // Reset warning state
     }
 
-    float GetDeltaTime() const {
-        return m_DeltaTime;
-    }
+    /**
+     * @brief Gets the current delta time used for frame timing.
+     * This is the time between frames in milliseconds.
+     * @return The current delta time.
+     */
+    float GetDeltaTime() const;
 
-    void SetUpdateRate(float tickPerSecond) {
-        m_DeltaTime = 1000.0f / tickPerSecond;
-    }
+    /**
+     * @brief Sets the delta time for frame timing.
+     * This is used to control the speed of playback and recording.
+     * @param tickPerSecond The number of ticks per second (FPS).
+     */
+    void SetUpdateRate(float tickPerSecond);
 
 private:
     /**

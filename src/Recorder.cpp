@@ -102,6 +102,14 @@ std::string Recorder::GenerateAutoProjectName() const {
     return ss.str();
 }
 
+float Recorder::GetDeltaTime() const {
+    return m_DeltaTime;
+}
+
+void Recorder::SetUpdateRate(float tickPerSecond) {
+    m_DeltaTime = 1000.0f / tickPerSecond;
+}
+
 bool Recorder::GenerateScript() {
     if (m_Frames.empty()) {
         m_Engine->GetLogger()->Warn("No frames recorded, cannot generate script.");

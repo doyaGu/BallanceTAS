@@ -3,6 +3,9 @@
 #include <sstream>
 #include <iomanip>
 
+#include <fmt/format.h>
+#include <fmt/args.h>
+
 #include "TASEngine.h"
 #include "LuaScheduler.h"
 #include "InputSystem.h"
@@ -13,20 +16,124 @@
 
 // Helper function to format strings with variadic arguments
 std::string FormatString(const std::string &fmt, sol::variadic_args va) {
-    std::ostringstream oss;
-    oss << fmt;
+    fmt::dynamic_format_arg_store<fmt::format_context> store;
 
-    // Simple implementation - just concatenate args
-    // In a real implementation, you'd want proper printf-style formatting
     for (const auto &arg : va) {
-        try {
-            oss << " " << arg.as<std::string>();
-        } catch (const std::exception &) {
-            oss << " [invalid argument]";
+        sol::type argType = arg.get_type();
+        switch (argType) {
+            case sol::type::lua_nil: {
+                store.push_back("nil");
+                break;
+            }
+            case sol::type::boolean: {
+                bool value = arg.as<bool>();
+                store.push_back(value ? "true" : "false");
+                break;
+            }
+            case sol::type::number: {
+                // Check if it's an integer or floating point
+                if (arg.is<int>()) {
+                    store.push_back(arg.as<int>());
+                } else if (arg.is<long long>()) {
+                    store.push_back(arg.as<long long>());
+                } else if (arg.is<float>()) {
+                    store.push_back(arg.as<float>());
+                } else if (arg.is<double>()) {
+                    store.push_back(arg.as<double>());
+                } else {
+                    // Fallback to double
+                    store.push_back(arg.as<double>());
+                }
+                break;
+            }
+            case sol::type::string: {
+                store.push_back(arg.as<std::string>());
+                break;
+            }
+            case sol::type::table: {
+                sol::table table = arg.as<sol::table>();
+
+                // Check if table has a __tostring metamethod
+                sol::optional<sol::function> tostring = table[sol::meta_function::to_string];
+                if (tostring) {
+                    try {
+                        sol::protected_function_result result = tostring.value()(table);
+                        if (result.valid()) {
+                            store.push_back(result.get<std::string>());
+                            break;
+                        }
+                    } catch (const std::exception &) {
+                        // Fall through to default table representation
+                    }
+                }
+
+                // Default table representation
+                std::stringstream stream;
+                stream << "<table:" << static_cast<void*>(&table) << ">";
+                store.push_back(stream.str());
+                break;
+            }
+            case sol::type::userdata: {
+                sol::userdata ud = arg.as<sol::userdata>();
+
+                // Check if userdata has a __tostring metamethod
+                sol::optional<sol::function> tostring = ud[sol::meta_function::to_string];
+                if (tostring) {
+                    try {
+                        sol::protected_function_result result = tostring.value()(ud);
+                        if (result.valid()) {
+                            store.push_back(result.get<std::string>());
+                            break;
+                        }
+                    } catch (const std::exception &) {
+                        // Fall through to default userdata representation
+                    }
+                }
+
+                std::stringstream stream;
+                stream << "<userdata:" << static_cast<void*>(&ud) << ">";
+                store.push_back(stream.str());
+                break;
+            }
+            case sol::type::function: {
+                sol::function func = arg.as<sol::function>();
+                std::stringstream stream;
+                stream << "<function:" << static_cast<void*>(&func) << ">";
+                store.push_back(stream.str());
+                break;
+            }
+            case sol::type::thread: {
+                sol::thread thread = arg.as<sol::thread>();
+                std::stringstream stream;
+                stream << "<thread:" << static_cast<void*>(&thread) << ">";
+                store.push_back(stream.str());
+                break;
+            }
+            case sol::type::lightuserdata: {
+                void* ptr = arg.as<void*>();
+                std::stringstream stream;
+                stream << "<lightuserdata:" << ptr << ">";
+                store.push_back(stream.str());
+                break;
+            }
+            default: {
+                // Handle any other types
+                std::stringstream stream;
+                stream << "<unknown:" << static_cast<int>(argType) << ">";
+                store.push_back(stream.str());
+                break;
+            }
         }
     }
 
-    return oss.str();
+    try {
+        return fmt::vformat(fmt, store);
+    } catch (const fmt::format_error &e) {
+        // If formatting fails, return an error message
+        std::stringstream stream;
+        stream << "[Format Error: " << e.what() << "] " << fmt;
+        return stream.str();
+    }
 }
 
 // ===================================================================

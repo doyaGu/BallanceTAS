@@ -78,7 +78,7 @@ target_link_libraries(BallanceTAS
         PUBLIC
 		BML CK2 VxMath
         PRIVATE
-		minhook lua::lua sol2 zip
+		minhook lua::lua sol2 zip fmt
 )
 
 target_compile_options(BallanceTAS PRIVATE

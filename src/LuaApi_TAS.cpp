@@ -755,12 +755,18 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
         eventManager->RegisterOnceListener(eventName, callback);
     };
 
-    // Fire event from Lua (with up to 3 arguments for simplicity)
-    tas["fire_event"] = sol::overload(
+    // Fire event from Lua
+    tas["send"] = sol::overload(
         [eventManager](const std::string &eventName) {
+            if (eventName.empty()) {
+                throw sol::error("send: event name cannot be empty");
+            }
             eventManager->FireEvent(eventName);
         },
         [eventManager](const std::string &eventName, sol::variadic_args va) {
+            if (eventName.empty()) {
+                throw sol::error("send: event name cannot be empty");
+            }
             eventManager->FireEvent(eventName, va);
         }
     );
@@ -771,15 +777,24 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
             eventManager->ClearListeners();
         },
         [eventManager](const std::string &eventName) {
+            if (eventName.empty()) {
+                throw sol::error("clear_listeners: event name cannot be empty");
+            }
             eventManager->ClearListeners(eventName);
         }
     );
 
     tas["get_listener_count"] = [eventManager](const std::string &eventName) {
+        if (eventName.empty()) {
+            throw sol::error("get_listener_count: event name cannot be empty");
+        }
         return eventManager->GetListenerCount(eventName);
     };
 
     tas["has_listeners"] = [eventManager](const std::string &eventName) {
+        if (eventName.empty()) {
+            throw sol::error("has_listeners: event name cannot be empty");
+        }
         return eventManager->HasListeners(eventName);
     };
 }

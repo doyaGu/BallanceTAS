@@ -289,12 +289,17 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
 void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.is_legacy_mode()
     tas["is_legacy_mode"] = [engine]() -> bool {
-        return engine->GetGameInterface()->IsLegacyMode();
+        const auto *g = engine->GetGameInterface();
+        if (!g) {
+            return false;
+        }
+
+        return g->IsLegacyMode();
     };
 
     // tas.is_paused()
     tas["is_paused"] = [engine]() -> bool {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return false;
         }
@@ -304,7 +309,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.is_playing()
     tas["is_playing"] = [engine]() -> bool {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return false;
         }
@@ -314,7 +319,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.get_sr_score()
     tas["get_sr_score"] = [engine]() -> float {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return false;
         }
@@ -324,7 +329,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.get_hs_score()
     tas["get_hs_score"] = [engine]() -> int {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return false;
         }
@@ -334,7 +339,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.get_points()
     tas["get_points"] = [engine]() -> int {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return 0;
         }
@@ -344,7 +349,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.get_life_count()
     tas["get_life_count"] = [engine]() -> int {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return 0;
         }
@@ -354,7 +359,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
     // tas.get_sector()
     tas["get_sector"] = [engine]() -> int {
-        auto *g = engine->GetGameInterface();
+        const auto *g = engine->GetGameInterface();
         if (!g) {
             return 0;
         }
@@ -368,7 +373,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
             return sol::nil;
         }
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             if (g) {
                 return sol::make_object(engine->GetLuaState(), g);
             }
@@ -384,7 +389,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
             return sol::nil;
         }
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             CK3dEntity *obj = g->GetObjectByID(id);
             if (obj) {
                 return sol::make_object(engine->GetLuaState(), obj);
@@ -401,7 +406,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
             return sol::nil;
         }
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             PhysicsObject *obj = g->GetPhysicsObject(entity);
             if (obj) {
                 return sol::make_object(engine->GetLuaState(), obj);
@@ -415,7 +420,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_ball()
     tas["get_ball"] = [engine]() -> sol::object {
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
                 return sol::make_object(engine->GetLuaState(), ball);
@@ -429,7 +434,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_ball_position()
     tas["get_ball_position"] = [engine]() -> sol::object {
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
                 return sol::make_object(engine->GetLuaState(), g->GetPosition(ball));
@@ -443,7 +448,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_ball_velocity()
     tas["get_ball_velocity"] = [engine]() -> sol::object {
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
                 return sol::make_object(engine->GetLuaState(), g->GetVelocity(ball));
@@ -457,7 +462,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_ball_angular_velocity()
     tas["get_ball_angular_velocity"] = [engine]() -> sol::object {
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             CK3dEntity *ball = g->GetActiveBall();
             if (ball) {
                 return sol::make_object(engine->GetLuaState(), g->GetAngularVelocity(ball));
@@ -471,7 +476,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     // tas.get_camera()
     tas["get_camera"] = [engine]() -> sol::object {
         try {
-            auto *g = engine->GetGameInterface();
+            const auto *g = engine->GetGameInterface();
             CK3dEntity *camera = g->GetActiveCamera();
             if (camera) {
                 return sol::make_object(engine->GetLuaState(), camera);

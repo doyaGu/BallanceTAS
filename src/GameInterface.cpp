@@ -272,6 +272,14 @@ int GameInterface::GetLifeCount() const {
     return life;
 }
 
+int GameInterface::GetCurrentLevel() const {
+    int level = -1;
+    if (m_CurrentLevel) {
+        m_CurrentLevel->GetElementValue(0, 0, &level);
+    }
+    return level;
+}
+
 int GameInterface::GetCurrentSector() const {
     int sector = -1;
     if (m_CurrentSector) {

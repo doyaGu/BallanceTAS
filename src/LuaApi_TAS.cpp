@@ -357,6 +357,16 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         return g->GetLifeCount();
     };
 
+    // tas.get_level()
+    tas["get_level"] = [engine]() -> int {
+        const auto *g = engine->GetGameInterface();
+        if (!g) {
+            return 0;
+        }
+
+        return g->GetCurrentLevel();
+    };
+
     // tas.get_sector()
     tas["get_sector"] = [engine]() -> int {
         const auto *g = engine->GetGameInterface();

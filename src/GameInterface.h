@@ -144,6 +144,8 @@ public:
 
     int GetLifeCount() const;
 
+    int GetCurrentLevel() const;
+
     int GetCurrentSector() const;
 
     XObjectArray GetFloors(CK3dEntity *ent, float zoom = 2.0f, float maxHeight = 100.0f) const;

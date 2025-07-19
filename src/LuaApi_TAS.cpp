@@ -34,10 +34,8 @@ std::string FormatString(const std::string &fmt, sol::variadic_args va) {
 // ===================================================================
 
 void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
-    auto *scheduler = engine->GetScheduler();
-
     // tas.log(format_string, ...)
-    tas["log"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
+    tas["log"] = [engine](const std::string &fmt, sol::variadic_args va) {
         try {
             std::string text = FormatString(fmt, va);
             engine->GetLogger()->Info("[TAS] %s", text.c_str());
@@ -47,7 +45,7 @@ void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
     };
 
     // tas.warn(format_string, ...)
-    tas["warn"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
+    tas["warn"] = [engine](const std::string &fmt, sol::variadic_args va) {
         try {
             std::string text = FormatString(fmt, va);
             engine->GetLogger()->Warn("[TAS] %s", text.c_str());
@@ -57,7 +55,7 @@ void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
     };
 
     // tas.error(format_string, ...)
-    tas["error"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
+    tas["error"] = [engine](const std::string &fmt, sol::variadic_args va) {
         try {
             std::string text = FormatString(fmt, va);
             engine->GetLogger()->Error("[TAS] %s", text.c_str());
@@ -67,7 +65,7 @@ void LuaApi::RegisterCoreApi(sol::table &tas, TASEngine *engine) {
     };
 
     // tas.print(format_string, ...)
-    tas["print"] = [engine](const std::string &fmt, const sol::variadic_args &va) {
+    tas["print"] = [engine](const std::string &fmt, sol::variadic_args va) {
         try {
             std::string text = FormatString(fmt, va);
             engine->GetGameInterface()->PrintMessage(text.c_str());
@@ -384,7 +382,6 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
 
 void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     auto *scheduler = engine->GetScheduler();
-    auto *eventManager = engine->GetEventManager();
 
     // ===================================================================
     // Basic waiting operations

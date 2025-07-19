@@ -10,6 +10,7 @@ void LuaApi::RegisterCKCamera(sol::state &lua) {
     auto ckCameraType = lua.new_usertype<CKCamera>(
         "CKCamera",
         sol::no_constructor, // Objects are created through CKContext, not directly
+        sol::base_classes, sol::bases<CK3dEntity, CKRenderObject, CKBeObject, CKSceneObject, CKObject>(),
 
         // Clipping planes
         "front_plane", sol::property(&CKCamera::GetFrontPlane, &CKCamera::SetFrontPlane),

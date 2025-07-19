@@ -711,11 +711,11 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     // ===================================================================
 
     // tas.wait_for_event(event_name) - wait for specific event
-    tas["wait_for_event"] = sol::yielding([scheduler](const std::string &event_name) {
-        if (event_name.empty()) {
+    tas["wait_for_event"] = sol::yielding([scheduler](const std::string &eventName) {
+        if (eventName.empty()) {
             throw sol::error("wait_for_event: event name cannot be empty");
         }
-        scheduler->YieldWaitForEvent(event_name);
+        scheduler->YieldWaitForEvent(eventName);
     });
 }
 

@@ -548,18 +548,20 @@ bool ScriptGenerator::CreateProjectFiles(const std::string &projectPath,
                                          const std::string &manifestContent) {
     try {
         // Write main.lua
-        std::ofstream scriptFile(projectPath + "/main.lua");
+        std::string scriptPath = projectPath + "/main.lua";
+        std::ofstream scriptFile(scriptPath);
         if (!scriptFile.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to create main.lua file.");
+            m_Engine->GetLogger()->Error("Failed to create script file: %s", scriptPath.c_str());
             return false;
         }
         scriptFile << scriptContent;
         scriptFile.close();
 
         // Write manifest.lua
-        std::ofstream manifestFile(projectPath + "/manifest.lua");
+        std::string manifestPath = projectPath + "/manifest.lua";
+        std::ofstream manifestFile(manifestPath);
         if (!manifestFile.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to create manifest.lua file.");
+            m_Engine->GetLogger()->Error("Failed to create manifest file: %s", manifestPath.c_str());
             return false;
         }
         manifestFile << manifestContent;

@@ -254,11 +254,6 @@ void TASListPage::OnAfterBegin() {
 }
 
 void TASListPage::OnDraw() {
-    // Show TAS status if active
-    if (m_Menu && m_Menu->IsTASActive()) {
-        DrawTASStatus();
-    }
-
     // Draw main action buttons
     DrawMainButtons();
 
@@ -284,6 +279,11 @@ void TASListPage::OnDraw() {
     DrawEntries([&](std::size_t index) {
         return OnDrawEntry(n + index, &v);
     }, ImVec2(0.4031f, 0.24f), 0.06f, MAX_ENTRIES_PER_PAGE);
+
+    // Show TAS status if active
+    if (m_Menu && m_Menu->IsTASActive()) {
+        DrawTASStatus();
+    }
 }
 
 void TASListPage::DrawTASStatus() {
@@ -292,10 +292,8 @@ void TASListPage::DrawTASStatus() {
     auto *engine = m_Menu->GetEngine();
     const auto menuPos = Bui::GetMenuPos();
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.05f)));
-
     ImGui::SetCursorPosX(menuPos.x * 1.3f);
+    ImGui::SetCursorPosY(Bui::CoordToPixel(ImVec2(0.0f, 0.76f)).y);
 
     if (engine->IsPlaying() || engine->IsPendingPlay()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));

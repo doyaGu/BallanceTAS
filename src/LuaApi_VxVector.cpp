@@ -43,14 +43,8 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
         // Static utility functions
         "minimize", [](const VxVector &a, const VxVector &b) { return Minimize(a, b); },
         "maximize", [](const VxVector &a, const VxVector &b) { return Maximize(a, b); },
-        "normalize_safe", sol::overload(
-            [](const VxVector &v) { return Normalize(v); },
-            [](const VxVector *v) { return Normalize(v); }
-        ),
-        "rotate_by_axis", sol::overload(
-            [](const VxVector &v1, const VxVector &v2, float angle) { return Rotate(v1, v2, angle); },
-            [](const VxVector *v1, const VxVector *v2, float angle) { return Rotate(v1, v2, angle); }
-        ),
+        "normalize_safe", [](const VxVector &v) { return Normalize(v); },
+        "rotate_by_axis", [](const VxVector &v1, const VxVector &v2, float angle) { return Rotate(v1, v2, angle); },
 
         // Operators
         sol::meta_function::index, [](const VxVector &v, int i) -> float {

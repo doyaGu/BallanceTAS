@@ -760,26 +760,8 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
         [eventManager](const std::string &eventName) {
             eventManager->FireEvent(eventName);
         },
-        [eventManager](const std::string &eventName, const sol::object &arg1) {
-            if (arg1.is<int>()) {
-                eventManager->FireEvent(eventName, arg1.as<int>());
-            } else if (arg1.is<float>()) {
-                eventManager->FireEvent(eventName, arg1.as<float>());
-            } else if (arg1.is<std::string>()) {
-                eventManager->FireEvent(eventName, arg1.as<std::string>());
-            } else {
-                eventManager->FireEvent(eventName);
-            }
-        },
-        [eventManager](const std::string &eventName, const sol::object &arg1, const sol::object &arg2) {
-            // Handle common two-argument cases
-            if (arg1.is<std::string>() && arg2.is<int>()) {
-                eventManager->FireEvent(eventName, arg1.as<std::string>(), arg2.as<int>());
-            } else if (arg1.is<int>() && arg2.is<int>()) {
-                eventManager->FireEvent(eventName, arg1.as<int>(), arg2.as<int>());
-            } else {
-                eventManager->FireEvent(eventName);
-            }
+        [eventManager](const std::string &eventName, sol::variadic_args va) {
+            eventManager->FireEvent(eventName, va);
         }
     );
 

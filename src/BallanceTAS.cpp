@@ -57,7 +57,7 @@ void BallanceTAS::OnLoad() {
 
     m_AutoRestart = GetConfig()->GetProperty("TAS", "AutoRestart");
     m_AutoRestart->SetComment("Automatically restarts the current project when the same level is loaded again.");
-    m_AutoRestart->SetDefaultBoolean(true);
+    m_AutoRestart->SetDefaultBoolean(false);
 
     m_StopOnFinish = GetConfig()->GetProperty("TAS", "StopOnFinish");
     m_StopOnFinish->SetComment("Automatically stops TAS playback/recording when the level ends.");

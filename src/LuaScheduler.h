@@ -482,7 +482,7 @@ namespace detail {
         sol::thread thread;
         sol::coroutine coroutine;
 
-        SchedulerCothread(sol::state &state, const sol::function &func) {
+        SchedulerCothread(sol::state &state, sol::function func) {
             thread = sol::thread::create(state);
             coroutine = sol::coroutine(thread.state(), func);
         }
@@ -509,25 +509,25 @@ public:
      * @brief Starts a new coroutine.
      * @param co Coroutine to run.
      */
-    void StartCoroutine(const sol::coroutine &co);
+    void StartCoroutine(sol::coroutine co);
 
     /**
      * @brief Starts a new coroutine from a function.
      * @param func Lua function to run as coroutine.
      */
-    void StartCoroutine(const sol::function &func);
+    void StartCoroutine(sol::function func);
 
     /**
      * @brief Adds a coroutine task to the scheduler.
      * @param co Coroutine to add.
      */
-    void AddCoroutineTask(const sol::coroutine &co);
+    void AddCoroutineTask(sol::coroutine co);
 
     /**
      * @brief Adds a coroutine task from a Lua function.
      * @param func Lua function to add as a coroutine task.
      */
-    void AddCoroutineTask(const sol::function &func);
+    void AddCoroutineTask(sol::function func);
 
     /**
      * @brief The main update loop - processes all scheduled tasks.
@@ -560,7 +560,7 @@ public:
     /**
      * @brief Yields current coroutine until predicate is true.
      */
-    void YieldUntil(const sol::function &predicate);
+    void YieldUntil(sol::function predicate);
 
     /**
      * @brief Yields current coroutine until other coroutines complete.
@@ -570,32 +570,32 @@ public:
     /**
      * @brief Repeats a task for specified number of ticks
      */
-    void YieldRepeatFor(const sol::function &task, int ticks);
+    void YieldRepeatFor(sol::function task, int ticks);
 
     /**
      * @brief Repeats a task until condition becomes true
      */
-    void YieldRepeatUntil(const sol::function &task, const sol::function &condition);
+    void YieldRepeatUntil(sol::function task, sol::function condition);
 
     /**
      * @brief Repeats a task while condition is true
      */
-    void YieldRepeatWhile(const sol::function &task, const sol::function &condition);
+    void YieldRepeatWhile(sol::function task, sol::function condition);
 
     /**
      * @brief Repeats a task a specific number of times
      */
-    void YieldRepeatCount(const sol::function &task, int count);
+    void YieldRepeatCount(sol::function task, int count);
 
     /**
      * @brief Delays execution of a task by specified ticks
      */
-    void YieldDelay(const sol::function &task, int delay_ticks);
+    void YieldDelay(sol::function task, int delayTicks);
 
     /**
      * @brief Runs a task with timeout
      */
-    void YieldTimeout(const sol::function &task, int timeout_ticks);
+    void YieldTimeout(sol::function task, int timeoutTicks);
 
     /**
      * @brief Executes tasks in sequence
@@ -615,7 +615,7 @@ public:
     /**
      * @brief Retries a task up to max_attempts times
      */
-    void YieldRetry(const sol::function &task, int max_attempts);
+    void YieldRetry(sol::function task, int maxAttempts);
 
     /**
      * @brief Waits for a specific event
@@ -625,7 +625,7 @@ public:
     /**
      * @brief Debounces task execution
      */
-    void YieldDebounce(const sol::function &task, int debounce_ticks);
+    void YieldDebounce(sol::function task, int debounceTicks);
 
 private:
     void Yield(std::shared_ptr<SchedulerTask> task);

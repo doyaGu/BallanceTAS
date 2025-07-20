@@ -518,7 +518,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.wait_until(predicate_function)
-    tas["wait_until"] = sol::yielding([scheduler](const sol::function &predicate) {
+    tas["wait_until"] = sol::yielding([scheduler](sol::function predicate) {
         if (!predicate.valid()) {
             throw sol::error("wait_until: predicate function is invalid");
         }
@@ -526,7 +526,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.wait(condition_function)
-    tas["wait"] = sol::yielding([scheduler](const sol::object &arg) {
+    tas["wait"] = sol::yielding([scheduler](sol::object arg) {
         if (!arg.valid()) {
             throw sol::error("wait: argument is invalid");
         }
@@ -548,7 +548,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     // ===================================================================
 
     // tas.repeat_for(task, ticks) - repeat task for N ticks
-    tas["repeat_for"] = sol::yielding([scheduler](const sol::function &task, int ticks) {
+    tas["repeat_for"] = sol::yielding([scheduler](sol::function task, int ticks) {
         if (!task.valid()) {
             throw sol::error("repeat_for: task function is invalid");
         }
@@ -559,7 +559,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.repeat_until(task, condition) - repeat task until condition is true
-    tas["repeat_until"] = sol::yielding([scheduler](const sol::function &task, const sol::function &condition) {
+    tas["repeat_until"] = sol::yielding([scheduler](sol::function task, sol::function condition) {
         if (!task.valid()) {
             throw sol::error("repeat_until: task function is invalid");
         }
@@ -570,7 +570,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.repeat_while(task, condition) - repeat task while condition is true
-    tas["repeat_while"] = sol::yielding([scheduler](const sol::function &task, const sol::function &condition) {
+    tas["repeat_while"] = sol::yielding([scheduler](sol::function task, sol::function condition) {
         if (!task.valid()) {
             throw sol::error("repeat_while: task function is invalid");
         }
@@ -581,7 +581,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.repeat_count(task, count) - repeat task N times
-    tas["repeat_count"] = sol::yielding([scheduler](const sol::function &task, int count) {
+    tas["repeat_count"] = sol::yielding([scheduler](sol::function task, int count) {
         if (!task.valid()) {
             throw sol::error("repeat_count: task function is invalid");
         }
@@ -596,7 +596,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     // ===================================================================
 
     // tas.delay(task, ticks) - delay task execution by N ticks
-    tas["delay"] = sol::yielding([scheduler](const sol::function &task, int delay_ticks) {
+    tas["delay"] = sol::yielding([scheduler](sol::function task, int delay_ticks) {
         if (!task.valid()) {
             throw sol::error("delay: task function is invalid");
         }
@@ -607,7 +607,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.timeout(task, ticks) - run task with timeout
-    tas["timeout"] = sol::yielding([scheduler](const sol::function &task, int timeout_ticks) {
+    tas["timeout"] = sol::yielding([scheduler](sol::function task, int timeout_ticks) {
         if (!task.valid()) {
             throw sol::error("timeout: task function is invalid");
         }
@@ -618,7 +618,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.debounce(task, ticks) - debounce task execution
-    tas["debounce"] = sol::yielding([scheduler](const sol::function &task, int debounce_ticks) {
+    tas["debounce"] = sol::yielding([scheduler](sol::function task, int debounce_ticks) {
         if (!task.valid()) {
             throw sol::error("debounce: task function is invalid");
         }
@@ -649,7 +649,7 @@ void LuaApi::RegisterConcurrencyApi(sol::table &tas, TASEngine *engine) {
     });
 
     // tas.retry(task, max_attempts) - retry task up to N times
-    tas["retry"] = sol::yielding([scheduler](const sol::function &task, int max_attempts) {
+    tas["retry"] = sol::yielding([scheduler](sol::function task, int max_attempts) {
         if (!task.valid()) {
             throw sol::error("retry: task function is invalid");
         }
@@ -724,7 +724,7 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
 
     // Register event listener from Lua
     tas["on"] = sol::overload(
-        [eventManager](const std::string &eventName, const sol::function &callback) {
+        [eventManager](const std::string &eventName, sol::function callback) {
             if (eventName.empty()) {
                 throw sol::error("on: event name cannot be empty");
             }
@@ -733,7 +733,7 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
             }
             eventManager->RegisterListener(eventName, callback);
         },
-        [eventManager](const std::string &eventName, const sol::function &callback, bool oneTime) {
+        [eventManager](const std::string &eventName, sol::function callback, bool oneTime) {
             if (eventName.empty()) {
                 throw sol::error("on: event name cannot be empty");
             }
@@ -745,7 +745,7 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
     );
 
     // Register one-time event listener from Lua
-    tas["once"] = [eventManager](const std::string &eventName, const sol::function &callback) {
+    tas["once"] = [eventManager](const std::string &eventName, sol::function callback) {
         if (eventName.empty()) {
             throw sol::error("once: event name cannot be empty");
         }
@@ -805,7 +805,7 @@ void LuaApi::RegisterEventApi(sol::table &tas, TASEngine *engine) {
 
 void LuaApi::RegisterDebugApi(sol::table &tas, TASEngine *engine) {
     // tas.assert(condition, message)
-    tas["assert"] = [](bool condition, const sol::optional<std::string> &message) {
+    tas["assert"] = [](bool condition, sol::optional<std::string> message) {
         if (condition) return;
 
         std::string error_message = message.value_or("Assertion failed!");

@@ -32,7 +32,7 @@ public:
     //================================================================
 
     const char *GetID() override { return "BallanceTAS"; }
-    const char *GetVersion() override { return "1.5.0"; }
+    const char *GetVersion() override { return "1.6.0"; }
     const char *GetName() override { return "Ballance TAS"; }
     const char *GetAuthor() override { return "Ballance TAS Community"; }
 

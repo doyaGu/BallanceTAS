@@ -91,6 +91,32 @@ private:
 };
 
 /**
+ * @class RaceTask
+ * @brief Task that completes when first coroutine finishes
+ */
+class RaceTask : public SchedulerTask {
+public:
+    explicit RaceTask(std::vector<sol::coroutine> coroutines)
+        : m_Coroutines(std::move(coroutines)), m_SomeCompleted(false) {}
+
+    bool IsComplete() override {
+        if (m_SomeCompleted) return true;
+
+        for (const auto &co : m_Coroutines) {
+            if (!co.valid() || co.status() != sol::call_status::yielded) {
+                m_SomeCompleted = true;
+                return true; // At least one completed
+            }
+        }
+        return false; // All still running
+    }
+
+private:
+    std::vector<sol::coroutine> m_Coroutines;
+    bool m_SomeCompleted;
+};
+
+/**
  * @class RepeatTask
  * @brief Base class for repeating tasks
  */
@@ -200,29 +226,6 @@ public:
 
 private:
     sol::function m_Condition;
-};
-
-/**
- * @class RepeatCountTask
- * @brief Repeats a task a specific number of times
- */
-class RepeatCountTask : public RepeatTask {
-public:
-    RepeatCountTask(sol::function task, int count)
-        : RepeatTask(std::move(task)), m_RemainingCount(count) {}
-
-    bool IsComplete() override {
-        if (m_ShouldStop || m_RemainingCount <= 0) {
-            return true;
-        }
-
-        ExecuteTask();
-        --m_RemainingCount;
-        return m_RemainingCount <= 0;
-    }
-
-private:
-    int m_RemainingCount;
 };
 
 /**
@@ -355,32 +358,6 @@ private:
 };
 
 /**
- * @class RaceTask
- * @brief Runs multiple tasks in parallel and completes when first one finishes
- */
-class RaceTask : public SchedulerTask {
-public:
-    explicit RaceTask(std::vector<sol::coroutine> coroutines)
-        : m_Coroutines(std::move(coroutines)), m_SomeCompleted(false) {}
-
-    bool IsComplete() override {
-        if (m_SomeCompleted) return true;
-
-        for (const auto &co : m_Coroutines) {
-            if (!co.valid() || co.status() != sol::call_status::yielded) {
-                m_SomeCompleted = true;
-                return true; // At least one completed
-            }
-        }
-        return false; // All still running
-    }
-
-private:
-    std::vector<sol::coroutine> m_Coroutines;
-    bool m_SomeCompleted;
-};
-
-/**
  * @class RetryTask
  * @brief Retries a task up to a maximum number of attempts
  */
@@ -482,9 +459,46 @@ namespace detail {
         sol::thread thread;
         sol::coroutine coroutine;
 
+        // Constructor for creating coroutine from function
         SchedulerCothread(sol::state &state, sol::function func) {
+            if (!func.valid()) {
+                throw std::invalid_argument("Invalid function provided to SchedulerCothread");
+            }
             thread = sol::thread::create(state);
-            coroutine = sol::coroutine(thread.state(), func);
+            coroutine = sol::coroutine(thread.thread_state(), func);
+        }
+
+        // Constructor for existing coroutines - use with caution
+        SchedulerCothread(sol::state &state, sol::coroutine co) {
+            if (!co.valid()) {
+                throw std::invalid_argument("Invalid coroutine provided to SchedulerCothread");
+            }
+
+            // Get the coroutine's current thread state
+            lua_State* co_state = co.lua_state();
+
+            if (co_state && co_state != state.lua_state()) {
+                // Coroutine is on a different thread, wrap that thread
+                thread = sol::thread(state.lua_state(), co_state);
+                coroutine = co; // Use the existing coroutine as-is
+            } else {
+                // Coroutine is on main state, create new thread
+                thread = sol::thread::create(state);
+                // Note: Using existing coroutine on new thread may have issues
+                // Consider recreating the coroutine if problems occur
+                coroutine = co;
+            }
+        }
+
+        // Factory method for safer handling of existing coroutines
+        static std::shared_ptr<SchedulerCothread> CreateFromExistingCoroutine(
+            sol::state &state, sol::coroutine co) {
+
+            if (!co.valid()) {
+                throw std::invalid_argument("Invalid coroutine provided");
+            }
+
+            return std::make_shared<SchedulerCothread>(state, co);
         }
     };
 
@@ -530,6 +544,20 @@ public:
     void AddCoroutineTask(sol::function func);
 
     /**
+     * @brief Starts a coroutine and returns a reference for tracking.
+     * @param func Lua function to run as coroutine.
+     * @return Coroutine reference for tracking.
+     */
+    sol::coroutine StartCoroutineAndTrack(sol::function func);
+
+    /**
+     * @brief Starts a coroutine and returns a reference for tracking.
+     * @param co Coroutine to run.
+     * @return Coroutine reference for tracking.
+     */
+    sol::coroutine StartCoroutineAndTrack(sol::coroutine co);
+
+    /**
      * @brief The main update loop - processes all scheduled tasks.
      */
     void Tick();
@@ -568,64 +596,38 @@ public:
     void YieldCoroutines(const std::vector<sol::coroutine> &coroutines);
 
     /**
-     * @brief Repeats a task for specified number of ticks
-     */
-    void YieldRepeatFor(sol::function task, int ticks);
-
-    /**
-     * @brief Repeats a task until condition becomes true
-     */
-    void YieldRepeatUntil(sol::function task, sol::function condition);
-
-    /**
-     * @brief Repeats a task while condition is true
-     */
-    void YieldRepeatWhile(sol::function task, sol::function condition);
-
-    /**
-     * @brief Repeats a task a specific number of times
-     */
-    void YieldRepeatCount(sol::function task, int count);
-
-    /**
-     * @brief Delays execution of a task by specified ticks
-     */
-    void YieldDelay(sol::function task, int delayTicks);
-
-    /**
-     * @brief Runs a task with timeout
-     */
-    void YieldTimeout(sol::function task, int timeoutTicks);
-
-    /**
-     * @brief Executes tasks in sequence
-     */
-    void YieldSequence(const std::vector<sol::function> &tasks);
-
-    /**
-     * @brief Runs tasks in parallel and waits for all to complete
-     */
-    void YieldParallel(const std::vector<sol::coroutine> &coroutines);
-
-    /**
-     * @brief Runs tasks in parallel and completes when first one finishes
+     * @brief Yields current coroutine until first coroutine completes.
      */
     void YieldRace(const std::vector<sol::coroutine> &coroutines);
-
-    /**
-     * @brief Retries a task up to max_attempts times
-     */
-    void YieldRetry(sol::function task, int maxAttempts);
 
     /**
      * @brief Waits for a specific event
      */
     void YieldWaitForEvent(const std::string &event_name);
 
+    // --- Background task methods (non-yielding) ---
+
     /**
-     * @brief Debounces task execution
+     * @brief Starts background operations that don't yield the current script
      */
-    void YieldDebounce(sol::function task, int debounceTicks);
+
+    // Background repeat operations
+    void StartRepeatFor(sol::function task, int ticks);
+    void StartRepeatUntil(sol::function task, sol::function condition);
+    void StartRepeatWhile(sol::function task, sol::function condition);
+
+    // Background timing operations
+    void StartDelay(sol::function task, int delayTicks);
+    void StartTimeout(sol::function task, int timeoutTicks);
+    void StartDebounce(sol::function task, int debounceTicks);
+
+    // Background control flow operations
+    void StartSequence(const std::vector<sol::function> &tasks);
+    void StartRetry(sol::function task, int maxAttempts);
+
+    // Background parallel operations
+    void StartParallel(const std::vector<sol::function> &functions);
+    void StartParallel(const std::vector<sol::coroutine> &coroutines);
 
 private:
     void Yield(std::shared_ptr<SchedulerTask> task);
@@ -633,5 +635,6 @@ private:
     TASEngine *m_Engine;
     std::shared_ptr<detail::SchedulerCothread> m_CurrentThread;
     std::list<detail::SchedulerThreadTask> m_Tasks;
+    std::list<std::shared_ptr<SchedulerTask>> m_BackgroundTasks;
     std::stack<std::shared_ptr<detail::SchedulerCothread>> m_ThreadStack;
 };

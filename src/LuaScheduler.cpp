@@ -24,6 +24,12 @@ sol::state &LuaScheduler::GetLuaState() const {
 }
 
 void LuaScheduler::StartCoroutine(sol::coroutine co) {
+    // Check if coroutine is valid
+    if (!co.valid()) {
+        m_Engine->GetLogger()->Error("StartCoroutine: invalid coroutine provided");
+        return;
+    }
+
     // Create a new thread context for the coroutine
     auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), co);
 
@@ -57,14 +63,97 @@ void LuaScheduler::StartCoroutine(sol::coroutine co) {
 }
 
 void LuaScheduler::StartCoroutine(sol::function func) {
-    StartCoroutine(sol::coroutine(func));
+    if (!func.valid()) {
+        m_Engine->GetLogger()->Error("StartCoroutine: invalid function provided");
+        return;
+    }
+
+    // Create a new thread context for the coroutine
+    auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), func);
+
+    // Push it onto the stack to set the current execution context
+    m_ThreadStack.push(thread);
+    m_CurrentThread = thread;
+
+    // Start the coroutine
+    auto result = m_CurrentThread->coroutine();
+
+    // The coroutine has either finished or yielded.
+    // If it did NOT yield, its execution is over, so we can pop it from the stack.
+    // If it DID yield, a task was already created by a YieldXxx function,
+    // and it remains on the stack as part of the execution context until it's done.
+    if (m_CurrentThread->coroutine.status() != sol::call_status::yielded) {
+        m_ThreadStack.pop();
+    }
+
+    // Reset current thread pointer to the top of the stack
+    if (m_ThreadStack.empty()) {
+        m_CurrentThread = nullptr;
+    } else {
+        m_CurrentThread = m_ThreadStack.top();
+    }
+
+    // Handle any errors
+    if (!result.valid()) {
+        sol::error err = result;
+        m_Engine->GetLogger()->Error("Coroutine error: %s", err.what());
+    }
+}
+
+sol::coroutine LuaScheduler::StartCoroutineAndTrack(sol::function func) {
+    if (!func.valid()) {
+        m_Engine->GetLogger()->Error("StartCoroutineAndTrack: invalid function provided");
+        return {};
+    }
+
+    // Create new thread for the coroutine
+    auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), func);
+
+    // Create an immediate task that will cause the coroutine to start on next tick
+    auto task = std::make_shared<ImmediateTask>();
+
+    // Add to task list
+    detail::SchedulerThreadTask threadTask;
+    threadTask.thread = thread;
+    threadTask.task = task;
+    m_Tasks.push_back(threadTask);
+
+    // Return the coroutine reference for tracking
+    return thread->coroutine;
+}
+
+sol::coroutine LuaScheduler::StartCoroutineAndTrack(sol::coroutine co) {
+    if (!co.valid()) {
+        m_Engine->GetLogger()->Error("StartCoroutineAndTrack: invalid coroutine provided");
+        return {};
+    }
+
+    // Create thread for existing coroutine (handles thread management internally)
+    auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), co);
+
+    // Create an immediate task
+    auto task = std::make_shared<ImmediateTask>();
+
+    // Add to task list
+    detail::SchedulerThreadTask threadTask;
+    threadTask.thread = thread;
+    threadTask.task = task;
+    m_Tasks.push_back(threadTask);
+
+    // Return the coroutine reference for tracking
+    return thread->coroutine;
 }
 
 void LuaScheduler::AddCoroutineTask(sol::coroutine co) {
-    // Create new thread for the coroutine
+    if (!co.valid()) {
+        m_Engine->GetLogger()->Error("AddCoroutineTask: invalid coroutine provided");
+        return;
+    }
+
+    // Create thread for existing coroutine
     auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), co);
 
-    // Create an immediate task that will cause the coroutine to start on next tick
+    // Create an immediate task
     auto task = std::make_shared<ImmediateTask>();
 
     // Add to task list
@@ -75,11 +164,26 @@ void LuaScheduler::AddCoroutineTask(sol::coroutine co) {
 }
 
 void LuaScheduler::AddCoroutineTask(sol::function func) {
-    AddCoroutineTask(sol::coroutine(func));
+    if (!func.valid()) {
+        m_Engine->GetLogger()->Error("AddCoroutineTask: invalid function provided");
+        return;
+    }
+
+    // For functions, create new thread directly
+    auto thread = std::make_shared<detail::SchedulerCothread>(GetLuaState(), func);
+
+    // Create an immediate task
+    auto task = std::make_shared<ImmediateTask>();
+
+    // Add to task list
+    detail::SchedulerThreadTask threadTask;
+    threadTask.thread = thread;
+    threadTask.task = task;
+    m_Tasks.push_back(threadTask);
 }
 
 void LuaScheduler::Tick() {
-    // Process all pending tasks
+    // Process coroutine-based tasks
     for (auto i = m_Tasks.begin(); i != m_Tasks.end();) {
         // If the thread is dead, remove it
         if (i->thread->coroutine.status() != sol::call_status::yielded) {
@@ -118,10 +222,20 @@ void LuaScheduler::Tick() {
             ++i;
         }
     }
+
+    // Process background tasks
+    for (auto i = m_BackgroundTasks.begin(); i != m_BackgroundTasks.end();) {
+        if ((*i)->IsComplete()) {
+            i = m_BackgroundTasks.erase(i);
+        } else {
+            ++i;
+        }
+    }
 }
 
 void LuaScheduler::Clear() {
     m_Tasks.clear();
+    m_BackgroundTasks.clear();
     m_CurrentThread = nullptr;
     // Clear the thread stack
     while (!m_ThreadStack.empty()) {
@@ -130,11 +244,11 @@ void LuaScheduler::Clear() {
 }
 
 bool LuaScheduler::IsRunning() const {
-    return !m_Tasks.empty();
+    return !m_Tasks.empty() || !m_BackgroundTasks.empty();
 }
 
 size_t LuaScheduler::GetTaskCount() const {
-    return m_Tasks.size();
+    return m_Tasks.size() + m_BackgroundTasks.size();
 }
 
 void LuaScheduler::YieldTicks(int ticks) {
@@ -179,151 +293,9 @@ void LuaScheduler::YieldCoroutines(const std::vector<sol::coroutine> &coroutines
     Yield(std::make_shared<CoroutineWaitTask>(coroutines));
 }
 
-void LuaScheduler::YieldRepeatFor(sol::function task, int ticks) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldRepeatFor: invalid task function");
-        return;
-    }
-
-    if (ticks <= 0) {
-        m_Engine->GetLogger()->Error("YieldRepeatFor: tick count must be positive");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldRepeatFor called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<RepeatForTicksTask>(task, ticks));
-}
-
-void LuaScheduler::YieldRepeatUntil(sol::function task, sol::function condition) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldRepeatUntil: invalid task function");
-        return;
-    }
-
-    if (!condition.valid()) {
-        m_Engine->GetLogger()->Error("YieldRepeatUntil: invalid condition function");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldRepeatUntil called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<RepeatUntilTask>(task, condition));
-}
-
-void LuaScheduler::YieldRepeatWhile(sol::function task, sol::function condition) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldRepeatWhile: invalid task function");
-        return;
-    }
-
-    if (!condition.valid()) {
-        m_Engine->GetLogger()->Error("YieldRepeatWhile: invalid condition function");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldRepeatWhile called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<RepeatWhileTask>(task, condition));
-}
-
-void LuaScheduler::YieldRepeatCount(sol::function task, int count) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldRepeatCount: invalid task function");
-        return;
-    }
-
-    if (count <= 0) {
-        m_Engine->GetLogger()->Error("YieldRepeatCount: count must be positive");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldRepeatCount called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<RepeatCountTask>(task, count));
-}
-
-void LuaScheduler::YieldDelay(sol::function task, int delayTicks) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldDelay: invalid task function");
-        return;
-    }
-
-    if (delayTicks < 0) {
-        m_Engine->GetLogger()->Error("YieldDelay: delay ticks cannot be negative");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldDelay called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<DelayTask>(task, delayTicks));
-}
-
-void LuaScheduler::YieldTimeout(sol::function task, int timeoutTicks) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldTimeout: invalid task function");
-        return;
-    }
-
-    if (timeoutTicks <= 0) {
-        m_Engine->GetLogger()->Error("YieldTimeout: timeout must be positive");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldTimeout called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<TimeoutTask>(task, timeoutTicks));
-}
-
-void LuaScheduler::YieldSequence(const std::vector<sol::function> &tasks) {
-    if (tasks.empty()) {
-        m_Engine->GetLogger()->Error("YieldSequence: no tasks provided");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldSequence called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<SequenceTask>(tasks));
-}
-
-void LuaScheduler::YieldParallel(const std::vector<sol::coroutine> &coroutines) {
-    if (coroutines.empty()) {
-        m_Engine->GetLogger()->Error("YieldParallel: no coroutines provided");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldParallel called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<ParallelTask>(coroutines));
-}
-
 void LuaScheduler::YieldRace(const std::vector<sol::coroutine> &coroutines) {
     if (coroutines.empty()) {
-        m_Engine->GetLogger()->Error("YieldRace: no coroutines provided");
+        m_Engine->GetLogger()->Error("YieldRace: no coroutines to wait for");
         return;
     }
 
@@ -333,25 +305,6 @@ void LuaScheduler::YieldRace(const std::vector<sol::coroutine> &coroutines) {
     }
 
     Yield(std::make_shared<RaceTask>(coroutines));
-}
-
-void LuaScheduler::YieldRetry(sol::function task, int maxAttempts) {
-    if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldRetry: invalid task function");
-        return;
-    }
-
-    if (maxAttempts <= 0) {
-        m_Engine->GetLogger()->Error("YieldRetry: max attempts must be positive");
-        return;
-    }
-
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldRetry called outside of coroutine context");
-        return;
-    }
-
-    Yield(std::make_shared<RetryTask>(task, maxAttempts));
 }
 
 void LuaScheduler::YieldWaitForEvent(const std::string &event_name) {
@@ -368,23 +321,135 @@ void LuaScheduler::YieldWaitForEvent(const std::string &event_name) {
     Yield(std::make_shared<EventWaitTask>(event_name, m_Engine));
 }
 
-void LuaScheduler::YieldDebounce(sol::function task, int debounceTicks) {
+void LuaScheduler::StartRepeatFor(sol::function task, int ticks) {
     if (!task.valid()) {
-        m_Engine->GetLogger()->Error("YieldDebounce: invalid task function");
+        m_Engine->GetLogger()->Error("StartRepeatFor: invalid task function");
+        return;
+    }
+
+    if (ticks <= 0) {
+        m_Engine->GetLogger()->Error("StartRepeatFor: tick count must be positive");
+        return;
+    }
+
+    auto repeatTask = std::make_shared<RepeatForTicksTask>(task, ticks);
+    m_BackgroundTasks.push_back(repeatTask);
+}
+
+void LuaScheduler::StartRepeatUntil(sol::function task, sol::function condition) {
+    if (!task.valid()) {
+        m_Engine->GetLogger()->Error("StartRepeatUntil: invalid task function");
+        return;
+    }
+
+    if (!condition.valid()) {
+        m_Engine->GetLogger()->Error("StartRepeatUntil: invalid condition function");
+        return;
+    }
+
+    auto repeatTask = std::make_shared<RepeatUntilTask>(task, condition);
+    m_BackgroundTasks.push_back(repeatTask);
+}
+
+void LuaScheduler::StartRepeatWhile(sol::function task, sol::function condition) {
+    if (!task.valid()) {
+        m_Engine->GetLogger()->Error("StartRepeatWhile: invalid task function");
+        return;
+    }
+
+    if (!condition.valid()) {
+        m_Engine->GetLogger()->Error("StartRepeatWhile: invalid condition function");
+        return;
+    }
+
+    auto repeatTask = std::make_shared<RepeatWhileTask>(task, condition);
+    m_BackgroundTasks.push_back(repeatTask);
+}
+
+void LuaScheduler::StartDelay(sol::function task, int delayTicks) {
+    if (!task.valid()) {
+        m_Engine->GetLogger()->Error("StartDelay: invalid task function");
+        return;
+    }
+
+    if (delayTicks < 0) {
+        m_Engine->GetLogger()->Error("StartDelay: delay ticks cannot be negative");
+        return;
+    }
+
+    auto delayTask = std::make_shared<DelayTask>(task, delayTicks);
+    m_BackgroundTasks.push_back(delayTask);
+}
+
+void LuaScheduler::StartTimeout(sol::function task, int timeoutTicks) {
+    if (!task.valid()) {
+        m_Engine->GetLogger()->Error("StartTimeout: invalid task function");
+        return;
+    }
+
+    if (timeoutTicks <= 0) {
+        m_Engine->GetLogger()->Error("StartTimeout: timeout must be positive");
+        return;
+    }
+
+    auto timeoutTask = std::make_shared<TimeoutTask>(task, timeoutTicks);
+    m_BackgroundTasks.push_back(timeoutTask);
+}
+
+void LuaScheduler::StartDebounce(sol::function task, int debounceTicks) {
+    if (!task.valid()) {
+        m_Engine->GetLogger()->Error("StartDebounce: invalid task function");
         return;
     }
 
     if (debounceTicks <= 0) {
-        m_Engine->GetLogger()->Error("YieldDebounce: debounce ticks must be positive");
+        m_Engine->GetLogger()->Error("StartDebounce: debounce ticks must be positive");
         return;
     }
 
-    if (!m_CurrentThread) {
-        m_Engine->GetLogger()->Error("YieldDebounce called outside of coroutine context");
+    auto debounceTask = std::make_shared<DebounceTask>(task, debounceTicks);
+    m_BackgroundTasks.push_back(debounceTask);
+}
+
+void LuaScheduler::StartSequence(const std::vector<sol::function> &tasks) {
+    if (tasks.empty()) {
+        m_Engine->GetLogger()->Error("StartSequence: no tasks provided");
         return;
     }
 
-    Yield(std::make_shared<DebounceTask>(task, debounceTicks));
+    auto sequenceTask = std::make_shared<SequenceTask>(tasks);
+    m_BackgroundTasks.push_back(sequenceTask);
+}
+
+void LuaScheduler::StartRetry(sol::function task, int maxAttempts) {
+    if (!task.valid()) {
+        m_Engine->GetLogger()->Error("StartRetry: invalid task function");
+        return;
+    }
+
+    if (maxAttempts <= 0) {
+        m_Engine->GetLogger()->Error("StartRetry: max attempts must be positive");
+        return;
+    }
+
+    auto retryTask = std::make_shared<RetryTask>(task, maxAttempts);
+    m_BackgroundTasks.push_back(retryTask);
+}
+
+void LuaScheduler::StartParallel(const std::vector<sol::function> &functions) {
+    for (const auto &func : functions) {
+        if (func.valid()) {
+            AddCoroutineTask(func);
+        }
+    }
+}
+
+void LuaScheduler::StartParallel(const std::vector<sol::coroutine> &coroutines) {
+    for (const auto &co : coroutines) {
+        if (co.valid()) {
+            AddCoroutineTask(co);
+        }
+    }
 }
 
 void LuaScheduler::Yield(std::shared_ptr<SchedulerTask> task) {

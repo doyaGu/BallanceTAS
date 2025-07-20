@@ -385,7 +385,10 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         try {
             const auto *g = engine->GetGameInterface();
             if (g) {
-                return sol::make_object(engine->GetLuaState(), g);
+                CK3dEntity *obj = g->GetObjectByName(name);
+                if (obj) {
+                    return sol::make_object(engine->GetLuaState(), obj);
+                }
             }
         } catch (const std::exception &) {
             // Fall through to return nil

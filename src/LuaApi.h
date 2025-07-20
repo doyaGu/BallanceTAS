@@ -34,6 +34,7 @@ private:
     static void RegisterVxRect(sol::state &lua);
     static void RegisterVxVector(sol::state &lua);
     static void RegisterVxIntersectionDesc(sol::state &lua);
+    static void RegisterCKEnums(sol::state &lua);
     static void RegisterCKObject(sol::state &lua);
     static void RegisterCKSceneObject(sol::state &lua);
     static void RegisterCKBeObject(sol::state &lua);

@@ -44,6 +44,7 @@ void LuaApi::RegisterDataTypes(sol::state &lua) {
     RegisterVxVector(lua);
     RegisterVxIntersectionDesc(lua);
 
+    RegisterCKEnums(lua);
     RegisterCKObject(lua);
     RegisterCKSceneObject(lua);
     RegisterCKBeObject(lua);

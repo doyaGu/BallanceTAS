@@ -46,6 +46,7 @@ set(TAS_SOURCES
 		LuaApi_VxRect.cpp
 		LuaApi_VxVector.cpp
 		LuaApi_VxIntersectionDesc.cpp
+		LuaApi_CKEnums.cpp
 		LuaApi_CKObject.cpp
 		LuaApi_CKSceneObject.cpp
 		LuaApi_CKBeObject.cpp

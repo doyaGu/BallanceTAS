@@ -164,6 +164,12 @@ void ScriptExecutor::Stop(bool clearProject) {
             m_Scheduler->Clear();
         }
 
+        // Clear event listeners
+        auto *eventManager = m_Engine->GetEventManager();
+        if (eventManager) {
+            eventManager->ClearListeners();
+        }
+
         // Clean up project resources only if requested
         if (clearProject) {
             CleanupCurrentProject();

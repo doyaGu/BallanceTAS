@@ -16,7 +16,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         sol::base_classes, sol::bases<CKRenderObject, CKBeObject, CKSceneObject, CKObject>(),
 
         // Hierarchy
-        "get_children_count", &CK3dEntity::GetChildrenCount,
+        "children_count", sol::readonly_property(&CK3dEntity::GetChildrenCount),
         "get_child", &CK3dEntity::GetChild,
         "set_parent", sol::overload(
             [](CK3dEntity *entity, CK3dEntity *parent) -> bool { return entity->SetParent(parent); },
@@ -24,7 +24,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
                 return entity->SetParent(parent, keepWorldPos);
             }
         ),
-        "get_parent", &CK3dEntity::GetParent,
+        "parent", sol::readonly_property(&CK3dEntity::GetParent),
         "add_child", sol::overload(
             [](CK3dEntity *entity, CK3dEntity *child) -> bool { return entity->AddChild(child); },
             [](CK3dEntity *entity, CK3dEntity *child, bool keepWorldPos) {
@@ -47,20 +47,19 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         "hierarchy_parser", &CK3dEntity::HierarchyParser,
 
         // Flags and properties
-        "get_flags", &CK3dEntity::GetFlags,
-        "set_flags", &CK3dEntity::SetFlags,
+        "flags", sol::property(&CK3dEntity::GetFlags, &CK3dEntity::SetFlags),
         "set_pickable", sol::overload(
             [](CK3dEntity *entity) { entity->SetPickable(); },
             [](CK3dEntity *entity, bool pick) { entity->SetPickable(pick); }
         ),
-        "is_pickable", [](CK3dEntity *entity) -> bool { return entity->IsPickable(); },
+        "is_pickable", sol::readonly_property([](CK3dEntity *entity) -> bool { return entity->IsPickable(); }),
         "set_render_channels", sol::overload(
             [](CK3dEntity *entity) { entity->SetRenderChannels(); },
             [](CK3dEntity *entity, bool renderChannels) { entity->SetRenderChannels(renderChannels); }
         ),
-        "are_render_channels_visible", [](CK3dEntity *entity) -> bool {
+        "are_render_channels_visible", sol::readonly_property([](CK3dEntity *entity) -> bool {
             return entity->AreRenderChannelsVisible();
-        },
+        }),
 
         // View frustum tests
         // "is_in_view_frustum", sol::overload(
@@ -72,15 +71,17 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         // "is_in_view_frustum_hierarchic", [](CK3dEntity *entity, CKRenderContext *dev) -> bool {
         //     return entity->IsInViewFrustrumHierarchic(dev);
         // },
-        "is_all_inside_frustum", [](CK3dEntity *entity) -> bool {return entity->IsAllInsideFrustrum(); },
-        "is_all_outside_frustum", [](CK3dEntity *entity) -> bool { return entity->IsAllOutsideFrustrum(); },
+        "is_all_inside_frustum", sol::readonly_property([](CK3dEntity *entity) -> bool {return entity->IsAllInsideFrustrum(); }),
+        "is_all_outside_frustum", sol::readonly_property([](CK3dEntity *entity) -> bool { return entity->IsAllOutsideFrustrum(); }),
 
         // Animation control
-        // "ignore_animations", sol::overload(
-        //     [](CK3dEntity *entity) { entity->IgnoreAnimations(); },
-        //     [](CK3dEntity *entity, bool ignore) { entity->IgnoreAnimations(ignore); }
-        // ),
-        // "are_animations_ignored", &CK3dEntity::AreAnimationIgnored,
+        "ignore_animations", sol::overload(
+            [](CK3dEntity *entity) { entity->IgnoreAnimations(); },
+            [](CK3dEntity *entity, bool ignore) { entity->IgnoreAnimations(ignore); }
+        ),
+        "are_animations_ignored", sol::readonly_property(
+            [](CK3dEntity *entity) -> bool { return entity->AreAnimationIgnored(); }
+        ),
 
         // Transparency
         "set_render_as_transparent", sol::overload(
@@ -89,8 +90,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         ),
 
         // Moveable flags
-        "get_moveable_flags", &CK3dEntity::GetMoveableFlags,
-        "set_moveable_flags", &CK3dEntity::SetMoveableFlags,
+        "moveable_flags", sol::property(&CK3dEntity::GetMoveableFlags, &CK3dEntity::SetMoveableFlags),
         "modify_moveable_flags", &CK3dEntity::ModifyMoveableFlags,
 
         // Meshes
@@ -101,7 +101,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         //         return entity->SetCurrentMesh(mesh, addIfNotHere);
         //     }
         // ),
-        // "get_mesh_count", &CK3dEntity::GetMeshCount,
+        // "mesh_count", sol::readonly_property(&CK3dEntity::GetMeshCount),
         // "get_mesh", &CK3dEntity::GetMesh,
         // "add_mesh", &CK3dEntity::AddMesh,
         // "remove_mesh", &CK3dEntity::RemoveMesh,
@@ -146,6 +146,7 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
                 entity->Translate3f(x, y, z, ref, keepChildren);
             }
         ),
+
         "set_position", sol::overload(
             [](CK3dEntity *entity, const VxVector *pos) { entity->SetPosition(pos); },
             [](CK3dEntity *entity, const VxVector *pos, CK3dEntity *ref) { entity->SetPosition(pos, ref); },
@@ -160,10 +161,17 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
                 entity->SetPosition3f(x, y, z, ref, keepChildren);
             }
         ),
-
         "get_position", sol::overload(
-            [](CK3dEntity *entity, VxVector *pos) { entity->GetPosition(pos); },
-            [](CK3dEntity *entity, VxVector *pos, CK3dEntity *ref) { entity->GetPosition(pos, ref); }
+            [](CK3dEntity *entity) {
+                VxVector pos;
+                entity->GetPosition(&pos);
+                return pos;
+            },
+            [](CK3dEntity *entity, CK3dEntity *ref) {
+                VxVector pos;
+                entity->GetPosition(&pos, ref);
+                return pos;
+            }
         ),
 
         "set_orientation", sol::overload(
@@ -181,12 +189,15 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
             }
         ),
         "get_orientation", sol::overload(
-            [](CK3dEntity *entity, VxVector *dir, VxVector *up) { entity->GetOrientation(dir, up); },
-            [](CK3dEntity *entity, VxVector *dir, VxVector *up, VxVector *right) {
-                entity->GetOrientation(dir, up, right);
+            [](CK3dEntity *entity) {
+                VxVector dir, up, right;
+                entity->GetOrientation(&dir, &up, &right);
+                return std::make_tuple(dir, up, right);
             },
-            [](CK3dEntity *entity, VxVector *dir, VxVector *up, VxVector *right, CK3dEntity *ref) {
-                entity->GetOrientation(dir, up, right, ref);
+            [](CK3dEntity *entity, CK3dEntity *ref) {
+                VxVector dir, up, right;
+                entity->GetOrientation(&dir, &up, &right, ref);
+                return std::make_tuple(dir, up, right);
             }
         ),
 
@@ -202,8 +213,16 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
             }
         ),
         "get_quaternion", sol::overload(
-            [](CK3dEntity *entity, VxQuaternion *quat) { entity->GetQuaternion(quat); },
-            [](CK3dEntity *entity, VxQuaternion *quat, CK3dEntity *ref) { entity->GetQuaternion(quat, ref); }
+            [](CK3dEntity *entity) {
+                VxQuaternion quat;
+                entity->GetQuaternion(&quat);
+                return quat;
+            },
+            [](CK3dEntity *entity, CK3dEntity *ref) {
+                VxQuaternion quat;
+                entity->GetQuaternion(&quat, ref);
+                return quat;
+            }
         ),
 
         // Scale
@@ -240,8 +259,16 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
             }
         ),
         "get_scale", sol::overload(
-            [](CK3dEntity *entity, VxVector *scale) { entity->GetScale(scale); },
-            [](CK3dEntity *entity, VxVector *scale, bool local) { entity->GetScale(scale, local); }
+            [](CK3dEntity *entity) {
+                VxVector scale;
+                entity->GetScale(&scale);
+                return scale;
+            },
+            [](CK3dEntity *entity, bool local) {
+                VxVector scale;
+                entity->GetScale(&scale, local);
+                return scale;
+            }
         ),
 
         // Matrix operations
@@ -269,58 +296,82 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
                 entity->SetLocalMatrix(mat, keepChildren);
             }
         ),
-        "get_local_matrix", &CK3dEntity::GetLocalMatrix,
+        "local_matrix", sol::readonly_property(&CK3dEntity::GetLocalMatrix),
         "set_world_matrix", sol::overload(
             [](CK3dEntity *entity, const VxMatrix &mat) { entity->SetWorldMatrix(mat); },
             [](CK3dEntity *entity, const VxMatrix &mat, bool keepChildren) {
                 entity->SetWorldMatrix(mat, keepChildren);
             }
         ),
-        "get_world_matrix", &CK3dEntity::GetWorldMatrix,
-        "get_inverse_world_matrix", &CK3dEntity::GetInverseWorldMatrix,
-        "get_last_frame_matrix", &CK3dEntity::GetLastFrameMatrix,
+        "world_matrix", sol::readonly_property(&CK3dEntity::GetWorldMatrix),
+        "inverse_world_matrix", sol::readonly_property(&CK3dEntity::GetInverseWorldMatrix),
+        "last_frame_matrix", sol::readonly_property(&CK3dEntity::GetLastFrameMatrix),
 
         // Transformations
         "transform", sol::overload(
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src) { entity->Transform(dest, src); },
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, CK3dEntity *ref) {
-                entity->Transform(dest, src, ref);
+            [](CK3dEntity *entity, const VxVector *src) {
+                VxVector dest;
+                entity->Transform(&dest, src);
+                return dest;
+            },
+            [](CK3dEntity *entity, const VxVector *src, CK3dEntity *ref) {
+                VxVector dest;
+                entity->Transform(&dest, src, ref);
+                return dest;
             }
         ),
         "inverse_transform", sol::overload(
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src) { entity->InverseTransform(dest, src); },
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, CK3dEntity *ref) {
-                entity->InverseTransform(dest, src, ref);
+            [](CK3dEntity *entity, const VxVector *src) {
+                VxVector dest;
+                entity->InverseTransform(&dest, src);
+                return dest;
+            },
+            [](CK3dEntity *entity, const VxVector *src, CK3dEntity *ref) {
+                VxVector dest;
+                entity->InverseTransform(&dest, src, ref);
+                return dest;
             }
         ),
         "transform_vector", sol::overload(
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src) { entity->TransformVector(dest, src); },
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, CK3dEntity *ref) {
-                entity->TransformVector(dest, src, ref);
+            [](CK3dEntity *entity, const VxVector *src) {
+                VxVector dest;
+                entity->TransformVector(&dest, src);
+                return dest;
+            },
+            [](CK3dEntity *entity, const VxVector *src, CK3dEntity *ref) {
+                VxVector dest;
+                entity->TransformVector(&dest, src, ref);
+                return dest;
             }
         ),
         "inverse_transform_vector", sol::overload(
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src) { entity->InverseTransformVector(dest, src); },
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, CK3dEntity *ref) {
-                entity->InverseTransformVector(dest, src, ref);
-            }
-        ),
-        "transform_many", sol::overload(
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count) {
-                entity->TransformMany(dest, src, count);
+            [](CK3dEntity *entity, const VxVector *src) {
+                VxVector dest;
+                entity->InverseTransformVector(&dest, src);
+                return dest;
             },
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count, CK3dEntity *ref) {
-                entity->TransformMany(dest, src, count, ref);
+            [](CK3dEntity *entity, const VxVector *src, CK3dEntity *ref) {
+                VxVector dest;
+                entity->InverseTransformVector(&dest, src, ref);
+                return dest;
             }
         ),
-        "inverse_transform_many", sol::overload(
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count) {
-                entity->InverseTransformMany(dest, src, count);
-            },
-            [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count, CK3dEntity *ref) {
-                entity->InverseTransformMany(dest, src, count, ref);
-            }
-        ),
+        // "transform_many", sol::overload(
+        //     [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count) {
+        //         entity->TransformMany(dest, src, count);
+        //     },
+        //     [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count, CK3dEntity *ref) {
+        //         entity->TransformMany(dest, src, count, ref);
+        //     }
+        // ),
+        // "inverse_transform_many", sol::overload(
+        //     [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count) {
+        //         entity->InverseTransformMany(dest, src, count);
+        //     },
+        //     [](CK3dEntity *entity, VxVector *dest, const VxVector *src, int count, CK3dEntity *ref) {
+        //         entity->InverseTransformMany(dest, src, count, ref);
+        //     }
+        // ),
 
         "change_referential", sol::overload(
             [](CK3dEntity *entity) { entity->ChangeReferential(); },
@@ -328,19 +379,19 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         ),
 
         // Places
-        // "get_reference_place", &CK3dEntity::GetReferencePlace,
+        // "reference_place", sol::readonly_property(&CK3dEntity::GetReferencePlace),
 
         // Animations
         // "add_object_animation", &CK3dEntity::AddObjectAnimation,
         // "remove_object_animation", &CK3dEntity::RemoveObjectAnimation,
         // "get_object_animation", &CK3dEntity::GetObjectAnimation,
-        // "get_object_animation_count", &CK3dEntity::GetObjectAnimationCount,
+        // "object_animation_count", sol::readonly_property(&CK3dEntity::GetObjectAnimationCount),
 
         // Skin
         // "create_skin", &CK3dEntity::CreateSkin,
         // "destroy_skin", &CK3dEntity::DestroySkin,
         // "update_skin", &CK3dEntity::UpdateSkin,
-        // "get_skin", &CK3dEntity::GetSkin,
+        // "skin", sol::readonly_property(&CK3dEntity::GetSkin),
 
         // Bounding box and geometry
         "update_box", sol::overload(
@@ -353,24 +404,34 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         ),
         "set_bounding_box", sol::overload(
             [](CK3dEntity *entity, const VxBbox *bbox) -> bool { return entity->SetBoundingBox(bbox); },
-            [](CK3dEntity *entity, const VxBbox *bbox, bool local) { return entity->SetBoundingBox(bbox, local); }
+            [](CK3dEntity *entity, const VxBbox *bbox, bool local) -> bool { return entity->SetBoundingBox(bbox, local); }
         ),
         "get_hierarchical_box", sol::overload(
             [](CK3dEntity *entity) { return entity->GetHierarchicalBox(); },
             [](CK3dEntity *entity, bool local) { return entity->GetHierarchicalBox(local); }
         ),
-        "get_barycenter", &CK3dEntity::GetBaryCenter,
-        "get_radius", &CK3dEntity::GetRadius,
+        "get_barycenter", [](CK3dEntity *entity) {
+            VxVector pos;
+            bool result = entity->GetBaryCenter(&pos);
+            if (result) {
+                return std::make_tuple(true, pos);
+            } else {
+                return std::make_tuple(false, VxVector());
+            }
+        },
+        "radius", sol::readonly_property(&CK3dEntity::GetRadius),
 
         // Ray intersection
         "ray_intersection", sol::overload(
-            [](CK3dEntity *entity, const VxVector *pos1, const VxVector *pos2, VxIntersectionDesc *desc,
-               CK3dEntity *ref) {
-                return entity->RayIntersection(pos1, pos2, desc, ref);
+            [](CK3dEntity *entity, const VxVector *pos1, const VxVector *pos2, CK3dEntity *ref) {
+                VxIntersectionDesc desc;
+                int result = entity->RayIntersection(pos1, pos2, &desc, ref);
+                return std::make_tuple(result, desc);
             },
-            [](CK3dEntity *entity, const VxVector *pos1, const VxVector *pos2, VxIntersectionDesc *desc,
-               CK3dEntity *ref, CK_RAYINTERSECTION options) {
-                return entity->RayIntersection(pos1, pos2, desc, ref, options);
+            [](CK3dEntity *entity, const VxVector *pos1, const VxVector *pos2, CK3dEntity *ref, CK_RAYINTERSECTION options) {
+                VxIntersectionDesc desc;
+                int result = entity->RayIntersection(pos1, pos2, &desc, ref, options);
+                return std::make_tuple(result, desc);
             }
         ),
 
@@ -379,6 +440,10 @@ void LuaApi::RegisterCK3dEntity(sol::state &lua) {
         //     [](CK3dEntity *entity, CKRenderContext *dev) { return entity->Render(dev); },
         //     [](CK3dEntity *entity, CKRenderContext *dev, CKDWORD flags) { return entity->Render(dev, flags); }
         // ),
-        "get_render_extents", &CK3dEntity::GetRenderExtents
+        "render_extents", sol::readonly_property([](CK3dEntity *entity) {
+            VxRect rect;
+            entity->GetRenderExtents(rect);
+            return rect;
+        })
     );
 }

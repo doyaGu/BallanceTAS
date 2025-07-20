@@ -17,22 +17,22 @@ void LuaApi::RegisterCKObject(sol::state &lua) {
         "object_flags", sol::readonly_property(&CKObject::GetObjectFlags),
 
         // Status checks
-        "is_dynamic", [](CKObject *obj) -> bool { return obj->IsDynamic(); },
-        "is_to_be_deleted", [](CKObject *obj) -> bool { return obj->IsToBeDeleted(); },
-        "is_visible", [](CKObject *obj) -> bool { return obj->IsVisible(); },
-        "is_hierarchically_hidden", [](CKObject *obj) -> bool { return obj->IsHierarchicallyHide(); },
-        "is_up_to_date", [](CKObject *obj) -> bool { return obj->IsUpToDate(); },
-        "is_private", [](CKObject *obj) -> bool { return obj->IsPrivate(); },
-        "is_not_to_be_saved", [](CKObject *obj) -> bool { return obj->IsNotToBeSaved(); },
-        "is_interface_obj", [](CKObject *obj) -> bool { return obj->IsInterfaceObj(); },
+        "is_dynamic", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsDynamic(); }),
+        "is_to_be_deleted", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsToBeDeleted(); }),
+        "is_visible", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsVisible(); }),
+        "is_hierarchically_hidden", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsHierarchicallyHide(); }),
+        "is_up_to_date", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsUpToDate(); }),
+        "is_private", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsPrivate(); }),
+        "is_not_to_be_saved", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsNotToBeSaved(); }),
+        "is_interface_obj", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsInterfaceObj(); }),
 
         // Visibility control
         "show", sol::overload(
             [](CKObject *obj) { obj->Show(); },
             [](CKObject *obj, CK_OBJECT_SHOWOPTION option) { obj->Show(option); }
         ),
-        "is_hidden_by_parent", [](CKObject *obj) -> bool { return obj->IsHiddenByParent(); },
-        "can_be_hide", [](CKObject *obj) -> bool { return obj->CanBeHide(); },
+        "is_hidden_by_parent", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsHiddenByParent(); }),
+        "can_be_hide", sol::readonly_property([](CKObject *obj) -> bool { return obj->CanBeHide(); }),
 
         // App data
         // "get_app_data", &CKObject::GetAppData,

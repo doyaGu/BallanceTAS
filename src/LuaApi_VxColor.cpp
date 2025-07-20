@@ -12,10 +12,7 @@ void LuaApi::RegisterVxColor(sol::state &lua) {
             VxColor(),
             VxColor(float, float, float, float),
             VxColor(float, float, float),
-            VxColor(float),
-            VxColor(unsigned long),
-            VxColor(int, int, int, int),
-            VxColor(int, int, int)
+            VxColor(float)
         >(),
 
         // Members as properties
@@ -29,7 +26,7 @@ void LuaApi::RegisterVxColor(sol::state &lua) {
             [](const VxColor &c) { return c.GetRGBA(); },
             [](VxColor &c, unsigned long rgba) { c.Set(rgba); }
         ),
-        "rgb", sol::property(
+        "rgb", sol::readonly_property(
             [](const VxColor &c) { return c.GetRGB(); }
         ),
         "red", sol::property(
@@ -55,19 +52,14 @@ void LuaApi::RegisterVxColor(sol::state &lua) {
         "set", sol::overload(
             [](VxColor &c, float r, float g, float b, float a) { c.Set(r, g, b, a); },
             [](VxColor &c, float r, float g, float b) { c.Set(r, g, b); },
-            [](VxColor &c, float r) { c.Set(r); },
-            [](VxColor &c, unsigned long rgba) { c.Set(rgba); },
-            [](VxColor &c, int r, int g, int b, int a) { c.Set(r, g, b, a); },
-            [](VxColor &c, int r, int g, int b) { c.Set(r, g, b); }
+            [](VxColor &c, float r) { c.Set(r); }
         ),
         "get_square_distance", &VxColor::GetSquareDistance,
 
         // Static methods
         "convert", sol::overload(
             [](float r, float g, float b, float a) { return VxColor::Convert(r, g, b, a); },
-            [](float r, float g, float b) { return VxColor::Convert(r, g, b); },
-            [](int r, int g, int b, int a) { return VxColor::Convert(r, g, b, a); },
-            [](int r, int g, int b) { return VxColor::Convert(r, g, b); }
+            [](float r, float g, float b) { return VxColor::Convert(r, g, b); }
         ),
 
         // Operators

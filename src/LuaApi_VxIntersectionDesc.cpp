@@ -12,28 +12,26 @@ void LuaApi::RegisterVxIntersectionDesc(sol::state &lua) {
     // ===================================================================
     auto intersectionDescType = lua.new_usertype<VxIntersectionDesc>(
         "VxIntersectionDesc",
-        // Allows creating an empty intersection description object in Lua.
-        // e.g. local desc = VxIntersectionDesc.new()
-        sol::constructors<VxIntersectionDesc()>(),
+        sol::no_constructor, // No direct construction
 
         // The object that was intersected. Read-only from Lua.
         "object", sol::readonly_property(&VxIntersectionDesc::Object),
 
         // The point of intersection in the object's local coordinates.
-        "point", &VxIntersectionDesc::IntersectionPoint,
+        "point", sol::readonly_property(&VxIntersectionDesc::IntersectionPoint),
 
         // The normal of the face at the intersection point.
-        "normal", &VxIntersectionDesc::IntersectionNormal,
+        "normal", sol::readonly_property(&VxIntersectionDesc::IntersectionNormal),
 
         // Texture coordinates at the intersection point.
-        "u", &VxIntersectionDesc::TexU,
-        "v", &VxIntersectionDesc::TexV,
+        "u", sol::readonly_property(&VxIntersectionDesc::TexU),
+        "v", sol::readonly_property(&VxIntersectionDesc::TexV),
 
         // The distance from the ray's origin to the intersection point.
-        "distance", &VxIntersectionDesc::Distance,
+        "distance", sol::readonly_property(&VxIntersectionDesc::Distance),
 
         // The index of the face that was intersected.
-        "face_index", &VxIntersectionDesc::FaceIndex,
+        "face_index", sol::readonly_property(&VxIntersectionDesc::FaceIndex),
 
         // A convenient to_string metamethod for printing in Lua
         sol::meta_function::to_string, [](const VxIntersectionDesc &desc) {

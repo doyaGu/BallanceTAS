@@ -14,90 +14,114 @@ void LuaApi::RegisterPhysicsObject(sol::state &lua) {
         sol::no_constructor, // Objects are likely created by the physics system
 
         // Basic properties
-        "name", sol::property(&PhysicsObject::GetName),
-        "entity", sol::property(&PhysicsObject::GetEntity),
+        "name", sol::readonly_property(&PhysicsObject::GetName),
+        "entity", sol::readonly_property(&PhysicsObject::GetEntity),
 
         // Physics state
         "wake", &PhysicsObject::Wake,
-        "is_static", &PhysicsObject::IsStatic,
+        "is_static", sol::readonly_property(&PhysicsObject::IsStatic),
 
         // Mass properties
-        "mass", sol::property(&PhysicsObject::GetMass),
-        "inv_mass", sol::property(&PhysicsObject::GetInvMass),
+        "mass", sol::readonly_property(&PhysicsObject::GetMass),
+        "inv_mass", sol::readonly_property(&PhysicsObject::GetInvMass),
 
         // Inertia properties
-        "get_inertia", [](PhysicsObject &obj) {
+        "get_inertia", [](PhysicsObject *obj) {
             VxVector inertia;
-            obj.GetInertia(inertia);
+            obj->GetInertia(inertia);
             return inertia;
         },
-        "get_inv_inertia", [](PhysicsObject &obj) {
+        "get_inv_inertia", [](PhysicsObject *obj) {
             VxVector inertia;
-            obj.GetInvInertia(inertia);
+            obj->GetInvInertia(inertia);
             return inertia;
         },
 
         // Damping properties
-        "get_damping_speed", [](PhysicsObject &obj) {
+        "get_damping", [](PhysicsObject *obj) {
+            float speed, rotation;
+            obj->GetDamping(&speed, &rotation);
+            return std::make_tuple(speed, rotation);
+        },
+        "get_damping_speed", [](PhysicsObject *obj) {
             float speed;
-            obj.GetDamping(&speed, nullptr);
+            obj->GetDamping(&speed, nullptr);
             return speed;
         },
-        "get_damping_rotation", [](PhysicsObject &obj) {
-            float rot;
-            obj.GetDamping(nullptr, &rot);
-            return rot;
+        "get_damping_rotation", [](PhysicsObject *obj) {
+            float rotation;
+            obj->GetDamping(nullptr, &rotation);
+            return rotation;
         },
 
         // Position and orientation
-        "get_position", [](PhysicsObject &obj) {
+        "get_position", [](PhysicsObject *obj) {
             VxVector position;
-            obj.GetPosition(&position, nullptr);
+            obj->GetPosition(&position, nullptr);
             return position;
         },
-        "get_orientation", [](PhysicsObject &obj) {
-            VxVector orientation;
-            obj.GetPosition(nullptr, &orientation);
-            return orientation;
+        "get_angles", [](PhysicsObject *obj) {
+            VxVector angles;
+            obj->GetPosition(nullptr, &angles);
+            return angles;
         },
 
         // Position matrix
-        "get_position_matrix", [](PhysicsObject &obj) {
+        "get_position_matrix", [](PhysicsObject *obj) {
             VxMatrix matrix;
-            obj.GetPositionMatrix(matrix);
+            obj->GetPositionMatrix(matrix);
             return matrix;
         },
 
         // Velocity
-        "get_linear_velocity", [](PhysicsObject &obj) {
+        "get_velocity", [](PhysicsObject *obj) {
+            VxVector velocity, angularVelocity;
+            obj->GetVelocity(&velocity, &angularVelocity);
+            return std::make_tuple(velocity, angularVelocity);
+        },
+        "get_linear_velocity", [](PhysicsObject *obj) {
             VxVector velocity;
-            obj.GetVelocity(&velocity, nullptr);
+            obj->GetVelocity(&velocity, nullptr);
             return velocity;
         },
-        "get_angular_velocity", [](PhysicsObject &obj) {
+        "get_angular_velocity", [](PhysicsObject *obj) {
             VxVector angularVelocity;
-            obj.GetVelocity(nullptr, &angularVelocity);
+            obj->GetVelocity(nullptr, &angularVelocity);
             return angularVelocity;
         },
 
         // Set velocity (support multiple call patterns)
         "set_velocity", sol::overload(
             // Set both linear and angular velocity
-            [](PhysicsObject &obj, const VxVector &linear, const VxVector &angular) {
-                obj.SetVelocity(&linear, &angular);
+            [](PhysicsObject *obj, const VxVector &linear, const VxVector &angular) {
+                obj->SetVelocity(&linear, &angular);
             },
             // Set only linear velocity
-            [](PhysicsObject &obj, const VxVector &linear) {
-                obj.SetVelocity(&linear, nullptr);
+            [](PhysicsObject *obj, const VxVector &linear) {
+                obj->SetVelocity(&linear, nullptr);
             }
         ),
 
-        "set_linear_velocity", [](PhysicsObject &obj, const VxVector &linear) {
-            obj.SetVelocity(&linear, nullptr);
+        "set_linear_velocity", [](PhysicsObject *obj, const VxVector &linear) {
+            obj->SetVelocity(&linear, nullptr);
         },
 
-        "set_angular_velocity", [](PhysicsObject &obj, const VxVector &angular) {
-            obj.SetVelocity(nullptr, &angular);
+        "set_angular_velocity", [](PhysicsObject *obj, const VxVector &angular) {
+            obj->SetVelocity(nullptr, &angular);
+        },
+
+        // Access to internal physics data
+        // "behavior", sol::readonly_property([](PhysicsObject *obj) {
+        //     return obj->m_Behavior;
+        // }),
+        "friction_count", sol::readonly_property([](PhysicsObject *obj) {
+            return obj->m_FrictionCount;
+        }),
+
+        // String representation for debugging
+        sol::meta_function::to_string, [](PhysicsObject *obj) {
+            std::string name = obj->GetName() ? obj->GetName() : "unnamed";
+            return "PhysicsObject('" + name + "')";
         }
     );
 }

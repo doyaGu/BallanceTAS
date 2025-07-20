@@ -8,7 +8,11 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
     // ===================================================================
     auto quatType = lua.new_usertype<VxQuaternion>(
         "VxQuaternion",
-        sol::constructors<VxQuaternion(), VxQuaternion(const VxVector &, float), VxQuaternion(float, float, float, float)>(),
+        sol::constructors<
+            VxQuaternion(),
+            VxQuaternion(const VxVector &, float),
+            VxQuaternion(float, float, float, float)
+        >(),
 
         // Members as properties
         "x", &VxQuaternion::x,
@@ -17,14 +21,14 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
         "w", &VxQuaternion::w,
 
         // Computed properties
-        "magnitude", sol::property([](const VxQuaternion &q) { return Magnitude(q); }),
-        "conjugate", sol::property([](const VxQuaternion &q) { return Vx3DQuaternionConjugate(q); }),
-        "matrix", sol::property([](const VxQuaternion &q) {
+        "magnitude", sol::readonly_property([](const VxQuaternion &q) { return Magnitude(q); }),
+        "conjugate", sol::readonly_property([](const VxQuaternion &q) { return Vx3DQuaternionConjugate(q); }),
+        "matrix", sol::readonly_property([](const VxQuaternion &q) {
             VxMatrix m;
             q.ToMatrix(m);
             return m;
         }),
-        "euler_angles", sol::property([](const VxQuaternion &q) {
+        "euler_angles", sol::readonly_property([](const VxQuaternion &q) {
             float x, y, z;
             q.ToEulerAngles(&x, &y, &z);
             return std::make_tuple(x, y, z);
@@ -58,7 +62,7 @@ void LuaApi::RegisterVxQuaternion(sol::state &lua) {
         "ln_dif", [](const VxQuaternion &p, const VxQuaternion &q) { return LnDif(p, q); },
 
         // Static methods
-        "from_matrix_static", [](const VxMatrix &m) { return Vx3DQuaternionFromMatrix(m); },
+        "new_from_matrix", [](const VxMatrix &m) { return Vx3DQuaternionFromMatrix(m); },
         "snuggle", [](VxQuaternion &q, VxVector &scale) { return Vx3DQuaternionSnuggle(&q, &scale); },
 
         // Operators

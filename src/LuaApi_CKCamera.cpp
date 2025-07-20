@@ -25,13 +25,16 @@ void LuaApi::RegisterCKCamera(sol::state &lua) {
         // Orthographic zoom
         "orthographic_zoom", sol::property(&CKCamera::GetOrthographicZoom, &CKCamera::SetOrthographicZoom),
 
-        // Aspect ratio
-        "set_aspect_ratio", &CKCamera::SetAspectRatio,
-        "get_aspect_ratio", [](CKCamera *camera) {
-            int width, height;
-            camera->GetAspectRatio(width, height);
-            return Vx2DVector(width, height);
-        },
+        "aspect_ratio", sol::property(
+            [](CKCamera *camera) {
+                int width, height;
+                camera->GetAspectRatio(width, height);
+                return Vx2DVector(static_cast<float>(width), static_cast<float>(height));
+            },
+            [](CKCamera *camera, const Vx2DVector &aspect) {
+                return camera->SetAspectRatio(static_cast<int>(aspect.x), static_cast<int>(aspect.y));
+            }
+        ),
 
         // Projection matrix computation
         "compute_projection_matrix", [](CKCamera *camera) {
@@ -45,7 +48,6 @@ void LuaApi::RegisterCKCamera(sol::state &lua) {
         "roll", &CKCamera::Roll,
 
         // Target operations (may return NULL for non-target cameras)
-        "get_target", &CKCamera::GetTarget,
-        "set_target", &CKCamera::SetTarget
+        "target", sol::property(&CKCamera::GetTarget, &CKCamera::SetTarget)
     );
 }

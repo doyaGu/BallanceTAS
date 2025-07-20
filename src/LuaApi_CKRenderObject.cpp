@@ -15,9 +15,9 @@ void LuaApi::RegisterCKRenderObject(sol::state &lua) {
         // "is_in_render_context", [](CKRenderObject *obj, CKRenderContext *context) -> bool {
         //     return obj->IsInRenderContext(context);
         // },
-        "is_root_object", [](CKRenderObject *obj) -> bool { return obj->IsRootObject(); },
-        "is_to_be_rendered", [](CKRenderObject *obj) -> bool { return obj->IsToBeRendered(); },
-        "is_to_be_rendered_last", [](CKRenderObject *obj) -> bool { return obj->IsToBeRenderedLast(); },
+        "is_root_object", sol::readonly_property([](CKRenderObject *obj) -> bool { return obj->IsRootObject(); }),
+        "is_to_be_rendered", sol::readonly_property([](CKRenderObject *obj) -> bool { return obj->IsToBeRendered(); }),
+        "is_to_be_rendered_last", sol::readonly_property([](CKRenderObject *obj) -> bool { return obj->IsToBeRenderedLast(); }),
 
         // Z order
         "z_order", sol::property(&CKRenderObject::GetZOrder, &CKRenderObject::SetZOrder)

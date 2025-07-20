@@ -11,13 +11,13 @@ void LuaApi::RegisterVxMatrix(sol::state &lua) {
         sol::constructors<VxMatrix()>(),
 
         // Computed properties
-        "determinant", sol::property([](const VxMatrix &m) { return Vx3DMatrixDeterminant(m); }),
-        "inverse", sol::property([](const VxMatrix &m) {
+        "determinant", sol::readonly_property([](const VxMatrix &m) { return Vx3DMatrixDeterminant(m); }),
+        "inverse", sol::readonly_property([](const VxMatrix &m) {
             VxMatrix result;
             Vx3DInverseMatrix(result, m);
             return result;
         }),
-        "transpose", sol::property([](const VxMatrix &m) {
+        "transpose", sol::readonly_property([](const VxMatrix &m) {
             VxMatrix result;
             Vx3DTransposeMatrix(result, m);
             return result;
@@ -94,7 +94,14 @@ void LuaApi::RegisterVxMatrix(sol::state &lua) {
         sol::meta_function::multiplication, [](const VxMatrix &a, const VxMatrix &b) { return a * b; },
         sol::meta_function::equal_to, [](const VxMatrix &a, const VxMatrix &b) { return a == b; },
         sol::meta_function::to_string, [](const VxMatrix &m) {
-            return "VxMatrix(4x4)";
+            return "VxMatrix(" +
+                   std::to_string(m[0][0]) + ", " + std::to_string(m[0][1]) + ", " + std::to_string(m[0][2]) +
+                   ", " + std::to_string(m[0][3]) + ", " + std::to_string(m[1][0]) + ", " +
+                   std::to_string(m[1][1]) + ", " + std::to_string(m[1][2]) + ", " + std::to_string(m[1][3]) +
+                   ", " + std::to_string(m[2][0]) + ", " + std::to_string(m[2][1]) + ", " +
+                   std::to_string(m[2][2]) + ", " + std::to_string(m[2][3]) + ", " +
+                   std::to_string(m[3][0]) + ", " + std::to_string(m[3][1]) + ", " +
+                   std::to_string(m[3][2]) + ", " + std::to_string(m[3][3]) + ")";
         }
     );
 }

@@ -16,13 +16,13 @@ void LuaApi::RegisterVxVector(sol::state &lua) {
         "z", &VxVector::z,
 
         // Computed properties
-        "magnitude", sol::property([](const VxVector &v) { return v.Magnitude(); }),
-        "square_magnitude", sol::property([](const VxVector &v) { return v.SquareMagnitude(); }),
-        "inv_magnitude", sol::property([](const VxVector &v) { return InvMagnitude(v); }),
-        "inv_square_magnitude", sol::property([](const VxVector &v) { return InvSquareMagnitude(v); }),
-        "min_component", sol::property([](const VxVector &v) { return Min(v); }),
-        "max_component", sol::property([](const VxVector &v) { return Max(v); }),
-        "absolute", sol::property([](const VxVector &v) { return Absolute(v); }),
+        "magnitude", sol::readonly_property([](const VxVector &v) { return v.Magnitude(); }),
+        "square_magnitude", sol::readonly_property([](const VxVector &v) { return v.SquareMagnitude(); }),
+        "inv_magnitude", sol::readonly_property([](const VxVector &v) { return InvMagnitude(v); }),
+        "inv_square_magnitude", sol::readonly_property([](const VxVector &v) { return InvSquareMagnitude(v); }),
+        "min_component", sol::readonly_property([](const VxVector &v) { return Min(v); }),
+        "max_component", sol::readonly_property([](const VxVector &v) { return Max(v); }),
+        "absolute", sol::readonly_property([](const VxVector &v) { return Absolute(v); }),
 
         // Instance Methods
         "normalize", &VxVector::Normalize,

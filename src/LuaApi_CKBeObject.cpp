@@ -41,8 +41,7 @@ void LuaApi::RegisterCKBeObject(sol::state &lua) {
         // "get_script_count", &CKBeObject::GetScriptCount,
 
         // Priority
-        "get_priority", &CKBeObject::GetPriority,
-        "set_priority", &CKBeObject::SetPriority,
+        "priority", sol::property(&CKBeObject::GetPriority, &CKBeObject::SetPriority),
 
         // Messages
         // "get_last_frame_message_count", &CKBeObject::GetLastFrameMessageCount,
@@ -54,6 +53,6 @@ void LuaApi::RegisterCKBeObject(sol::state &lua) {
         // "is_waiting_for_messages", [](CKBeObject *obj) -> bool { return obj->IsWaitingForMessages(); },
 
         // Profiling
-        "get_last_execution_time", &CKBeObject::GetLastExecutionTime
+        "last_execution_time", sol::readonly_property(&CKBeObject::GetLastExecutionTime)
     );
 }

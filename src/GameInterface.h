@@ -152,7 +152,7 @@ public:
 
     void PrintMessage(const char *message) const;
 
-    void SkipRenderForNextTick();
+    void SkipRenderForTicks(size_t ticks);
 
     void OnCloseMenu();
 

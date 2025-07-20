@@ -481,6 +481,11 @@ void BallanceTAS::OnProcess() {
         m_UIManager->Process();
         m_UIManager->Render();
     }
+
+    if (m_SkipRenderingCount != 0) {
+        m_BML->SkipRenderForNextTick();
+        --m_SkipRenderingCount;
+    }
 }
 
 void BallanceTAS::SetOSDVisible(bool visible) {
@@ -510,6 +515,10 @@ void BallanceTAS::UpdateOSDPanelConfig() {
     osd->SetScale(m_OSDScale->GetFloat());
 
     GetLogger()->Info("OSD panel configuration updated.");
+}
+
+void BallanceTAS::SkipRenderingForTicks(size_t ticks) {
+    m_SkipRenderingCount = ticks;
 }
 
 // --- Event Forwarding Implementations ---

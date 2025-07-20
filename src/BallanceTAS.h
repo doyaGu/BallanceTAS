@@ -143,6 +143,12 @@ public:
      */
     void UpdateOSDPanelConfig();
 
+    /**
+     * @brief Skips rendering for a specified number of ticks.
+     * @param ticks The number of ticks to skip rendering for.
+     */
+    void SkipRenderingForTicks(size_t ticks);
+
 private:
     /**
      * @brief Initializes determinism hooks.
@@ -194,6 +200,7 @@ private:
 
     bool m_Initialized = false;
     bool m_GameHooksEnabled = false;
+    size_t m_SkipRenderingCount = 0;
 
     ILogger *m_Logger = nullptr;
     InputHook *m_InputManager = nullptr;

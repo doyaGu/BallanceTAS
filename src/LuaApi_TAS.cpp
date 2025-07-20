@@ -815,10 +815,11 @@ void LuaApi::RegisterDebugApi(sol::table &tas, TASEngine *engine) {
         throw sol::error(error_message);
     };
 
-    tas["skip_rendering"] = [engine]() {
+    // tas.skip_rendering(ticks)
+    tas["skip_rendering"] = [engine](size_t ticks) {
         auto *g = engine->GetGameInterface();
         if (g) {
-            g->SkipRenderForNextTick();
+            g->SkipRenderForTicks(ticks);
         }
     };
 }

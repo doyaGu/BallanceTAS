@@ -368,8 +368,8 @@ void GameInterface::PrintMessage(const char *message) const {
     m_BML->SendIngameMessage(message);
 }
 
-void GameInterface::SkipRenderForNextTick() {
-    m_BML->SkipRenderForNextTick();
+void GameInterface::SkipRenderForTicks(size_t ticks) {
+    m_Mod->SkipRenderingForTicks(ticks);
 }
 
 void GameInterface::OnCloseMenu() {

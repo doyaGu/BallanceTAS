@@ -229,16 +229,45 @@ bool EventManager::CallCallback(const CallbackEntry &entry, Args &&... args) con
         if (std::holds_alternative<sol::function>(entry.callback)) {
             // Lua function
             const auto &luaFunc = std::get<sol::function>(entry.callback);
+
+            // Double-check that the function is still valid before calling
+            // Sol2 functions can become invalid if Lua state changes
+            if (!luaFunc.valid()) {
+                return false;
+            }
+
+            // Call the Lua function and check the result
             auto result = luaFunc(std::forward<Args>(args)...);
-            return result.valid();
+
+            // Check if the call was successful
+            if (!result.valid()) {
+                sol::error err = result;
+                HandleError("lua_callback", std::string("Lua execution error: ") + err.what());
+                return false;
+            }
+
+            return true;
         } else {
             // C++ function (ignores arguments)
             const auto &cppFunc = std::get<std::function<void()>>(entry.callback);
+            if (!cppFunc) {
+                HandleError("cpp_callback", "C++ function is null");
+                return false;
+            }
             cppFunc();
             return true;
         }
+    } catch (const sol::error &e) {
+        // Specific handling for Sol2 errors
+        HandleError("lua_callback", std::string("Sol2 error: ") + e.what());
+        return false;
+    } catch (const std::exception &e) {
+        // Handle other standard exceptions
+        HandleError("callback", std::string("Exception: ") + e.what());
+        return false;
     } catch (...) {
-        // Catch all exceptions to ensure callback failures don't crash the event system
+        // Catch all other exceptions
+        HandleError("callback", "Unknown exception occurred");
         return false;
     }
 }

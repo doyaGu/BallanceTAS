@@ -244,7 +244,7 @@ public:
 
     // For Lua API compatibility, delegate to ScriptExecutor
     sol::state &GetLuaState();
-    const sol::state &GetLuaState() const;
+    sol::state &GetLuaState() const;
     LuaScheduler *GetScheduler() const;
 
     ProjectManager *GetProjectManager() const { return m_ProjectManager.get(); }

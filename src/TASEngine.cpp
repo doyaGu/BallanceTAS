@@ -1035,7 +1035,7 @@ sol::state &TASEngine::GetLuaState() {
     return m_ScriptExecutor->GetLuaState();
 }
 
-const sol::state &TASEngine::GetLuaState() const {
+sol::state &TASEngine::GetLuaState() const {
     if (!m_ScriptExecutor) {
         throw std::runtime_error("ScriptExecutor not initialized");
     }

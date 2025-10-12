@@ -17,6 +17,7 @@ void LuaApi::Register(TASEngine *engine) {
     RegisterConcurrencyApi(tas_table, engine);
     RegisterEventApi(tas_table, engine);
     RegisterDebugApi(tas_table, engine);
+    RegisterRecordApi(tas_table, engine);
 }
 
 void LuaApi::AddLuaPath(sol::state &lua, const std::string &path) {

@@ -13,6 +13,7 @@
 #include "GameInterface.h"
 #include "ProjectManager.h"
 #include "TASProject.h"
+#include "RecordPlayer.h"
 
 // Helper function to format strings with variadic arguments
 std::string FormatString(const std::string &fmt, sol::variadic_args va) {
@@ -892,5 +893,94 @@ void LuaApi::RegisterDebugApi(sol::table &tas, TASEngine *engine) {
         if (g) {
             g->SkipRenderForTicks(ticks);
         }
+    };
+}
+
+// ===================================================================
+//  Section 7: Record Playback API Registration
+// ===================================================================
+
+void LuaApi::RegisterRecordApi(sol::table &tas, TASEngine *engine) {
+    auto *recordPlayer = engine->GetRecordPlayer();
+
+    // Create nested 'record' table
+    sol::table record = tas["record"] = tas.create();
+
+    // tas.record.load(path) - Load and start playing a record file
+    record["load"] = [recordPlayer](const std::string &path) -> bool {
+        if (path.empty()) {
+            throw sol::error("record.load: path cannot be empty");
+        }
+        if (!recordPlayer) {
+            throw sol::error("record.load: RecordPlayer not available");
+        }
+        return recordPlayer->LoadAndPlay(path);
+    };
+
+    // tas.record.stop() - Stop current playback
+    record["stop"] = [recordPlayer]() {
+        if (!recordPlayer) {
+            throw sol::error("record.stop: RecordPlayer not available");
+        }
+        recordPlayer->Stop();
+    };
+
+    // tas.record.pause() - Pause current playback
+    record["pause"] = [recordPlayer]() {
+        if (!recordPlayer) {
+            throw sol::error("record.pause: RecordPlayer not available");
+        }
+        recordPlayer->Pause();
+    };
+
+    // tas.record.resume() - Resume paused playback
+    record["resume"] = [recordPlayer]() {
+        if (!recordPlayer) {
+            throw sol::error("record.resume: RecordPlayer not available");
+        }
+        recordPlayer->Resume();
+    };
+
+    // tas.record.seek(frame) - Seek to a specific frame
+    record["seek"] = [recordPlayer](int frame) -> bool {
+        if (!recordPlayer) {
+            throw sol::error("record.seek: RecordPlayer not available");
+        }
+        if (frame < 0) {
+            throw sol::error("record.seek: frame must be non-negative");
+        }
+        return recordPlayer->Seek(static_cast<size_t>(frame));
+    };
+
+    // tas.record.is_playing() - Check if a record is currently playing
+    record["is_playing"] = [recordPlayer]() -> bool {
+        if (!recordPlayer) {
+            return false;
+        }
+        return recordPlayer->IsPlaying();
+    };
+
+    // tas.record.is_paused() - Check if playback is paused
+    record["is_paused"] = [recordPlayer]() -> bool {
+        if (!recordPlayer) {
+            return false;
+        }
+        return recordPlayer->IsPaused();
+    };
+
+    // tas.record.get_current_frame() - Get the current playback frame
+    record["get_current_frame"] = [recordPlayer]() -> int {
+        if (!recordPlayer) {
+            return 0;
+        }
+        return static_cast<int>(recordPlayer->GetCurrentFrame());
+    };
+
+    // tas.record.get_total_frames() - Get the total number of frames
+    record["get_total_frames"] = [recordPlayer]() -> int {
+        if (!recordPlayer) {
+            return 0;
+        }
+        return static_cast<int>(recordPlayer->GetTotalFrames());
     };
 }

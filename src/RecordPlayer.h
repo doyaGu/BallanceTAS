@@ -90,10 +90,48 @@ public:
     bool IsPlaying() const { return m_IsPlaying; }
 
     /**
+     * @brief Checks if playback is currently paused.
+     * @return True if playback is paused.
+     */
+    bool IsPaused() const { return m_IsPaused; }
+
+    /**
+     * @brief Pauses the current playback.
+     * Does nothing if not playing or already paused.
+     */
+    void Pause();
+
+    /**
+     * @brief Resumes paused playback.
+     * Does nothing if not paused.
+     */
+    void Resume();
+
+    /**
+     * @brief Seeks to a specific frame in the record.
+     * @param frame The frame number to seek to (0-based).
+     * @return True if seek was successful, false if frame is out of bounds or not playing.
+     */
+    bool Seek(size_t frame);
+
+    /**
+     * @brief Gets the current playback frame.
+     * @return The current frame number (0-based), or 0 if not playing.
+     */
+    size_t GetCurrentFrame() const { return m_CurrentFrame; }
+
+    /**
      * @brief Gets the total number of frames in the loaded record.
      * @return Total frame count, or 0 if no record is loaded.
      */
     size_t GetTotalFrames() const { return m_TotalFrames; }
+
+    /**
+     * @brief Loads and starts playback of a record file directly by path.
+     * @param recordPath Path to the .tas file.
+     * @return True if the record was loaded and playback started successfully.
+     */
+    bool LoadAndPlay(const std::string &recordPath);
 
     /**
      * @brief Gets the delta time for the current frame.

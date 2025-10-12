@@ -52,6 +52,8 @@ void RecordPlayer::Stop() {
     if (!m_IsPlaying) return;
 
     m_IsPlaying = false;
+    m_IsPaused = false;
+    m_CurrentFrame = 0;
     m_TotalFrames = 0;
     m_Frames.clear();
     m_Frames.shrink_to_fit();
@@ -59,27 +61,101 @@ void RecordPlayer::Stop() {
     m_Engine->GetLogger()->Info("Record playback stopped.");
 }
 
+void RecordPlayer::Pause() {
+    if (!m_IsPlaying || m_IsPaused) {
+        return;
+    }
+
+    m_IsPaused = true;
+    m_Engine->GetLogger()->Info("Record playback paused at frame %zu.", m_CurrentFrame);
+}
+
+void RecordPlayer::Resume() {
+    if (!m_IsPlaying || !m_IsPaused) {
+        return;
+    }
+
+    m_IsPaused = false;
+    m_Engine->GetLogger()->Info("Record playback resumed from frame %zu.", m_CurrentFrame);
+}
+
+bool RecordPlayer::Seek(size_t frame) {
+    if (!m_IsPlaying) {
+        m_Engine->GetLogger()->Error("Cannot seek: no record is playing.");
+        return false;
+    }
+
+    if (frame >= m_TotalFrames) {
+        m_Engine->GetLogger()->Error("Seek frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
+        return false;
+    }
+
+    m_CurrentFrame = frame;
+    m_Engine->GetLogger()->Info("Seeked to frame %zu.", frame);
+    return true;
+}
+
+bool RecordPlayer::LoadAndPlay(const std::string &recordPath) {
+    // Stop any current playback
+    Stop();
+
+    if (!LoadRecord(recordPath)) {
+        m_Engine->GetLogger()->Error("Failed to load record: %s", recordPath.c_str());
+        return false;
+    }
+
+    // Acquire remapped keys from game interface
+    auto *gameInterface = m_Engine->GetGameInterface();
+    if (gameInterface) {
+        m_KeyUp = gameInterface->RemapKey(CKKEY_UP);
+        m_KeyDown = gameInterface->RemapKey(CKKEY_DOWN);
+        m_KeyLeft = gameInterface->RemapKey(CKKEY_LEFT);
+        m_KeyRight = gameInterface->RemapKey(CKKEY_RIGHT);
+        m_KeyShift = gameInterface->RemapKey(CKKEY_LSHIFT);
+        m_KeySpace = gameInterface->RemapKey(CKKEY_SPACE);
+    }
+
+    m_IsPlaying = true;
+    m_IsPaused = false;
+    m_CurrentFrame = 0;
+
+    NotifyStatusChange(true);
+
+    m_Engine->GetLogger()->Info("Record loaded and playback started (%zu frames): %s",
+                                m_TotalFrames, recordPath.c_str());
+    return true;
+}
+
 void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
     if (!m_IsPlaying) {
         return;
     }
 
-    // Check if we've reached the end
-    if (currentTick >= m_TotalFrames) {
+    // If paused, don't advance or apply input
+    if (m_IsPaused) {
+        return;
+    }
+
+    // Use internal frame tracking
+    if (m_CurrentFrame >= m_TotalFrames) {
         m_Engine->GetLogger()->Info("Record playback completed naturally.");
+        Stop();
         NotifyStatusChange(false);
         return;
     }
 
-    // Apply input for the current frame and advance
-    ApplyFrameInput(m_Frames[currentTick], m_Frames[currentTick + 1], keyboardState);
+    // Apply input for the current frame
+    ApplyFrameInput(m_Frames[m_CurrentFrame], m_Frames[m_CurrentFrame + 1], keyboardState);
+
+    // Advance to next frame
+    m_CurrentFrame++;
 }
 
 float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {
-    if (!m_IsPlaying || currentTick >= m_TotalFrames) {
+    if (!m_IsPlaying || m_CurrentFrame >= m_TotalFrames) {
         return 1000.0f / 132.0f; // Default delta time
     }
-    return m_Frames[currentTick].deltaTime;
+    return m_Frames[m_CurrentFrame].deltaTime;
 }
 
 bool RecordPlayer::LoadRecord(const std::string &recordPath) {

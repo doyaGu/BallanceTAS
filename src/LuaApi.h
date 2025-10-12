@@ -49,4 +49,5 @@ private:
     static void RegisterConcurrencyApi(sol::table &tas, TASEngine *engine);
     static void RegisterEventApi(sol::table &tas, TASEngine *engine);
     static void RegisterDebugApi(sol::table &tas, TASEngine *engine);
+    static void RegisterRecordApi(sol::table &tas, TASEngine *engine);
 };

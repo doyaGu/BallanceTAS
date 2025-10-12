@@ -16,7 +16,18 @@
 
 // Helper function to format strings with variadic arguments
 std::string FormatString(const std::string &fmt, sol::variadic_args va) {
+    // Fast path for empty format strings
+    if (fmt.empty()) {
+        return fmt;
+    }
+
+    // Fast path for format strings without placeholders
+    if (fmt.find('{') == std::string::npos) {
+        return fmt;
+    }
+
     fmt::dynamic_format_arg_store<fmt::format_context> store;
+    store.reserve(va.size());  // Pre-allocate for better performance
 
     for (const auto &arg : va) {
         sol::type argType = arg.get_type();
@@ -102,6 +113,16 @@ std::string FormatString(const std::string &fmt, sol::variadic_args va) {
         // If formatting fails, return an error message
         std::stringstream stream;
         stream << "[Format Error: " << e.what() << "] " << fmt;
+        return stream.str();
+    } catch (const std::exception &e) {
+        // Catch any other standard exceptions
+        std::stringstream stream;
+        stream << "[Exception: " << e.what() << "] " << fmt;
+        return stream.str();
+    } catch (...) {
+        // Catch any unknown exceptions
+        std::stringstream stream;
+        stream << "[Unknown Error] " << fmt;
         return stream.str();
     }
 }
@@ -281,7 +302,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     tas["get_sr_score"] = [engine]() -> float {
         const auto *g = engine->GetGameInterface();
         if (!g) {
-            return false;
+            return 0.0f;
         }
 
         return g->GetSRScore();
@@ -291,7 +312,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
     tas["get_hs_score"] = [engine]() -> int {
         const auto *g = engine->GetGameInterface();
         if (!g) {
-            return false;
+            return 0;
         }
 
         return g->GetHSScore();
@@ -363,6 +384,9 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         }
         try {
             const auto *g = engine->GetGameInterface();
+            if (!g) {
+                return sol::nil;
+            }
             CK3dEntity *obj = g->GetObjectByID(id);
             if (obj) {
                 return sol::make_object(engine->GetLuaState(), obj);
@@ -380,6 +404,9 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
         }
         try {
             const auto *g = engine->GetGameInterface();
+            if (!g) {
+                return sol::nil;
+            }
             PhysicsObject *obj = g->GetPhysicsObject(entity);
             if (obj) {
                 return sol::make_object(engine->GetLuaState(), obj);

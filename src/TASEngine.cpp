@@ -199,14 +199,6 @@ void TASEngine::Stop() {
     if (IsAutoRestartEnabled()) {
         RestartCurrentProject();
     }
-
-    if (!m_GameInterface->IsLegacyMode()) {
-        AddTimer(1ul, [this]() {
-            if (m_GameInterface) {
-                m_GameInterface->SetPhysicsTimeFactor();
-            }
-        });
-    }
 }
 
 // === Recording Control ===
@@ -292,7 +284,7 @@ size_t TASEngine::GetRecordingFrameCount() const {
     return m_Recorder->GetTotalFrames();
 }
 
-// === Unified Replay Control ===
+// === Replay Control ===
 
 bool TASEngine::StartReplay() {
     if (m_ShuttingDown || IsPlaying() || IsRecording() || IsPendingRecord()) {
@@ -303,12 +295,6 @@ bool TASEngine::StartReplay() {
     TASProject *project = m_ProjectManager->GetCurrentProject();
     if (!project || !project->IsValid()) {
         GetLogger()->Error("No valid TAS project selected.");
-        return false;
-    }
-
-    // Check compatibility for record projects
-    if (project->IsRecordProject() && !m_GameInterface->IsLegacyMode()) {
-        GetLogger()->Error("Record playback requires legacy mode to be enabled.");
         return false;
     }
 
@@ -416,12 +402,6 @@ bool TASEngine::StartTranslation() {
     if (!project->CanBeTranslated()) {
         GetLogger()->Error("Record cannot be accurately translated: %s",
                            project->GetTranslationCompatibilityMessage().c_str());
-        return false;
-    }
-
-    // Check legacy mode requirement for record projects
-    if (!m_GameInterface->IsLegacyMode()) {
-        GetLogger()->Error("Translation of record projects requires legacy mode to be enabled.");
         return false;
     }
 

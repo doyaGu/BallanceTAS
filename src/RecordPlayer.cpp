@@ -19,12 +19,6 @@ bool RecordPlayer::LoadAndPlay(const TASProject *project) {
         return false;
     }
 
-    // Verify legacy mode is enabled (required for record playback)
-    if (!m_Engine->GetGameInterface()->IsLegacyMode()) {
-        m_Engine->GetLogger()->Error("Record playback requires legacy mode to be enabled.");
-        return false;
-    }
-
     // Stop any current playback
     Stop();
 

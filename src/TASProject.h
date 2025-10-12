@@ -47,8 +47,6 @@ public:
     float GetUpdateRate() const { return m_UpdateRate; }
     float GetDeltaTime() const { return 1000.0f / m_UpdateRate; }
 
-    // --- Legacy Mode Settings ---
-    bool RequiresLegacyMode() const { return m_LegacyMode; }
 
     // --- Path Accessors ---
     const std::string &GetPath() const { return m_ProjectPath; }
@@ -109,19 +107,6 @@ public:
         return !m_IsZipProject || !m_ExecutionBasePath.empty();
     }
 
-    /**
-     * @brief Checks if the project can be played with current BML settings.
-     * @param currentLegacyMode Current BML legacy mode setting.
-     * @return True if the project is compatible with current settings.
-     */
-    bool IsCompatibleWithSettings(bool currentLegacyMode) const;
-
-    /**
-     * @brief Gets a human-readable compatibility message.
-     * @param currentLegacyMode Current BML legacy mode setting.
-     * @return Compatibility message, or empty string if compatible.
-     */
-    std::string GetCompatibilityMessage(bool currentLegacyMode) const;
 
     // --- Translation Compatibility ---
 
@@ -160,7 +145,7 @@ private:
     std::string m_ExecutionBasePath; // Path for execution (temp directory for zip projects)
     sol::table m_Manifest;           // Keep a copy of the raw manifest table (invalid for record projects)
 
-    ProjectType m_ProjectType = ProjectType::Script;
+    ProjectType m_ProjectType;
 
     // Parsed and cached data
     std::string m_Name = "Unnamed TAS";
@@ -169,7 +154,6 @@ private:
     std::string m_EntryScript = "main.lua";
     std::string m_TargetLevel;
     float m_UpdateRate = 132.0f; // Default to 132 = 66 * 2 (game's physics update rate)
-    bool m_LegacyMode = false;
 
     bool m_IsValid = false;
     bool m_IsZipProject = false;

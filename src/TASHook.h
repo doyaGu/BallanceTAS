@@ -98,11 +98,3 @@ HookInterceptor<typename PreProcessHook<Class>::MethodType> *PreProcessHook<Clas
 
 using CKTimeManagerHook = PreProcessHook<CKTimeManager>;
 using CKInputManagerHook = PreProcessHook<CKInputManager>;
-
-// Make physics engine deterministic
-bool HookPhysicsRT();
-void UnhookPhysicsRT();
-
-// Make random building block deterministic
-bool HookRandom();
-bool UnhookRandom();

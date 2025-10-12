@@ -124,10 +124,6 @@ public:
     UIManager *GetUIManager() const { return m_UIManager.get(); }
     TASEngine *GetEngine() const { return m_Engine.get(); }
 
-    bool IsLegacyMode() const {
-        return m_LegacyMode && m_LegacyMode->GetBoolean();
-    }
-
     //================================================================
     // UI Coordination Methods
     //================================================================
@@ -150,19 +146,6 @@ public:
     void SkipRenderingForTicks(size_t ticks);
 
 private:
-    /**
-     * @brief Initializes determinism hooks.
-     * Called during OnLoad() regardless of user settings.
-     * @return True if hooks were initialized successfully.
-     */
-    bool InitializeDeterminismHooks();
-
-    /**
-     * @brief Unhooks determinism hooks.
-     * Called during OnUnload() to clean up.
-     */
-    void DisableDeterminismHooks();
-
     /**
      * @brief Initializes the game hooks for TAS functionality.
      * Called during framework initialization.
@@ -212,7 +195,6 @@ private:
     // --- Configuration Properties ---
     // These pointers are owned by BML's config manager.
     IProperty *m_Enabled = nullptr;
-    IProperty *m_LegacyMode = nullptr;
     IProperty *m_Validation = nullptr;
     IProperty *m_AutoRestart = nullptr;
     IProperty *m_StopOnFinish = nullptr;

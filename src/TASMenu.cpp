@@ -379,19 +379,12 @@ bool TASListPage::OnDrawEntry(size_t index, bool *v) {
 
     auto &project = projects[index];
 
-    bool currentLegacyMode = engine->GetGameInterface()->IsLegacyMode();
-
-    bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
     bool isInvalid = !project->IsValid();
 
     // Visual indicator for invalid projects
     if (isInvalid) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.2f, 0.2f, 0.6f));
-    } else if (!isCompatible) {
-        // Incompatible projects - orange/yellow
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.5f, 0.2f, 0.6f));
     } else if (project->IsRecordProject()) {
         // Record projects - purple/magenta
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 1.0f, 1.0f));
@@ -506,20 +499,6 @@ void TASDetailsPage::DrawProjectInfo() {
     ImGui::SetCursorPosX(menuPos.x);
     Page::WrappedText(project->GetDescription().c_str(), menuSize.x);
 
-    // Get current BML settings for compatibility check
-    bool currentLegacyMode = m_Menu->GetEngine()->GetGameInterface()->IsLegacyMode();
-    bool isCompatible = project->IsCompatibleWithSettings(currentLegacyMode);
-
-    // Compatibility status
-    if (!isCompatible) {
-        ImGui::NewLine();
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.6f, 1.0f));
-        std::string compatMsg = project->GetCompatibilityMessage(currentLegacyMode);
-        Page::WrappedText(compatMsg.c_str(), menuSize.x);
-        ImGui::PopStyleColor();
-    }
-
     // Validation status
     if (!project->IsValid()) {
         ImGui::NewLine();
@@ -534,16 +513,6 @@ void TASDetailsPage::DrawProjectInfo() {
         ImGui::SetCursorPosX(menuPos.x);
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
         Page::WrappedText("Note: Zip projects will be extracted to a temporary directory.", menuSize.x, 0.9f);
-        ImGui::PopStyleColor();
-    }
-
-    // Special note for record projects
-    if (project->IsRecordProject()) {
-        ImGui::NewLine();
-
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.7f, 1.0f));
-        Page::WrappedText("Note: Record projects (.tas files) can only be played in legacy mode.", menuSize.x, 0.9f);
         ImGui::PopStyleColor();
     }
 }
@@ -637,10 +606,6 @@ void TASDetailsPage::DrawActionButtons() {
             if (!project->IsValid()) {
                 ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
                 Page::WrappedText("Cannot use: Project has validation issues", menuSize.x);
-                ImGui::PopStyleColor();
-            } else if (!engine->GetGameInterface()->IsLegacyMode()) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
-                Page::WrappedText("Note: Record projects require legacy mode to be enabled", menuSize.x);
                 ImGui::PopStyleColor();
             } else if (!project->CanBeTranslated()) {
                 // Show translation compatibility issue

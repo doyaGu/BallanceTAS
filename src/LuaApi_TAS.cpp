@@ -257,16 +257,6 @@ void LuaApi::RegisterInputApi(sol::table &tas, TASEngine *engine) {
 // ===================================================================
 
 void LuaApi::RegisterWorldQueryApi(sol::table &tas, TASEngine *engine) {
-    // tas.is_legacy_mode()
-    tas["is_legacy_mode"] = [engine]() -> bool {
-        const auto *g = engine->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-
-        return g->IsLegacyMode();
-    };
-
     // tas.is_paused()
     tas["is_paused"] = [engine]() -> bool {
         const auto *g = engine->GetGameInterface();

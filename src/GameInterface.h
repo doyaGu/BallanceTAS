@@ -131,8 +131,6 @@ public:
 
     // --- Gameplay State Queries ---
 
-    bool IsLegacyMode() const;
-
     bool IsIngame() const;
     bool IsPaused() const;
     bool IsPlaying() const;

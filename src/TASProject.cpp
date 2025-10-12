@@ -35,16 +35,6 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     m_Description = manifest.get_or<std::string>("description", "No description.");
     m_UpdateRate = manifest.get_or<float>("update_rate", 132);
 
-    // Parse legacy mode settings
-    if (manifest["legacy_mode"].get_type() == sol::type::boolean) {
-        m_LegacyMode = manifest.get_or("legacy_mode", false);
-    } else if (manifest["legacy_mode"].get_type() == sol::type::string) {
-        // Check for string values like "required"
-        std::string legacyMode = manifest.get_or<std::string>("legacy_mode", "");
-        if (legacyMode == "required") {
-            m_LegacyMode = true;
-        }
-    }
 
     // A project is considered valid if it has the essential fields.
     if (!m_TargetLevel.empty() && !m_Name.empty() && !m_Author.empty()) {
@@ -64,13 +54,10 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     m_Name = filePath.stem().string();
 
     // Set default values for record projects
-    m_Author = "Unknown (Legacy Record)";
-    m_Description = "Legacy TAS record file";
+    m_Author = "Unknown (Record)";
+    m_Description = "TAS record file";
     m_TargetLevel = "";    // Will be determined during playback if possible
     m_UpdateRate = 132.0f; // Standard Physics rate
-
-    // Record projects ALWAYS require legacy mode
-    m_LegacyMode = true;
 
     // Try to parse timing and basic info from the file
     try {
@@ -159,7 +146,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
 
         // Update description
         std::ostringstream desc;
-        desc << "Legacy TAS record (" << frameCount << " frames)";
+        desc << "TAS record (" << frameCount << " frames)";
         m_Description = desc.str();
 
         m_IsValid = true;
@@ -219,35 +206,6 @@ std::string TASProject::GetProjectFilePath(const std::string &fileName, const st
     return basePath + fileName;
 }
 
-bool TASProject::IsCompatibleWithSettings(bool currentLegacyMode) const {
-    // Check required settings
-    if (m_LegacyMode && !currentLegacyMode) {
-        return false;
-    }
-
-    return true;
-}
-
-std::string TASProject::GetCompatibilityMessage(bool currentLegacyMode) const {
-    // Build incompatibility message
-    std::vector<std::string> requirements;
-
-    if (m_LegacyMode && !currentLegacyMode) {
-        requirements.emplace_back("legacy mode required");
-    }
-
-    if (requirements.empty()) {
-        return ""; // Compatible
-    }
-
-    std::string message = "Incompatible: ";
-    for (size_t i = 0; i < requirements.size(); ++i) {
-        if (i > 0) message += ", ";
-        message += requirements[i];
-    }
-
-    return message;
-}
 
 std::string TASProject::GetTranslationCompatibilityMessage() const {
     if (!IsRecordProject()) {
@@ -270,10 +228,6 @@ std::string TASProject::GetTranslationCompatibilityMessage() const {
 
 std::vector<std::string> TASProject::GetRequirements() const {
     std::vector<std::string> requirements;
-
-    if (m_LegacyMode) {
-        requirements.emplace_back("Legacy Mode");
-    }
 
     // Add translation-specific requirements for record projects
     if (IsRecordProject() && IsValid()) {

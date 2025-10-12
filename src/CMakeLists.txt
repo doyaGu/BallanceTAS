@@ -55,7 +55,6 @@ set(TAS_SOURCES
 		LuaApi_CKCamera.cpp
 		LuaApi_PhysicsObject.cpp
 
-		TASHook.cpp
 		physics_RT.cpp
 
 		UIManager.cpp
@@ -79,7 +78,7 @@ target_link_libraries(BallanceTAS
         PUBLIC
 		BML CK2 VxMath
         PRIVATE
-		minhook lua::lua sol2 zip fmt
+		minhook lua::lua sol2 zip fmt::fmt
 )
 
 target_compile_options(BallanceTAS PRIVATE

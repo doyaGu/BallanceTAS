@@ -51,10 +51,9 @@ struct RecordFrameData {
  * @class RecordPlayer
  * @brief Handles playback of binary .tas record files.
  *
- * This class loads and plays back legacy TAS records in binary format.
+ * This class loads and plays back TAS records in binary format (.tas files).
  * It provides frame-by-frame input replay by directly manipulating the
  * keyboard state buffer.
- * Record playback can ONLY be used in legacy mode.
  */
 class RecordPlayer {
 public:
@@ -154,8 +153,10 @@ private:
 
     // Record data
     size_t m_TotalFrames = 0;
+    size_t m_CurrentFrame = 0;
     std::vector<RecordFrameData> m_Frames;
     bool m_IsPlaying = false;
+    bool m_IsPaused = false;
 
     // Callback for execution status changes
     std::function<void(bool)> m_StatusCallback;

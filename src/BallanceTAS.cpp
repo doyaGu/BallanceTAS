@@ -41,14 +41,8 @@ void BallanceTAS::OnLoad() {
     // --- 1. Initialize Configuration ---
     // This is the primary switch for the TAS framework.
     m_Enabled = GetConfig()->GetProperty("TAS", "Enable");
-    m_Enabled->SetComment("Enables TAS features (determinism hooks always active for fair gameplay).");
+    m_Enabled->SetComment("Enables TAS features.");
     m_Enabled->SetDefaultBoolean(true);
-
-    // Legacy mode for compatibility with older TAS records.
-    m_LegacyMode = GetConfig()->GetProperty("TAS", "LegacyMode");
-    m_LegacyMode->SetComment("Enables legacy TAS mode for compatibility with old records."
-        "This option will disable determinism hooks and explosion effects. Requires restart.");
-    m_LegacyMode->SetDefaultBoolean(false);
 
     m_Validation = GetConfig()->GetProperty("TAS", "Validation");
     m_Validation->SetComment("Enables validation recording for script playback. "
@@ -125,15 +119,7 @@ void BallanceTAS::OnLoad() {
         GetLogger()->Error("MinHook failed to initialize: %s", MH_StatusToString(status));
     }
 
-    // --- 2. Always initialize determinism hooks early ---
-    if (!m_LegacyMode->GetBoolean()) {
-        if (!InitializeDeterminismHooks()) {
-            GetLogger()->Error("Failed to initialize determinism hooks.");
-            // Continue anyway - some features may still work
-        }
-    }
-
-    // --- 3. Initialize TAS Framework if enabled ---
+    // --- 2. Initialize TAS Framework if enabled ---
     if (m_Enabled->GetBoolean()) {
         if (!Initialize()) {
             GetLogger()->Error("Failed to initialize BallanceTAS framework.");
@@ -145,11 +131,6 @@ void BallanceTAS::OnLoad() {
 void BallanceTAS::OnUnload() {
     // Shutdown framework
     Shutdown();
-
-    // Clean up determinism hooks too
-    if (!m_LegacyMode->GetBoolean()) {
-        DisableDeterminismHooks();
-    }
 
     MH_Uninitialize();
 }
@@ -226,13 +207,11 @@ void BallanceTAS::OnLoadObject(const char *filename, CKBOOL isMap, const char *m
 
 void BallanceTAS::OnLoadScript(const char *filename, CKBehavior *script) {
     if (m_Initialized && m_Engine) {
-        if (m_LegacyMode->GetBoolean()) {
-            if (!strcmp(script->GetName(), "Ball_Explosion_Wood")
-                || !strcmp(script->GetName(), "Ball_Explosion_Paper")
-                || !strcmp(script->GetName(), "Ball_Explosion_Stone")) {
-                CKBehavior *beh = ScriptHelper::FindFirstBB(script, "Set Position");
-                ScriptHelper::DeleteBB(script, beh);
-            }
+        if (!strcmp(script->GetName(), "Ball_Explosion_Wood")
+            || !strcmp(script->GetName(), "Ball_Explosion_Paper")
+            || !strcmp(script->GetName(), "Ball_Explosion_Stone")) {
+            CKBehavior *beh = ScriptHelper::FindFirstBB(script, "Set Position");
+            ScriptHelper::DeleteBB(script, beh);
         }
 
         if (!strcmp(script->GetName(), "Gameplay_Ingame")) {
@@ -245,32 +224,6 @@ void BallanceTAS::OnLoadScript(const char *filename, CKBehavior *script) {
             }
         }
     }
-}
-
-bool BallanceTAS::InitializeDeterminismHooks() {
-    GetLogger()->Info("Initializing determinism hooks...");
-
-    // Always hook physics for determinism
-    if (!HookPhysicsRT()) {
-        GetLogger()->Error("Failed to hook physics engine for determinism!");
-        return false;
-    }
-
-    // Always hook random for determinism
-    if (!HookRandom()) {
-        GetLogger()->Error("Failed to hook random generator for determinism!");
-        return false;
-    }
-
-    GetLogger()->Info("Determinism hooks initialized successfully.");
-    return true;
-}
-
-void BallanceTAS::DisableDeterminismHooks() {
-    UnhookRandom();
-    UnhookPhysicsRT();
-
-    GetLogger()->Info("Determinism hooks cleaned up.");
 }
 
 bool BallanceTAS::InitializeGameHooks() {

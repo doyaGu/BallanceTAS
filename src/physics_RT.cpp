@@ -1,10 +1,18 @@
 #include "physics_RT.h"
 
+// ============================================================================
+// WINDOWS HEADERS AND CONFIGURATION
+// ============================================================================
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <Windows.h>
 #include <Psapi.h>
+
+// ============================================================================
+// METHOD POINTER MACROS
+// ============================================================================
 
 #define CP_METHOD_TYPE_NAME(Class, Name) \
     Class##_##Name##Func
@@ -19,34 +27,136 @@
 #define CP_CALL_METHOD_PTR(Ptr, Func, ...) \
     (Ptr->*Func)(__VA_ARGS__)
 
+#define CP_LOAD_METHOD_PTR(Class, Name, Base, Offset) \
+    CP_METHOD_PTR_NAME(Class, Name) = ForceReinterpretCast<CP_METHOD_TYPE_NAME(Class, Name)>(Base, Offset)
+
+// ============================================================================
+// MEMORY ACCESS UTILITIES
+// ============================================================================
+
 template<typename T>
-inline T ForceReinterpretCast(void *base, size_t offset) {
-    void *p = reinterpret_cast<char *>(base) + offset;
+T ForceReinterpretCast(void *base, size_t offset) {
+    void *p = static_cast<char *>(base) + offset;
     return *reinterpret_cast<T *>(&p);
 }
+
+// ============================================================================
+// METHOD POINTER DECLARATIONS
+// ============================================================================
 
 CP_DECLARE_METHOD_PTR(IVP_U_Quat, void, set_quaternion, (const IVP_U_Matrix3 *mat));
 CP_DECLARE_METHOD_PTR(IVP_Real_Object, void, ensure_in_simulation, ());
 CP_DECLARE_METHOD_PTR(IVP_Real_Object, void, enable_collision_detection, (IVP_BOOL enable));
 CP_DECLARE_METHOD_PTR(IVP_Real_Object, void, get_m_world_f_object_AT, (IVP_U_Matrix * m_world_f_object_out));
 
-void InitPhysicsMethodPointers() {
-    HMODULE hModule = ::GetModuleHandleA("physics_RT.dll");
+// ============================================================================
+// GLOBAL VARIABLES
+// ============================================================================
 
+static int *IVP_RAND_SEED = nullptr;
+static float (*ivp_rand_ptr)() = nullptr;
+
+static int *qh_rand_seed = nullptr;
+static int (*qh_rand_ptr)() = nullptr;
+
+static void *(*p_malloc_ptr)(unsigned int size);
+static void (*p_free_ptr)(void *data);
+
+// ============================================================================
+// ADDRESS INITIALIZATION
+// ============================================================================
+
+void InitPhysicsAddresses() {
+    HMODULE hModule = ::GetModuleHandleA("physics_RT.dll");
     MODULEINFO moduleInfo;
     ::GetModuleInformation(::GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo));
-
     void *base = moduleInfo.lpBaseOfDll;
 
-#define CP_LOAD_METHOD_PTR(Class, Name, Base, Offset) \
-    CP_METHOD_PTR_NAME(Class, Name) = ForceReinterpretCast<CP_METHOD_TYPE_NAME(Class, Name)>(Base, Offset)
-
+    // Load method pointers
     CP_LOAD_METHOD_PTR(IVP_U_Quat, set_quaternion, base, 0x191B0);
     CP_LOAD_METHOD_PTR(IVP_Real_Object, ensure_in_simulation, base, 0xA460);
     CP_LOAD_METHOD_PTR(IVP_Real_Object, enable_collision_detection, base, 0x9350);
     CP_LOAD_METHOD_PTR(IVP_Real_Object, get_m_world_f_object_AT, base, 0x9C40);
 
-#undef CP_LOAD_METHOD_PTR
+    // Load global variables
+    IVP_RAND_SEED = ForceReinterpretCast<decltype(IVP_RAND_SEED)>(base, 0x685B4);
+    qh_rand_seed = ForceReinterpretCast<decltype(qh_rand_seed)>(base, 0x70BF0);
+
+    // Load function pointers
+    ivp_rand_ptr = ForceReinterpretCast<decltype(ivp_rand_ptr)>(base, 0x2FCD0);
+    qh_rand_ptr = ForceReinterpretCast<decltype(qh_rand_ptr)>(base, 0x52F50);
+
+    p_malloc_ptr = ForceReinterpretCast<decltype(p_malloc_ptr)>(base, 0x200C0);
+    p_free_ptr = ForceReinterpretCast<decltype(p_free_ptr)>(base, 0x60770);
+}
+
+// ============================================================================
+// MEMORY MANAGEMENT FUNCTIONS AND MACROS
+// ============================================================================
+
+void *p_malloc(unsigned int size) {
+    return p_malloc_ptr(size);
+}
+
+void p_free(void *data) {
+    p_free_ptr(data);
+}
+
+// ============================================================================
+// RANDOM NUMBER FUNCTIONS
+// ============================================================================
+
+void ivp_srand(int seed) {
+    if (seed == 0) seed = 1;
+    *IVP_RAND_SEED = seed;
+}
+
+int ivp_srand_read() {
+    return *IVP_RAND_SEED;
+}
+
+float ivp_rand() {
+    return ivp_rand_ptr();
+}
+
+void qh_srand(int seed) {
+    if (seed < 1)
+        *qh_rand_seed = 1;
+    else if (seed >= qh_rand_m)
+        *qh_rand_seed = qh_rand_m - 1;
+    else
+        *qh_rand_seed = seed;
+}
+
+int qh_srand_read() {
+    return *qh_rand_seed;
+}
+
+int qh_rand() {
+    return qh_rand_ptr();
+}
+
+// ============================================================================
+// IVP CLASS METHOD IMPLEMENTATIONS
+// ============================================================================
+
+void IVP_U_Vector_Base::increment_mem() {
+    int i;
+    void **new_elems = (void **) p_malloc(sizeof(void *) * 2 * (memsize + 1));
+    int newMemsize = memsize * 2 + 1;
+    if (newMemsize > 0xFFFF) {
+        memsize = 0xFFFF;
+    } else {
+        memsize = newMemsize;
+    }
+
+    for (i = 0; i < n_elems; i++) {
+        new_elems[i] = elems[i];
+    }
+    if (elems != (void **) (this + 1)) {
+        P_FREE(elems);
+    }
+    elems = new_elems;
 }
 
 void IVP_U_Quat::set_quaternion(const IVP_U_Matrix3 *mat) {
@@ -65,52 +175,68 @@ void IVP_Real_Object::get_m_world_f_object_AT(IVP_U_Matrix *m_world_f_object_out
     CP_CALL_METHOD_PTR(this, CP_METHOD_PTR_NAME(IVP_Real_Object, get_m_world_f_object_AT), m_world_f_object_out);
 }
 
-inline void VxConvertVector(const IVP_U_Point &in, VxVector &out)
-{
+inline IVP_BOOL IVP_Environment::must_perform_movement_check() {
+    next_movement_check--;
+    if (next_movement_check == 0) {
+        next_movement_check = IVP_MOVEMENT_CHECK_COUNT * 3 / 2
+            + (short) (ivp_rand() * (IVP_MOVEMENT_CHECK_COUNT / 2));
+        return IVP_TRUE;
+    } else {
+        return IVP_FALSE;
+    }
+}
+
+// ============================================================================
+// VECTOR CONVERSION FUNCTIONS
+// ============================================================================
+
+inline void VxConvertVector(const IVP_U_Point &in, VxVector &out) {
     out.x = (float)in.k[0];
     out.y = (float)in.k[1];
     out.z = (float)in.k[2];
 }
 
-inline void VxConvertVector(const IVP_U_Float_Point &in, VxVector &out)
-{
+inline void VxConvertVector(const IVP_U_Float_Point &in, VxVector &out) {
     out.x = in.k[0];
     out.y = in.k[1];
     out.z = in.k[2];
 }
 
-inline void VxConvertVector(const VxVector &in, IVP_U_Point &out)
-{
+inline void VxConvertVector(const VxVector &in, IVP_U_Point &out) {
     out.k[0] = in.x;
     out.k[1] = in.y;
     out.k[2] = in.z;
 }
 
-inline void VxConvertVector(const VxVector &in, IVP_U_Float_Point &out)
-{
+inline void VxConvertVector(const VxVector &in, IVP_U_Float_Point &out) {
     out.k[0] = in.x;
     out.k[1] = in.y;
     out.k[2] = in.z;
 }
 
-inline void VxConvertQuaternion(const IVP_U_Quat &in, VxQuaternion &out)
-{
+// ============================================================================
+// QUATERNION CONVERSION FUNCTIONS
+// ============================================================================
+
+inline void VxConvertQuaternion(const IVP_U_Quat &in, VxQuaternion &out) {
     out.x = (float)in.x;
     out.y = (float)in.y;
     out.z = (float)in.z;
     out.w = (float)in.w;
 }
 
-inline void VxConvertQuaternion(const VxQuaternion &in, IVP_U_Quat &out)
-{
+inline void VxConvertQuaternion(const VxQuaternion &in, IVP_U_Quat &out) {
     out.x = in.x;
     out.y = in.y;
     out.z = in.z;
     out.w = in.w;
 }
 
-inline void VxConvertMatrix(const IVP_U_Matrix &in, VxMatrix &out)
-{
+// ============================================================================
+// MATRIX CONVERSION FUNCTIONS
+// ============================================================================
+
+inline void VxConvertMatrix(const IVP_U_Matrix &in, VxMatrix &out) {
     // Transpose
     for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
@@ -125,8 +251,7 @@ inline void VxConvertMatrix(const IVP_U_Matrix &in, VxMatrix &out)
     out[3][3] = 1.0f;
 }
 
-inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix &out)
-{
+inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix &out) {
     // Transpose
     out.set_elem(0, 0, in[0][0]);
     out.set_elem(0, 1, in[1][0]);
@@ -143,8 +268,7 @@ inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix &out)
     out.vv.k[2] = in[3][2];
 }
 
-inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix3 &out)
-{
+inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix3 &out) {
     // Transpose
     out.set_elem(0, 0, in[0][0]);
     out.set_elem(0, 1, in[1][0]);
@@ -156,6 +280,10 @@ inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix3 &out)
     out.set_elem(2, 1, in[1][2]);
     out.set_elem(2, 2, in[2][2]);
 }
+
+// ============================================================================
+// PHYSICS OBJECT IMPLEMENTATIONS
+// ============================================================================
 
 void PhysicsObject::Wake() {
     m_RealObject->ensure_in_simulation();
@@ -269,4 +397,21 @@ bool PhysicsObject::IsStatic() const {
     if (m_RealObject->get_core()->physical_unmoveable)
         return true;
     return false;
+}
+
+// ============================================================================
+// IPION MANAGER IMPLEMENTATIONS
+// ============================================================================
+
+PhysicsObject *CKIpionManager::GetPhysicsObject(CK3dEntity *entity) {
+    if (!entity)
+        return nullptr;
+
+    typedef XNHashTable<PhysicsObject, CK_ID> PhysicsObjectTable;
+    auto *objs = reinterpret_cast<PhysicsObjectTable *>(reinterpret_cast<CKBYTE *>(this) + 0x2CD8);
+    PhysicsObjectTable::Iterator it = objs->Find(entity->GetID());
+    if (it == objs->End())
+        return nullptr;
+
+    return &*it;
 }

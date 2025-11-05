@@ -5,18 +5,37 @@
 #include <unordered_map>
 #include <functional>
 #include <variant>
+#include <atomic>
+#include <cstdint>
 
 #include <sol/sol.hpp>
-
-// Forward declare to avoid circular includes
-class TASEngine;
 
 /**
  * @class EventManager
  * @brief An event dispatcher that supports both C++ functions and Lua functions.
+ *
+ * LIFETIME SAFETY:
+ * ================
+ * EventManager stores Lua callbacks (sol::function) which hold references to a Lua VM.
+ * To prevent use-after-free errors:
+ *
+ * 1. CRITICAL: ClearListeners() MUST be called before the Lua VM is destroyed.
+ * 2. Each ScriptContext owns its own EventManager, ensuring proper cleanup.
+ * 3. ScriptContext::Shutdown() ensures correct destruction order:
+ *    - First: EventManager::ClearListeners() (clears Lua callbacks)
+ *    - Then:  EventManager is destroyed
+ *    - Finally: Lua VM is destroyed
+ *
+ * 4. Lua callback validity is checked before invocation (sol::function::valid()).
+ * 5. Invalid callbacks are automatically removed during FireEvent().
+ *
+ * This design ensures Lua callbacks never outlive their associated Lua VM.
  */
 class EventManager {
 public:
+    using ListenerId = uint64_t;
+    static constexpr ListenerId kInvalidListenerId = 0;
+
     /**
      * @brief Callback variant that can hold either C++ function or Lua function
      */
@@ -28,11 +47,13 @@ public:
     struct CallbackEntry {
         Callback callback;
         bool oneTime = false;
+        ListenerId id = kInvalidListenerId;
 
-        explicit CallbackEntry(Callback cb, bool once = false) : callback(std::move(cb)), oneTime(once) {}
+        CallbackEntry(ListenerId listenerId, Callback cb, bool once = false)
+            : callback(std::move(cb)), oneTime(once), id(listenerId) {}
     };
 
-    explicit EventManager(TASEngine *engine);
+    EventManager() = default;
 
     EventManager(const EventManager &) = delete;
     EventManager &operator=(const EventManager &) = delete;
@@ -43,7 +64,7 @@ public:
      * @param callback The Lua function to call.
      * @param oneTime If true, the listener will be removed after first call.
      */
-    void RegisterListener(const std::string &eventName, sol::function callback, bool oneTime = false);
+    ListenerId RegisterListener(const std::string &eventName, sol::function callback, bool oneTime = false);
 
     /**
      * @brief Register a C++ function to be called when an event is fired.
@@ -51,7 +72,7 @@ public:
      * @param callback The C++ function to call (no parameters).
      * @param oneTime If true, the listener will be removed after first call.
      */
-    void RegisterListener(const std::string &eventName, std::function<void()> callback, bool oneTime = false);
+    ListenerId RegisterListener(const std::string &eventName, std::function<void()> callback, bool oneTime = false);
 
     /**
      * @brief Register a C++ lambda to be called when an event is fired.
@@ -60,7 +81,7 @@ public:
      * @param oneTime If true, the listener will be removed after first call.
      */
     template <typename F>
-    void RegisterListener(const std::string &eventName, F &&callback, bool oneTime = false,
+    ListenerId RegisterListener(const std::string &eventName, F &&callback, bool oneTime = false,
                           typename std::enable_if_t<
                               std::is_invocable_v<F> &&
                               !std::is_same_v<std::decay_t<F>, sol::function> &&
@@ -72,14 +93,14 @@ public:
      * @param eventName The name of the event to listen for.
      * @param callback The Lua function to call.
      */
-    void RegisterOnceListener(const std::string &eventName, sol::function callback);
+    ListenerId RegisterOnceListener(const std::string &eventName, sol::function callback);
 
     /**
      * @brief Register a one-time C++ function listener.
      * @param eventName The name of the event to listen for.
      * @param callback The C++ function to call.
      */
-    void RegisterOnceListener(const std::string &eventName, std::function<void()> callback);
+    ListenerId RegisterOnceListener(const std::string &eventName, std::function<void()> callback);
 
     /**
      * @brief Register a one-time C++ lambda listener.
@@ -87,7 +108,7 @@ public:
      * @param callback The C++ lambda to call.
      */
     template <typename F>
-    void RegisterOnceListener(const std::string &eventName, F &&callback,
+    ListenerId RegisterOnceListener(const std::string &eventName, F &&callback,
                               typename std::enable_if_t<
                                   std::is_invocable_v<F> &&
                                   !std::is_same_v<std::decay_t<F>, sol::function> &&
@@ -101,6 +122,14 @@ public:
      */
     template <typename... Args>
     void FireEvent(const std::string &eventName, Args &&... args);
+
+    /**
+     * @brief Unregister a listener using its handle.
+     * @param eventName The event name associated with the listener.
+     * @param id The listener identifier returned by RegisterListener.
+     * @return True if a listener was removed.
+     */
+    bool UnregisterListener(const std::string &eventName, ListenerId id);
 
     /**
      * @brief Clear all event listeners.
@@ -151,21 +180,21 @@ private:
      */
     void HandleError(const std::string &eventName, const std::string &error) const;
 
-    TASEngine *m_Engine;
     std::unordered_map<std::string, std::vector<CallbackEntry>> m_Listeners;
+    std::atomic<ListenerId> m_NextListenerId{1};
 };
 
 // Template implementation
 template <typename F>
-void EventManager::RegisterListener(const std::string &eventName, F &&callback, bool oneTime,
-                                    typename std::enable_if_t<
-                                        std::is_invocable_v<F> &&
-                                        !std::is_same_v<std::decay_t<F>, sol::function> &&
-                                        !std::is_same_v<std::decay_t<F>, std::function<void()>>
-                                    > *) {
+EventManager::ListenerId EventManager::RegisterListener(const std::string &eventName, F &&callback, bool oneTime,
+                                                       typename std::enable_if_t<
+                                                           std::is_invocable_v<F> &&
+                                                           !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                                           !std::is_same_v<std::decay_t<F>, std::function<void()>>
+                                                       > *) {
     if (eventName.empty()) {
         HandleError(eventName, "Event name cannot be empty");
-        return;
+        return kInvalidListenerId;
     }
 
     // Convert lambda to std::function<void()>
@@ -173,17 +202,17 @@ void EventManager::RegisterListener(const std::string &eventName, F &&callback, 
         callback();
     };
 
-    m_Listeners[eventName].emplace_back(std::move(wrappedCallback), oneTime);
+    return RegisterListener(eventName, std::move(wrappedCallback), oneTime);
 }
 
 template <typename F>
-void EventManager::RegisterOnceListener(const std::string &eventName, F &&callback,
-                                        typename std::enable_if_t<
-                                            std::is_invocable_v<F> &&
-                                            !std::is_same_v<std::decay_t<F>, sol::function> &&
-                                            !std::is_same_v<std::decay_t<F>, std::function<void()>>
-                                        > *) {
-    RegisterListener(eventName, std::forward<F>(callback), true);
+EventManager::ListenerId EventManager::RegisterOnceListener(const std::string &eventName, F &&callback,
+                                                           typename std::enable_if_t<
+                                                               std::is_invocable_v<F> &&
+                                                               !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                                               !std::is_same_v<std::decay_t<F>, std::function<void()>>
+                                                           > *) {
+    return RegisterListener(eventName, std::forward<F>(callback), true);
 }
 
 template <typename... Args>

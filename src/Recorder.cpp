@@ -1,5 +1,6 @@
 #include "Recorder.h"
 
+#include "Logger.h"
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -8,7 +9,6 @@
 
 #include "TASEngine.h"
 #include "GameInterface.h"
-#include "ProjectManager.h"
 #include "ScriptGenerator.h"
 
 Recorder::Recorder(TASEngine *engine)
@@ -36,7 +36,7 @@ void Recorder::SetGenerationOptions(const GenerationOptions &options) {
 
 void Recorder::Start() {
     if (m_IsRecording) {
-        m_Engine->GetLogger()->Warn("Recorder is already recording. Stopping previous session.");
+        Log::Warn("Recorder is already recording. Stopping previous session.");
         Stop();
     }
 
@@ -60,12 +60,12 @@ void Recorder::Start() {
     NotifyStatusChange(true);
 
     const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
-    m_Engine->GetLogger()->Info("Started %s session.", modeStr);
+    Log::Info("Started %s session.", modeStr);
 }
 
 std::vector<FrameData> Recorder::Stop() {
     if (!m_IsRecording) {
-        m_Engine->GetLogger()->Warn("Recorder is not currently recording.");
+        Log::Warn("Recorder is not currently recording.");
         return {};
     }
 
@@ -112,7 +112,7 @@ void Recorder::SetUpdateRate(float tickPerSecond) {
 
 bool Recorder::GenerateScript() {
     if (m_Frames.empty()) {
-        m_Engine->GetLogger()->Warn("No frames recorded, cannot generate script.");
+        Log::Warn("No frames recorded, cannot generate script.");
         return false;
     }
 
@@ -120,7 +120,7 @@ bool Recorder::GenerateScript() {
         // Get script generator from engine
         auto *scriptGenerator = m_Engine->GetScriptGenerator();
         if (!scriptGenerator) {
-            m_Engine->GetLogger()->Error("ScriptGenerator not available.");
+            Log::Error("ScriptGenerator not available.");
             return false;
         }
 
@@ -160,17 +160,17 @@ bool Recorder::GenerateScript() {
         }
 
         const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
-        m_Engine->GetLogger()->Info("Auto-generating TAS script from %s: %s", modeStr, options.projectName.c_str());
+        Log::Info("Auto-generating TAS script from %s: %s", modeStr, options.projectName.c_str());
 
         // Generate the script
         scriptGenerator->GenerateAsync(
             m_Frames, options,
             [this, options, modeStr](bool success) {
                 if (success) {
-                    m_Engine->GetLogger()->Info("Script auto-generated successfully from %s: %s", modeStr,
+                    Log::Info("Script auto-generated successfully from %s: %s", modeStr,
                                                 options.projectName.c_str());
                 } else {
-                    m_Engine->GetLogger()->Error("Failed to auto-generate script from %s: %s", modeStr,
+                    Log::Error("Failed to auto-generate script from %s: %s", modeStr,
                                                  options.projectName.c_str());
                 }
             });
@@ -178,7 +178,7 @@ bool Recorder::GenerateScript() {
         return true;
     } catch (const std::exception &e) {
         const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
-        m_Engine->GetLogger()->Error("Exception during script auto-generation from %s: %s", modeStr, e.what());
+        Log::Error("Exception during script auto-generation from %s: %s", modeStr, e.what());
         return false;
     }
 }
@@ -191,7 +191,7 @@ void Recorder::Tick(size_t currentTick, const unsigned char *keyboardState) {
     // Check frame limit
     if (m_Frames.size() >= m_MaxFrames) {
         if (!m_WarnedMaxFrames) {
-            m_Engine->GetLogger()->Warn("Recording reached maximum frame limit (%zu). Recording will stop.", m_MaxFrames);
+            Log::Warn("Recording reached maximum frame limit (%zu). Recording will stop.", m_MaxFrames);
             m_WarnedMaxFrames = true;
             Stop();
         }
@@ -213,7 +213,7 @@ void Recorder::Tick(size_t currentTick, const unsigned char *keyboardState) {
 
         m_Frames.emplace_back(std::move(frame));
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Error during recording tick: %s", e.what());
+        Log::Error("Error during recording tick: %s", e.what());
         Stop(); // Stop recording on error to prevent corruption
     }
 }
@@ -227,10 +227,10 @@ void Recorder::OnGameEvent(size_t currentTick, const std::string &eventName, int
         // Store event in pending list
         m_PendingEvents.emplace_back(currentTick, eventName, eventData);
 
-        m_Engine->GetLogger()->Info("Recorded game event: %s (data: %d) at frame %d",
+        Log::Info("Recorded game event: %s (data: %d) at frame %d",
                                     eventName.c_str(), eventData, currentTick);
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Error recording game event: %s", e.what());
+        Log::Error("Error recording game event: %s", e.what());
     }
 }
 
@@ -238,7 +238,7 @@ bool Recorder::DumpFrameData(const std::string &filePath, bool includePhysics) c
     try {
         std::ofstream file(filePath);
         if (!file.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to open file for text dump: %s", filePath.c_str());
+            Log::Error("Failed to open file for text dump: %s", filePath.c_str());
             return false;
         }
 
@@ -280,10 +280,10 @@ bool Recorder::DumpFrameData(const std::string &filePath, bool includePhysics) c
         }
 
         file.close();
-        m_Engine->GetLogger()->Info("Frame data text dump saved to: %s", filePath.c_str());
+        Log::Info("Frame data text dump saved to: %s", filePath.c_str());
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception during text dump: %s", e.what());
+        Log::Error("Exception during text dump: %s", e.what());
         return false;
     }
 }
@@ -292,7 +292,7 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
     try {
         std::ifstream file(filePath);
         if (!file.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to open file for loading: %s", filePath.c_str());
+            Log::Error("Failed to open file for loading: %s", filePath.c_str());
             return false;
         }
 
@@ -315,7 +315,7 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
             // Handle EVENT lines
             if (line.find("\tEVENT: ") == 0) {
                 if (!currentFrame) {
-                    m_Engine->GetLogger()->Warn("Found EVENT line without frame context at line %zu", lineNumber);
+                    Log::Warn("Found EVENT line without frame context at line %zu", lineNumber);
                     continue;
                 }
 
@@ -325,7 +325,7 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
                 size_t dataEnd = line.find(')', dataStart);
 
                 if (nameStart == std::string::npos || dataStart == std::string::npos || dataEnd == std::string::npos) {
-                    m_Engine->GetLogger()->Warn("Malformed EVENT line at %zu: %s", lineNumber, line.c_str());
+                    Log::Warn("Malformed EVENT line at %zu: %s", lineNumber, line.c_str());
                     continue;
                 }
 
@@ -340,12 +340,12 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
             // Parse frame data line: Frame | DeltaTime | Input [| Position | Velocity | Speed]
             std::vector<std::string> parts = SplitString(line, '|');
             if (parts.size() < 3) {
-                m_Engine->GetLogger()->Warn("Invalid frame data line at %zu: %s", lineNumber, line.c_str());
+                Log::Warn("Invalid frame data line at %zu: %s", lineNumber, line.c_str());
                 continue;
             }
 
             if (includePhysics && parts.size() < 6) {
-                m_Engine->GetLogger()->Warn("Expected physics data but not enough columns at line %zu: %s", lineNumber,
+                Log::Warn("Expected physics data but not enough columns at line %zu: %s", lineNumber,
                                             line.c_str());
                 continue;
             }
@@ -371,10 +371,10 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
         }
 
         file.close();
-        m_Engine->GetLogger()->Info("Loaded %zu frames from: %s", m_Frames.size(), filePath.c_str());
+        Log::Info("Loaded %zu frames from: %s", m_Frames.size(), filePath.c_str());
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception during frame data loading: %s", e.what());
+        Log::Error("Exception during frame data loading: %s", e.what());
         ClearFrameData();
         return false;
     }
@@ -384,7 +384,7 @@ bool Recorder::DumpFrameDataBinary(const std::string &filePath) const {
     try {
         std::ofstream file(filePath, std::ios::binary);
         if (!file.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to open file for binary dump: %s", filePath.c_str());
+            Log::Error("Failed to open file for binary dump: %s", filePath.c_str());
             return false;
         }
 
@@ -424,11 +424,11 @@ bool Recorder::DumpFrameDataBinary(const std::string &filePath) const {
         }
 
         file.close();
-        m_Engine->GetLogger()->Info("Frame data binary dump saved to: %s (%zu frames)",
+        Log::Info("Frame data binary dump saved to: %s (%zu frames)",
                                     filePath.c_str(), m_Frames.size());
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception during binary dump: %s", e.what());
+        Log::Error("Exception during binary dump: %s", e.what());
         return false;
     }
 }
@@ -437,7 +437,7 @@ bool Recorder::LoadFrameDataBinary(const std::string &filePath) {
     try {
         std::ifstream file(filePath, std::ios::binary);
         if (!file.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to open file for binary loading: %s", filePath.c_str());
+            Log::Error("Failed to open file for binary loading: %s", filePath.c_str());
             return false;
         }
 
@@ -453,7 +453,7 @@ bool Recorder::LoadFrameDataBinary(const std::string &filePath) {
         file.read(reinterpret_cast<char *>(&deltaTime), sizeof(deltaTime));
 
         if (version != 1) {
-            m_Engine->GetLogger()->Error("Unsupported binary format version: %u", version);
+            Log::Error("Unsupported binary format version: %u", version);
             return false;
         }
 
@@ -499,10 +499,10 @@ bool Recorder::LoadFrameDataBinary(const std::string &filePath) {
         }
 
         file.close();
-        m_Engine->GetLogger()->Info("Loaded %zu frames from binary file: %s", m_Frames.size(), filePath.c_str());
+        Log::Info("Loaded %zu frames from binary file: %s", m_Frames.size(), filePath.c_str());
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception during binary frame data loading: %s", e.what());
+        Log::Error("Exception during binary frame data loading: %s", e.what());
         ClearFrameData();
         return false;
     }
@@ -515,7 +515,7 @@ std::pair<bool, bool> Recorder::DumpFrameDataBoth(const std::string &basePath, b
     bool textSuccess = DumpFrameData(textPath, includePhysics);
     bool binarySuccess = DumpFrameDataBinary(binaryPath);
 
-    m_Engine->GetLogger()->Info("Dual format dump completed - Text: %s, Binary: %s",
+    Log::Info("Dual format dump completed - Text: %s, Binary: %s",
                                 textSuccess ? "SUCCESS" : "FAILED",
                                 binarySuccess ? "SUCCESS" : "FAILED");
 
@@ -529,7 +529,7 @@ void Recorder::ClearFrameData() {
 
 RawInputState Recorder::CaptureRealInput(const unsigned char *keyboardState) const {
     if (!keyboardState) {
-        m_Engine->GetLogger()->Warn("Keyboard state not available.");
+        Log::Warn("Keyboard state not available.");
         return {};
     }
 
@@ -577,7 +577,7 @@ void Recorder::NotifyStatusChange(bool isRecording) {
         try {
             m_StatusCallback(isRecording);
         } catch (const std::exception &e) {
-            m_Engine->GetLogger()->Error("Error in recording status callback: %s", e.what());
+            Log::Error("Error in recording status callback: %s", e.what());
         }
     }
 }

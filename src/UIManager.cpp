@@ -1,5 +1,6 @@
 #include "UIManager.h"
 
+#include "Logger.h"
 #include "GameInterface.h"
 #include "TASMenu.h"
 #include "InGameOSD.h"
@@ -18,47 +19,47 @@ UIManager::~UIManager() {
 
 bool UIManager::Initialize() {
     if (m_Initialized) {
-        m_Engine->GetLogger()->Warn("UIManager already initialized.");
+        Log::Warn("UIManager already initialized.");
         return true;
     }
 
-    m_Engine->GetLogger()->Info("Initializing UIManager...");
+    Log::Info("Initializing UIManager...");
 
     // Create and initialize TAS menu
     try {
         m_TASMenu = std::make_unique<TASMenu>(m_Engine);
         m_TASMenu->Init();
-        m_Engine->GetLogger()->Info("TAS Menu initialized.");
+        Log::Info("TAS Menu initialized.");
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Failed to initialize TAS Menu: %s", e.what());
+        Log::Error("Failed to initialize TAS Menu: %s", e.what());
         return false;
     }
 
     // Create and initialize In-Game OSD
     try {
         m_InGameOSD = std::make_unique<InGameOSD>("TAS OSD", m_Engine);
-        m_InGameOSD->SetVisibility(false); // Start hidden
-        m_Engine->GetLogger()->Info("In-Game OSD initialized.");
+        m_InGameOSD->Hide(); // Start hidden
+        Log::Info("In-Game OSD initialized.");
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Failed to initialize In-Game OSD: %s", e.what());
+        Log::Error("Failed to initialize In-Game OSD: %s", e.what());
         return false;
     }
 
     m_Initialized = true;
-    m_Engine->GetLogger()->Info("UIManager initialized successfully.");
+    Log::Info("UIManager initialized successfully.");
     return true;
 }
 
 void UIManager::Shutdown() {
     if (!m_Initialized) return;
 
-    if (m_Engine && m_Engine->GetLogger()) {
-        m_Engine->GetLogger()->Info("Shutting down UIManager...");
+    if (m_Engine) {
+        Log::Info("Shutting down UIManager...");
     }
 
     // Shutdown components in reverse order
     if (m_InGameOSD) {
-        m_InGameOSD->SetVisibility(false);
+        m_InGameOSD->Hide();
         m_InGameOSD.reset();
     }
 
@@ -69,8 +70,8 @@ void UIManager::Shutdown() {
 
     m_Initialized = false;
 
-    if (m_Engine && m_Engine->GetLogger()) {
-        m_Engine->GetLogger()->Info("UIManager shutdown complete.");
+    if (m_Engine) {
+        Log::Info("UIManager shutdown complete.");
     }
 }
 
@@ -82,7 +83,11 @@ void UIManager::Process() {
     // Update OSD visibility based on game state
     if (m_InGameOSD) {
         bool shouldShowOSD = m_Engine->GetGameInterface()->IsIngame() && m_OSDVisible;
-        m_InGameOSD->SetVisibility(shouldShowOSD);
+        if (shouldShowOSD) {
+            m_InGameOSD->Show();
+        } else {
+            m_InGameOSD->Hide();
+        }
 
         if (shouldShowOSD) {
             m_InGameOSD->Update(); // Allow OSD to update its data
@@ -117,7 +122,7 @@ void UIManager::OpenTASMenu() {
 
     m_TASMenu->Open("TAS Projects");
     if (m_Engine) {
-        m_Engine->GetLogger()->Info("TAS Menu opened.");
+        Log::Info("TAS Menu opened.");
     }
 }
 
@@ -126,7 +131,7 @@ void UIManager::CloseTASMenu() {
 
     m_TASMenu->Close();
     if (m_Engine) {
-        m_Engine->GetLogger()->Info("TAS Menu closed.");
+        Log::Info("TAS Menu closed.");
     }
 }
 
@@ -242,11 +247,15 @@ void UIManager::SetOSDVisible(bool visible) {
     if (m_InGameOSD) {
         // Only actually show if we're in game
         bool shouldShow = visible && m_Engine->GetGameInterface()->IsIngame();
-        m_InGameOSD->SetVisibility(shouldShow);
+        if (shouldShow) {
+            m_InGameOSD->Show();
+        } else {
+            m_InGameOSD->Hide();
+        }
     }
 
     if (m_Engine) {
-        m_Engine->GetLogger()->Info("OSD visibility set to %s", visible ? "visible" : "hidden");
+        Log::Info("OSD visibility set to %s", visible ? "visible" : "hidden");
     }
 }
 
@@ -284,7 +293,7 @@ void UIManager::ToggleOSDPanel(OSDPanel panel) {
 
     bool isVisible = m_InGameOSD->IsPanelVisible(panel);
     if (m_Engine) {
-        m_Engine->GetLogger()->Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
+        Log::Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
     }
 }
 
@@ -311,7 +320,7 @@ void UIManager::SetMode(UIMode mode) {
     }
 
     if (m_Engine) {
-        m_Engine->GetLogger()->Info("UI Mode changed to: %s", modeStr);
+        Log::Info("UI Mode changed to: %s", modeStr);
     }
 }
 

@@ -2,6 +2,7 @@
 
 #include <sol/sol.hpp>
 
+class ScriptContext;
 class TASEngine;
 
 /**
@@ -11,6 +12,9 @@ class TASEngine;
  * This class provides a centralized location for all sol2 bindings. It creates
  * the global 'tas' table and populates it with functions that call into the
  * various subsystems of the TASEngine.
+ *
+ * The Register function requires a specific ScriptContext to ensure proper context
+ * isolation in the multi-context system.
  */
 class LuaApi {
 public:
@@ -18,10 +22,12 @@ public:
     LuaApi() = delete;
 
     /**
-     * @brief Registers the entire 'tas' library into the given Lua state.
-     * @param engine A pointer to the TASEngine instance, providing access to all subsystems.
+     * @brief Registers the 'tas' library for a specific script context.
+     * Uses context's local subsystems (Lua VM, Scheduler, EventManager, InputSystem)
+     * for complete isolation between contexts.
+     * @param context A pointer to the ScriptContext instance for context-local systems.
      */
-    static void Register(TASEngine *engine);
+    static void Register(ScriptContext *context);
 
     static void AddLuaPath(sol::state &lua, const std::string &path);
 
@@ -43,11 +49,22 @@ private:
     static void RegisterCKCamera(sol::state &lua);
     static void RegisterPhysicsObject(sol::state &lua);
 
-    static void RegisterCoreApi(sol::table &tas, TASEngine *engine);
-    static void RegisterInputApi(sol::table &tas, TASEngine *engine);
-    static void RegisterWorldQueryApi(sol::table &tas, TASEngine *engine);
-    static void RegisterConcurrencyApi(sol::table &tas, TASEngine *engine);
-    static void RegisterEventApi(sol::table &tas, TASEngine *engine);
-    static void RegisterDebugApi(sol::table &tas, TASEngine *engine);
-    static void RegisterRecordApi(sol::table &tas, TASEngine *engine);
+    // Context-aware API registration methods
+    // Uses context's local subsystems for proper isolation between contexts
+    static void RegisterCoreApi(sol::table &tas, ScriptContext *context);
+    static void RegisterInputApi(sol::table &tas, ScriptContext *context);
+    static void RegisterWorldQueryApi(sol::table &tas, ScriptContext *context);
+    static void RegisterConcurrencyApi(sol::table &tas, ScriptContext *context);
+    static void RegisterEventApi(sol::table &tas, ScriptContext *context);
+    static void RegisterDebugApi(sol::table &tas, ScriptContext *context);
+    static void RegisterRecordApi(sol::table &tas, ScriptContext *context);
+    static void RegisterProjectApi(sol::table &tas, ScriptContext *context);
+    static void RegisterLevelApi(sol::table &tas, ScriptContext *context);
+    static void RegisterMenuApi(sol::table &tas, ScriptContext *context);
+    static void RegisterGlobalApi(sol::table &tas, ScriptContext *context);
+    static void RegisterContextCommunicationApi(sol::table &tas, ScriptContext *context);
+    static void RegisterGCApi(sol::table &tas, ScriptContext *context);
+    static void RegisterSharedBufferApi(sol::table &tas, ScriptContext *context);
+    static void RegisterResultApi(sol::table &tas, ScriptContext *context);
+    static void RegisterAsyncApi(sol::table &tas, ScriptContext *context);
 };

@@ -351,6 +351,7 @@ void TASEngine::StopRecording() {
 
     try {
         if (IsRecording()) {
+            // Controller handles: stopping strategy, clearing callbacks
             auto result = m_RecordingController->StopRecording(false);
             if (!result.IsOk()) {
                 Log::Error("Failed to stop recording: %s", result.GetError().message.c_str());
@@ -374,7 +375,6 @@ void TASEngine::StopRecording() {
         Log::Error("Exception stopping recording: %s", e.what());
     }
 
-    ClearCallbacks();
     SetRecording(false);
     SetRecordPending(false);
 }
@@ -480,6 +480,7 @@ void TASEngine::StopReplay(bool clearProject) {
 void TASEngine::StopReplayImmediate() {
     try {
         // Stop playback via controller
+        // Controller handles: stopping strategy, clearing callbacks
         if (m_PlaybackController) {
             m_PlaybackController->StopPlayback(true); // Clear project
         }
@@ -491,8 +492,6 @@ void TASEngine::StopReplayImmediate() {
 
         // Reset keyboard state to ensure clean state
         memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
-
-        ClearCallbacks();
 
         SetPlaying(false);
         SetPlayPending(false);
@@ -569,7 +568,6 @@ void TASEngine::StopTranslation(bool clearProject) {
         m_ProjectManager->SetCurrentProject(nullptr);
     }
 
-    ClearCallbacks();
     SetTranslating(false);
     SetTranslatePending(false);
 
@@ -698,18 +696,11 @@ void TASEngine::StartRecordingInternal() {
         return;
     }
 
-    // Clear any existing callbacks first to prevent duplicates
-    ClearCallbacks();
-
-    // Set up callbacks for recording mode
-    SetupRecordingCallbacks();
-
-    SetCurrentTick(0);
-
     m_GameInterface->AcquireKeyBindings();
 
     try {
         // Start recording via controller (validation mode if enabled)
+        // Controller handles: tick reset, callback setup, strategy initialization
         auto result = m_RecordingController->StartRecording(IsValidationEnabled());
         if (!result.IsOk()) {
             Log::Error("Failed to start recording: %s", result.GetError().message.c_str());
@@ -754,22 +745,11 @@ void TASEngine::StartReplayInternal() {
         return;
     }
 
-    // Clear any existing callbacks first to prevent duplicates
-    ClearCallbacks();
-
-    // Set up appropriate callbacks based on playback type
-    if (playbackType == PlaybackType::Script) {
-        SetupScriptPlaybackCallbacks();
-    } else if (playbackType == PlaybackType::Record) {
-        SetupRecordPlaybackCallbacks();
-    }
-
-    SetCurrentTick(0);
-
     m_GameInterface->AcquireKeyBindings();
 
     try {
         // Start playback via controller
+        // Controller handles: tick reset, callback setup (based on playback type), strategy initialization
         auto result = m_PlaybackController->StartPlayback(project, playbackType);
         if (!result.IsOk()) {
             Log::Error("Failed to start playback: %s", result.GetError().message.c_str());
@@ -816,22 +796,7 @@ void TASEngine::StartTranslationInternal() {
         return;
     }
 
-    // Clear any existing callbacks first to prevent duplicates
-    ClearCallbacks();
-
-    // Set up translation callbacks (combines recording and playback)
-    SetupTranslationCallbacks();
-
-    SetCurrentTick(0);
-
     m_GameInterface->AcquireKeyBindings();
-
-    // For translation, InputSystem should be DISABLED
-    // We want RecordPlayer to control input directly, and Recorder to capture it
-    if (m_InputSystem) {
-        m_InputSystem->Reset();
-        m_InputSystem->SetEnabled(false);
-    }
 
     try {
         // Set up generation options for translation
@@ -844,6 +809,7 @@ void TASEngine::StartTranslationInternal() {
         options.addFrameComments = true;
 
         // Start translation via controller
+        // Controller handles: tick reset, callback setup, recorder/player coordination
         auto result = m_TranslationController->StartTranslation(project, options);
         if (!result.IsOk()) {
             Log::Error("Failed to start translation: %s", result.GetError().message.c_str());
@@ -890,180 +856,9 @@ void TASEngine::ClearCallbacks() {
     CKInputManagerHook::ClearPostCallbacks();
 }
 
-void TASEngine::SetupRecordingCallbacks() {
-    if (m_ShuttingDown) {
-        return;
-    }
 
-    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown) {
-            auto *timeManager = static_cast<CKTimeManager *>(man);
-            if (IsRecording() && m_Recorder) {
-                timeManager->SetLastDeltaTime(m_Recorder->GetDeltaTime());
-            }
-        }
-    });
 
-    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown) {
-            try {
-                if (IsRecording()) {
-                    // This captures the exact accumulated state that the game will see
-                    if (m_Recorder) {
-                        auto *inputManager = static_cast<CKInputManager *>(man);
-                        m_Recorder->Tick(m_CurrentTick, inputManager->GetKeyboardState());
-                    }
 
-                    IncrementCurrentTick();
-                }
-            } catch (const std::exception &e) {
-                Log::Error("Recording callback error: %s", e.what());
-            }
-        }
-    });
-}
-
-void TASEngine::SetupScriptPlaybackCallbacks() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown) {
-            auto *timeManager = static_cast<CKTimeManager *>(man);
-            TASProject *project = m_ProjectManager->GetCurrentProject();
-            if (project && project->IsValid()) {
-                timeManager->SetLastDeltaTime(project->GetDeltaTime());
-            }
-        }
-    });
-
-    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown) {
-            try {
-#ifdef ENABLE_REPL
-                // STEP 0: REPL server tick start (process scheduled commands)
-                if (m_REPLServer &&m_REPLServer->IsRunning()) {
-                    m_REPLServer->OnTickStart(m_CurrentTick);
-                    m_REPLServer->ProcessImmediateCommands();
-                }
-#endif
-
-                // STEP 1: Tick all script contexts (multi-context system)
-                if (m_ScriptContextManager) {
-                    m_ScriptContextManager->TickAll();
-                }
-
-                // STEP 2: Apply merged inputs from all contexts
-                auto *inputManager = static_cast<DX8InputManager *>(man);
-                ApplyMergedContextInputs(inputManager);
-
-                // STEP 3: Validation recording
-                if (m_ValidationRecording && m_Recorder && m_Recorder->IsRecording()) {
-                    auto *inputManager = static_cast<CKInputManager *>(man);
-                    m_Recorder->Tick(m_CurrentTick, inputManager->GetKeyboardState());
-                }
-
-                // STEP 4: Increment frame counter for next iteration
-                IncrementCurrentTick();
-
-#ifdef ENABLE_REPL
-                // STEP 5: REPL server tick end (send notifications)
-                if (m_REPLServer &&m_REPLServer->IsRunning()) {
-                    m_REPLServer->OnTickEnd(m_CurrentTick);
-                }
-#endif
-            } catch (const std::exception &e) {
-                Log::Error("Script playback callback error: %s", e.what());
-            }
-        }
-    });
-}
-
-void TASEngine::SetupRecordPlaybackCallbacks() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    // TimeManager callback: Set delta time from record data
-    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown && m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
-            auto *timeManager = static_cast<CKTimeManager *>(man);
-            // Set delta time from the current frame in the record
-            float deltaTime = m_RecordPlayer->GetFrameDeltaTime(m_CurrentTick);
-            timeManager->SetLastDeltaTime(deltaTime);
-        }
-    });
-
-    // InputManager callback: Apply keyboard state and advance frame
-    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown && m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
-            try {
-                auto *inputManager = static_cast<CKInputManager *>(man);
-
-                // This will apply the current frame's input and advance to the next frame
-                m_RecordPlayer->Tick(m_CurrentTick, inputManager->GetKeyboardState());
-
-                IncrementCurrentTick();
-            } catch (const std::exception &e) {
-                Log::Error("Record playback callback error: %s", e.what());
-                // Stop on error
-                if (m_RecordPlayer) {
-                    m_RecordPlayer->Stop();
-                }
-            }
-        }
-    });
-}
-
-void TASEngine::SetupTranslationCallbacks() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    // TimeManager callback: Use delta time from record data
-    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown && IsTranslating()) {
-            auto *timeManager = static_cast<CKTimeManager *>(man);
-            TASProject *project = m_ProjectManager->GetCurrentProject();
-            if (project && project->IsValid()) {
-                timeManager->SetLastDeltaTime(project->GetDeltaTime());
-            }
-        }
-    });
-
-    // InputManager callback: Apply record input and capture it for recording
-    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
-        if (!m_ShuttingDown && IsTranslating()) {
-            try {
-                auto *inputManager = static_cast<CKInputManager *>(man);
-                unsigned char *keyboardState = inputManager->GetKeyboardState();
-
-                // STEP 1: Apply input from record player
-                if (m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
-                    m_RecordPlayer->Tick(m_CurrentTick, keyboardState);
-                }
-
-                // STEP 2: Capture the applied input with recorder
-                if (m_Recorder && m_Recorder->IsRecording()) {
-                    m_Recorder->Tick(m_CurrentTick, keyboardState);
-                }
-
-                // STEP 3: Increment the current tick for next frame
-                IncrementCurrentTick();
-
-                // STEP 4: Check if record playback has finished
-                if (m_RecordPlayer && !m_RecordPlayer->IsPlaying() && IsTranslating()) {
-                    // Record playback completed, finish translation
-                    OnTranslationPlaybackComplete();
-                }
-            } catch (const std::exception &e) {
-                Log::Error("Translation callback error: %s", e.what());
-                StopTranslation();
-            }
-        }
-    });
-}
 
 void TASEngine::OnTranslationPlaybackComplete() {
     Log::Info("Record playback completed during translation. Generating script...");
@@ -1148,83 +943,6 @@ std::string TASEngine::GetCurrentLevelName() const {
     return "";
 }
 
-// ============================================================================
-// Multi-Context Input Merging
-// ============================================================================
-
-void TASEngine::ApplyMergedContextInputs(DX8InputManager *inputManager) {
-    if (!inputManager || !m_ScriptContextManager) {
-        return;
-    }
-
-    // Get all active contexts sorted by priority (highest first)
-    auto contexts = m_ScriptContextManager->GetContextsByPriority();
-
-    // If no contexts are executing, nothing to apply
-    if (contexts.empty()) {
-        return;
-    }
-
-    // Collect inputs from all executing contexts
-    std::vector<const InputSystem *> activeInputs;
-    std::vector<std::string> contextNames; // For conflict logging
-
-    for (const auto &context : contexts) {
-        if (context && context->IsExecuting()) {
-            const InputSystem *inputSys = context->GetInputSystem();
-            if (inputSys) {
-                if (inputSys->IsEnabled()) {
-                    activeInputs.push_back(inputSys);
-                    contextNames.push_back(context->GetName());
-                }
-            } else {
-                // Warn if an executing context has no InputSystem (initialization issue)
-                Log::Warn("Context '%s' is executing but has no InputSystem.",
-                          context->GetName().c_str());
-            }
-        }
-    }
-
-    // If no active inputs, nothing to apply
-    if (activeInputs.empty()) {
-        return;
-    }
-
-    // === Priority-Based Merging Strategy ===
-    // Process from lowest to highest priority (so highest priority wins)
-    // We apply each InputSystem's state in order, with later ones overriding earlier ones
-
-    // Apply inputs in reverse order (lowest priority first)
-    for (auto it = activeInputs.rbegin(); it != activeInputs.rend(); ++it) {
-        const InputSystem *inputSys = *it;
-        size_t idx = std::distance(it, activeInputs.rend()) - 1;
-
-        // Apply this context's input
-        // Note: const_cast is safe here because Apply is conceptually const
-        // (it reads the InputSystem state and applies it to the input manager)
-        const_cast<InputSystem *>(inputSys)->Apply(m_CurrentTick, inputManager);
-
-        // Log conflicts if this is not the highest priority context
-        if (idx < activeInputs.size() - 1) {
-            // Check for conflicts with higher priority contexts
-            for (size_t j = idx + 1; j < activeInputs.size(); ++j) {
-                std::vector<std::string> conflicts;
-                if (inputSys->HasConflicts(*activeInputs[j], &conflicts)) {
-                    Log::Info("Input conflicts between '%s' and '%s': %zu conflicts",
-                              contextNames[idx].c_str(),
-                              contextNames[j].c_str(),
-                              conflicts.size());
-                    // Optionally log detailed conflicts
-                    // for (const auto &conflict : conflicts) {
-                    //     Log::Info("  - %s", conflict.c_str());
-                    // }
-                }
-            }
-        }
-    }
-
-    Log::Info("Applied merged inputs from %zu context(s)", activeInputs.size());
-}
 
 // ============================================================================
 // Game Event Dispatching

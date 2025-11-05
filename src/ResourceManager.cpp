@@ -18,14 +18,14 @@ ResourceManager::TemporaryFile::~TemporaryFile() {
         try {
             Delete();
         } catch (...) {
-            // 析构函数不应抛出异常
+            // Destructors should not throw exceptions
         }
     }
 }
 
 ResourceManager::TemporaryFile::TemporaryFile(TemporaryFile &&other) noexcept
     : m_Path(std::move(other.m_Path)), m_AutoDelete(other.m_AutoDelete), m_Deleted(other.m_Deleted) {
-    other.m_Deleted = true; // 防止other析构时删除
+    other.m_Deleted = true; // Prevent deletion when other destructs
 }
 
 ResourceManager::TemporaryFile &ResourceManager::TemporaryFile::operator=(TemporaryFile &&other) noexcept {
@@ -90,7 +90,7 @@ std::shared_ptr<ResourceManager::TemporaryFile> ResourceManager::CreateTempFile(
     auto filename = GenerateUniqueFilename(prefix, extension);
     auto fullPath = tempDir / filename;
 
-    // 创建空文件
+    // Create empty file
     try {
         std::ofstream file(fullPath);
         if (!file) {
@@ -114,7 +114,7 @@ std::shared_ptr<ResourceManager::TemporaryFile> ResourceManager::CreateTempDirec
     auto dirname = GenerateUniqueFilename(prefix, "");
     auto fullPath = tempDir / dirname;
 
-    // 创建目录
+    // Create directory
     try {
         std::filesystem::create_directories(fullPath);
     } catch (...) {
@@ -151,30 +151,30 @@ void ResourceManager::CleanupAll() {
 
     m_IsCleanedUp = true;
 
-    // 1. 执行清理回调（逆序）
+    // 1. Execute cleanup callbacks (in reverse order)
     for (auto it = m_CleanupHandlers.rbegin(); it != m_CleanupHandlers.rend(); ++it) {
         try {
             (*it)();
         } catch (...) {
-            // 忽略异常，继续清理
+            // Ignore exceptions, continue cleanup
         }
     }
 
-    // 2. 执行命名的清理回调
+    // 2. Execute named cleanup callbacks
     for (auto &[name, handler] : m_NamedCleanupHandlers) {
         try {
             handler();
         } catch (...) {
-            // 忽略异常，继续清理
+            // Ignore exceptions, continue cleanup
         }
     }
 
-    // 3. 清理临时文件（逆序）
+    // 3. Clean up temporary files (in reverse order)
     for (auto it = m_TempFiles.rbegin(); it != m_TempFiles.rend(); ++it) {
         try {
             (*it)->Delete();
         } catch (...) {
-            // 忽略异常，继续清理
+            // Ignore exceptions, continue cleanup
         }
     }
 
@@ -186,11 +186,11 @@ void ResourceManager::CleanupAll() {
 std::filesystem::path ResourceManager::GetTempDirectory() {
     auto tempPath = std::filesystem::temp_directory_path() / "BallanceTAS";
 
-    // 确保目录存在
+    // Ensure directory exists
     try {
         std::filesystem::create_directories(tempPath);
     } catch (...) {
-        // 如果创建失败，使用系统临时目录
+        // If creation fails, use system temp directory
         return std::filesystem::temp_directory_path();
     }
 
@@ -198,7 +198,7 @@ std::filesystem::path ResourceManager::GetTempDirectory() {
 }
 
 std::string ResourceManager::GenerateUniqueFilename(const std::string &prefix, const std::string &extension) {
-    // 使用当前时间戳和随机数生成唯一文件名
+    // Generate unique filename using current timestamp and random number
     auto now = std::chrono::system_clock::now();
     auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()).count();

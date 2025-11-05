@@ -14,60 +14,60 @@ class TASEngine;
 // ============================================================================
 class TASStateMachine {
 public:
-    // 状态枚举
+    // State enumeration
     enum class State {
-        Idle,          // 空闲状态
-        Recording,     // 录制中
-        PlayingScript, // 脚本回放中
-        PlayingRecord, // 记录回放中
-        Translating,   // 翻译中（记录转脚本）
-        Paused         // 暂停状态
+        Idle,          // Idle state
+        Recording,     // Recording
+        PlayingScript, // Script playback
+        PlayingRecord, // Record playback
+        Translating,   // Translating (record to script)
+        Paused         // Paused state
     };
 
-    // 事件枚举
+    // Event enumeration
     enum class Event {
-        StartRecording,      // 开始录制
-        StartScriptPlayback, // 开始脚本回放
-        StartRecordPlayback, // 开始记录回放
-        StartTranslation,    // 开始翻译
-        Stop,                // 停止
-        Pause,               // 暂停
-        Resume,              // 继续
-        LevelChange,         // 关卡切换
-        Error                // 错误发生
+        StartRecording,      // Start recording
+        StartScriptPlayback, // Start script playback
+        StartRecordPlayback, // Start record playback
+        StartTranslation,    // Start translation
+        Stop,                // Stop
+        Pause,               // Pause
+        Resume,              // Resume
+        LevelChange,         // Level change
+        Error                // Error occurred
     };
 
-    // 状态处理器接口
+    // State handler interface
     class IStateHandler {
     public:
         virtual ~IStateHandler() = default;
 
-        // 进入状态时调用
+        // Called when entering state
         virtual Result<void> OnEnter() = 0;
 
-        // 退出状态时调用
+        // Called when exiting state
         virtual Result<void> OnExit() = 0;
 
-        // 每帧调用
+        // Called every frame
         virtual void OnTick() = 0;
 
-        // 检查是否可以转换到新状态
+        // Check if can transition to new state
         virtual bool CanTransitionTo(State newState) const = 0;
 
-        // 获取状态名称（用于调试）
+        // Get state name (for debugging)
         virtual const char *GetStateName() const = 0;
     };
 
     explicit TASStateMachine(TASEngine *engine);
     ~TASStateMachine() = default;
 
-    // 状态转换
+    // State transition
     Result<void> Transition(Event event);
 
-    // 强制设置状态（用于错误恢复）
+    // Force set state (for error recovery)
     Result<void> ForceSetState(State newState);
 
-    // 状态查询
+    // Status query
     State GetCurrentState() const { return m_CurrentState; }
     const char *GetCurrentStateName() const;
     bool IsIdle() const { return m_CurrentState == State::Idle; }
@@ -81,13 +81,13 @@ public:
     bool IsTranslating() const { return m_CurrentState == State::Translating; }
     bool IsPaused() const { return m_CurrentState == State::Paused; }
 
-    // 注册状态处理器
+    // Register state handler
     void RegisterHandler(State state, std::unique_ptr<IStateHandler> handler);
 
-    // 每帧调用
+    // Called every frame
     void Tick();
 
-    // 状态转换历史（用于调试）
+    // State transition history (for debugging)
     struct TransitionRecord {
         State fromState;
         Event event;
@@ -100,31 +100,31 @@ public:
         return m_TransitionHistory;
     }
 
-    // 清空历史记录
+    // Clear history
     void ClearHistory() { m_TransitionHistory.clear(); }
 
-    // 辅助函数
+    // Helper functions
     static const char *StateToString(State state);
     static const char *EventToString(Event event);
 
 private:
-    // 执行状态转换
+    // Execute state transition
     Result<void> TransitionToState(State newState);
 
-    // 查找转换目标
+    // Find transition target
     State FindTransitionTarget(State currentState, Event event) const;
 
-    // 验证转换合法性
+    // Validate transition legitimacy
     bool IsTransitionValid(State from, State to) const;
 
     TASEngine *m_Engine;
     State m_CurrentState;
-    State m_PreviousState; // 用于暂停/恢复
+    State m_PreviousState; // Used for pause/resume
 
-    // 状态处理器映射
+    // State handler mapping
     std::unordered_map<State, std::unique_ptr<IStateHandler>> m_Handlers;
 
-    // 状态转换表
+    // State transition table
     struct StateEventPair {
         State state;
         Event event;
@@ -143,19 +143,19 @@ private:
 
     std::unordered_map<StateEventPair, State, StateEventHash> m_TransitionTable;
 
-    // 转换历史
+    // Transition history
     std::vector<TransitionRecord> m_TransitionHistory;
     static constexpr size_t MAX_HISTORY_SIZE = 100;
 
-    // 初始化转换表
+    // Initialize transition table
     void InitializeTransitionTable();
 
-    // 记录转换
+    // Record transition
     void RecordTransition(State fromState, Event event, State toState, bool succeeded);
 };
 
 // ============================================================================
-// 辅助函数实现
+// Helper function implementation
 // ============================================================================
 
 inline const char *TASStateMachine::StateToString(State state) {

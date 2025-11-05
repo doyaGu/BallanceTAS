@@ -16,21 +16,21 @@ public:
     ResourceManager() = default;
     ~ResourceManager();
 
-    // 禁用拷贝，允许移动
+    // Disable copy, allow move
     ResourceManager(const ResourceManager &) = delete;
     ResourceManager &operator=(const ResourceManager &) = delete;
     ResourceManager(ResourceManager &&) noexcept = default;
     ResourceManager &operator=(ResourceManager &&) noexcept = default;
 
     // ========================================================================
-    // 临时文件管理
+    // Temporary File Management
     // ========================================================================
     class TemporaryFile {
     public:
         TemporaryFile(std::filesystem::path path, bool autoDelete = true);
         ~TemporaryFile();
 
-        // 禁用拷贝，允许移动
+        // Disable copy, allow move
         TemporaryFile(const TemporaryFile &) = delete;
         TemporaryFile &operator=(const TemporaryFile &) = delete;
         TemporaryFile(TemporaryFile &&other) noexcept;
@@ -40,10 +40,10 @@ public:
         std::string GetPathString() const { return m_Path.string(); }
         bool Exists() const;
 
-        // 取消自动删除
+        // Cancel auto delete
         void KeepFile() { m_AutoDelete = false; }
 
-        // 立即删除
+        // Delete immediately
         Result<void> Delete();
 
     private:
@@ -52,48 +52,48 @@ public:
         bool m_Deleted = false;
     };
 
-    // 创建临时文件
+    // Create temporary file
     std::shared_ptr<TemporaryFile> CreateTempFile(
         const std::string &prefix = "tas_",
         const std::string &extension = ".tmp"
     );
 
-    // 创建临时目录
+    // Create temporary directory
     std::shared_ptr<TemporaryFile> CreateTempDirectory(
         const std::string &prefix = "tas_dir_"
     );
 
     // ========================================================================
-    // 清理回调管理
+    // Cleanup Callback Management
     // ========================================================================
     using CleanupHandler = std::function<void()>;
 
-    // 注册清理回调（按注册顺序的逆序执行）
+    // Register cleanup callback (executed in reverse order of registration)
     void RegisterCleanupHandler(CleanupHandler handler);
 
-    // 注册命名的清理回调（可以取消）
+    // Register named cleanup callback (can be cancelled)
     void RegisterCleanupHandler(const std::string &name, CleanupHandler handler);
 
-    // 取消命名的清理回调
+    // Unregister named cleanup callback
     bool UnregisterCleanupHandler(const std::string &name);
 
-    // 立即执行所有清理
+    // Execute all cleanup immediately
     void CleanupAll();
 
-    // 获取临时文件计数
+    // Get temporary file count
     size_t GetTempFileCount() const {
         std::lock_guard<std::mutex> lock(m_Mutex);
         return m_TempFiles.size();
     }
 
-    // 获取清理回调计数
+    // Get cleanup handler count
     size_t GetCleanupHandlerCount() const {
         std::lock_guard<std::mutex> lock(m_Mutex);
         return m_CleanupHandlers.size() + m_NamedCleanupHandlers.size();
     }
 
     // ========================================================================
-    // RAII辅助类 - 作用域结束时自动清理
+    // RAII Helper Class - Automatic cleanup at scope end
     // ========================================================================
     class ScopedResource {
     public:
@@ -106,12 +106,12 @@ public:
                 try {
                     m_Cleanup();
                 } catch (...) {
-                    // 析构函数不应抛出异常
+                    // Destructors should not throw exceptions
                 }
             }
         }
 
-        // 禁用拷贝，允许移动
+        // Disable copy, allow move
         ScopedResource(const ScopedResource &) = delete;
         ScopedResource &operator=(const ScopedResource &) = delete;
 
@@ -133,10 +133,10 @@ public:
             return *this;
         }
 
-        // 取消清理
+        // Cancel cleanup
         void Release() { m_Active = false; }
 
-        // 立即执行清理
+        // Execute cleanup immediately
         void Cleanup() {
             if (m_Active && m_Cleanup) {
                 m_Cleanup();
@@ -150,7 +150,7 @@ public:
         bool m_Active;
     };
 
-    // 创建作用域资源
+    // Create scoped resource
     template <typename F>
     ScopedResource CreateScopedResource(F &&cleanup) {
         return ScopedResource(this, std::forward<F>(cleanup));
@@ -164,15 +164,15 @@ private:
 
     bool m_IsCleanedUp = false;
 
-    // 获取临时目录路径
+    // Get temporary directory path
     static std::filesystem::path GetTempDirectory();
 
-    // 生成唯一文件名
+    // Generate unique filename
     static std::string GenerateUniqueFilename(const std::string &prefix, const std::string &extension);
 };
 
 // ============================================================================
-// 全局资源管理器（可选）
+// Global Resource Manager (Optional)
 // ============================================================================
 class GlobalResourceManager {
 public:

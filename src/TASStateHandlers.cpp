@@ -160,7 +160,7 @@ Result<void> RecordingHandler::OnExit() {
 
 void RecordingHandler::OnTick() {
     // Recording tick is handled by callbacks
-    // (registered in TASEngine::SetupRecordingCallbacks)
+    // (registered in RecordingController::SetupCallbacks)
 }
 
 bool RecordingHandler::CanTransitionTo(TASStateMachine::State newState) const {
@@ -226,7 +226,7 @@ Result<void> PlayingScriptHandler::OnExit() {
 
 void PlayingScriptHandler::OnTick() {
     // Script playback tick is handled by callbacks
-    // (registered in TASEngine::SetupScriptPlaybackCallbacks)
+    // (registered in PlaybackController::SetupScriptPlaybackCallbacks)
 }
 
 bool PlayingScriptHandler::CanTransitionTo(TASStateMachine::State newState) const {
@@ -291,7 +291,7 @@ Result<void> PlayingRecordHandler::OnExit() {
 
 void PlayingRecordHandler::OnTick() {
     // Record playback tick is handled by callbacks
-    // (registered in TASEngine::SetupRecordPlaybackCallbacks)
+    // (registered in PlaybackController::SetupRecordPlaybackCallbacks)
 }
 
 bool PlayingRecordHandler::CanTransitionTo(TASStateMachine::State newState) const {
@@ -365,7 +365,7 @@ Result<void> TranslatingHandler::OnExit() {
 
 void TranslatingHandler::OnTick() {
     // Translation tick is handled by callbacks
-    // (registered in TASEngine::SetupTranslationCallbacks)
+    // (registered in TranslationController::SetupCallbacks)
 }
 
 bool TranslatingHandler::CanTransitionTo(TASStateMachine::State newState) const {

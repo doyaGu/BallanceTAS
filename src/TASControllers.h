@@ -39,9 +39,14 @@ class RecordPlayer;
 class ScriptContextManager;
 class InputSystem;
 class GameInterface;
+class DX8InputManager;
 
-// Enum forward declarations
-enum class PlaybackType;
+// Playback type enum (moved from TASEngine.h for independence)
+enum class PlaybackType {
+    None,   // No playback active
+    Script, // Lua script playback via ScriptContextManager
+    Record  // Binary record playback via RecordPlayer
+};
 
 // ============================================================================
 // RecordingController
@@ -104,10 +109,36 @@ public:
      */
     void SetRecordingOptions(const IRecordingStrategy::Options &options);
 
+    /**
+     * @brief Sets up callbacks for recording mode
+     */
+    void SetupCallbacks();
+
+    /**
+     * @brief Clears all recording callbacks
+     */
+    void ClearCallbacks();
+
+    /**
+     * @brief Gets the current tick
+     */
+    size_t GetCurrentTick() const { return m_CurrentTick; }
+
+    /**
+     * @brief Increments the tick counter
+     */
+    void IncrementTick() { ++m_CurrentTick; }
+
+    /**
+     * @brief Resets the tick counter
+     */
+    void ResetTick() { m_CurrentTick = 0; }
+
 private:
     ServiceProvider *m_ServiceProvider;
     std::unique_ptr<IRecordingStrategy> m_Strategy;
     bool m_IsInitialized = false;
+    size_t m_CurrentTick = 0;
 
     // Helper methods
     void SetupInputSystemForRecording();
@@ -185,17 +216,46 @@ public:
      */
     float GetProgress() const;
 
+    /**
+     * @brief Sets up callbacks for playback mode
+     */
+    void SetupCallbacks(PlaybackType type);
+
+    /**
+     * @brief Clears all playback callbacks
+     */
+    void ClearCallbacks();
+
+    /**
+     * @brief Gets the current tick
+     */
+    size_t GetCurrentTick() const { return m_CurrentTick; }
+
+    /**
+     * @brief Increments the tick counter
+     */
+    void IncrementTick() { ++m_CurrentTick; }
+
+    /**
+     * @brief Resets the tick counter
+     */
+    void ResetTick() { m_CurrentTick = 0; }
+
 private:
     ServiceProvider *m_ServiceProvider;
     std::unique_ptr<IPlaybackStrategy> m_Strategy;
     TASProject *m_CurrentProject = nullptr;
     PlaybackType m_CurrentType; // Initialized in constructor
     bool m_IsInitialized = false;
+    size_t m_CurrentTick = 0;
 
     // Helper methods
     void SetupInputSystemForPlayback(PlaybackType type);
     void CleanupAfterPlayback();
     Result<std::unique_ptr<IPlaybackStrategy>> CreateStrategy(PlaybackType type);
+    void SetupScriptPlaybackCallbacks();
+    void SetupRecordPlaybackCallbacks();
+    void ApplyMergedContextInputs(DX8InputManager *inputManager);
 };
 
 // ============================================================================
@@ -248,12 +308,38 @@ public:
      */
     float GetProgress() const;
 
+    /**
+     * @brief Sets up callbacks for translation mode
+     */
+    void SetupCallbacks();
+
+    /**
+     * @brief Clears all translation callbacks
+     */
+    void ClearCallbacks();
+
+    /**
+     * @brief Gets the current tick
+     */
+    size_t GetCurrentTick() const { return m_CurrentTick; }
+
+    /**
+     * @brief Increments the tick counter
+     */
+    void IncrementTick() { ++m_CurrentTick; }
+
+    /**
+     * @brief Resets the tick counter
+     */
+    void ResetTick() { m_CurrentTick = 0; }
+
 private:
     ServiceProvider *m_ServiceProvider;
     TASProject *m_CurrentProject = nullptr;
     GenerationOptions m_GenerationOptions;
     bool m_IsTranslating = false;
     bool m_IsInitialized = false;
+    size_t m_CurrentTick = 0;
 
     // Helper methods
     void OnTranslationPlaybackComplete();

@@ -6,15 +6,10 @@
 
 #include <sol/sol.hpp>
 
-#include <BML/ILogger.h>
+#include "TASControllers.h" // For PlaybackType definition
 
 // Forward declare TASStateMachine to avoid circular dependency
 class TASStateMachine;
-
-// Forward declare Controllers
-class RecordingController;
-class PlaybackController;
-class TranslationController;
 
 // Forward declare ServiceContainer
 class ServiceContainer;
@@ -45,15 +40,8 @@ class Recorder;
 class ScriptGenerator;
 struct GenerationOptions;
 
-/**
- * @enum PlaybackType
- * @brief The type of playback currently active.
- */
-enum class PlaybackType {
-    None,   // No playback active
-    Script, // Lua script playback via ScriptContextManager
-    Record  // Binary record playback via RecordPlayer
-};
+// PlaybackType is now defined in TASControllers.h
+enum class PlaybackType;
 
 /**
  * @enum PendingOperation
@@ -359,33 +347,6 @@ private:
      * @return The current level name, or empty string if not available.
      */
     std::string GetCurrentLevelName() const;
-
-    /**
-     * @brief Merges and applies inputs from all active contexts by priority.
-     * Higher priority contexts override lower priority contexts.
-     * @param inputManager The input manager to apply merged inputs to.
-     */
-    void ApplyMergedContextInputs(DX8InputManager *inputManager);
-
-    /**
-     * @brief Sets up callbacks for recording mode.
-     */
-    void SetupRecordingCallbacks();
-
-    /**
-     * @brief Sets up callbacks for script playback mode.
-     */
-    void SetupScriptPlaybackCallbacks();
-
-    /**
-     * @brief Sets up callbacks for record playback mode.
-     */
-    void SetupRecordPlaybackCallbacks();
-
-    /**
-     * @brief Sets up callbacks for translation mode (combined recording + playback).
-     */
-    void SetupTranslationCallbacks();
 
     /**
      * @brief Handles automatic completion when record playback finishes during translation.

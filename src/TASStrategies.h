@@ -8,49 +8,49 @@
 #include <cstdint>
 
 // Forward declarations
-class TASEngine;
+class ServiceProvider;
 struct FrameData;
 
 // ============================================================================
-// Playback Strategy Interface (策略模式)
+// Playback Strategy Interface (Strategy Pattern)
 // ============================================================================
 class IPlaybackStrategy {
 public:
     virtual ~IPlaybackStrategy() = default;
 
-    // 回放类型
+    // Playback type
     enum class Type {
-        Script, // Lua脚本回放
-        Record  // 二进制记录回放
+        Script, // Lua script playback
+        Record  // Binary record playback
     };
 
-    // 初始化策略
+    // Initialize strategy
     virtual Result<void> Initialize() = 0;
 
-    // 加载并开始播放项目
+    // Load and start playing project
     virtual Result<void> LoadAndPlay(TASProject *project) = 0;
 
-    // 每帧调用
+    // Called every frame
     virtual void Tick() = 0;
 
-    // 停止播放
+    // Stop playback
     virtual void Stop() = 0;
 
-    // 暂停/恢复
+    // Pause/Resume
     virtual void Pause() = 0;
     virtual void Resume() = 0;
 
-    // 状态查询
+    // Status query
     virtual bool IsPlaying() const = 0;
     virtual bool IsPaused() const = 0;
     virtual Type GetType() const = 0;
 
-    // 播放进度
+    // Playback progress
     virtual size_t GetCurrentTick() const = 0;
     virtual size_t GetTotalTicks() const = 0;
     virtual float GetProgress() const = 0; // 0.0 - 1.0
 
-    // 观察者模式: 状态变化通知
+    // Observer pattern: Status change notification
     using StatusCallback = std::function<void(bool isPlaying)>;
     virtual void SetStatusCallback(StatusCallback callback) = 0;
 
@@ -63,7 +63,7 @@ public:
 // ============================================================================
 class ScriptPlaybackStrategy : public IPlaybackStrategy {
 public:
-    explicit ScriptPlaybackStrategy(TASEngine *engine);
+    explicit ScriptPlaybackStrategy(ServiceProvider *services);
     ~ScriptPlaybackStrategy() override = default;
 
     Result<void> Initialize() override;
@@ -78,7 +78,7 @@ public:
     Type GetType() const override { return Type::Script; }
 
     size_t GetCurrentTick() const override;
-    size_t GetTotalTicks() const override { return 0; } // 脚本回放无法预知总长度
+    size_t GetTotalTicks() const override { return 0; } // Script playback cannot predict total length
     float GetProgress() const override { return 0.0f; }
 
     void SetStatusCallback(StatusCallback callback) override {
@@ -90,10 +90,11 @@ public:
     }
 
 private:
-    TASEngine *m_Engine;
+    ServiceProvider *m_Services;
     TASProject *m_CurrentProject = nullptr;
     bool m_IsPlaying = false;
     bool m_IsPaused = false;
+    size_t m_CurrentTick = 0;
     StatusCallback m_StatusCallback;
     ProgressCallback m_ProgressCallback;
 
@@ -105,7 +106,7 @@ private:
 // ============================================================================
 class RecordPlaybackStrategy : public IPlaybackStrategy {
 public:
-    explicit RecordPlaybackStrategy(TASEngine *engine);
+    explicit RecordPlaybackStrategy(ServiceProvider *services);
     ~RecordPlaybackStrategy() override = default;
 
     Result<void> Initialize() override;
@@ -135,7 +136,7 @@ public:
     }
 
 private:
-    TASEngine *m_Engine;
+    ServiceProvider *m_Services;
     std::vector<FrameData> m_Frames;
     size_t m_CurrentFrameIndex = 0;
     size_t m_TotalFrames = 0;
@@ -155,33 +156,33 @@ class IRecordingStrategy {
 public:
     virtual ~IRecordingStrategy() = default;
 
-    // 录制类型
+    // Recording type
     enum class Type {
-        Standard,  // 标准录制
-        Validation // 验证录制（记录更多信息）
+        Standard,  // Standard recording
+        Validation // Validation recording (records more information)
     };
 
-    // 开始录制
+    // Start recording
     virtual Result<void> Start() = 0;
 
-    // 每帧录制输入
+    // Record input every frame
     virtual void Tick(size_t currentTick, const unsigned char *keyboardState) = 0;
 
-    // 停止录制并返回数据
+    // Stop recording and return data
     virtual Result<std::vector<FrameData>> Stop() = 0;
 
-    // 状态查询
+    // Status query
     virtual bool IsRecording() const = 0;
     virtual size_t GetFrameCount() const = 0;
     virtual Type GetType() const = 0;
 
-    // 录制选项
+    // Recording options
     struct Options {
-        bool captureMouseInput = false;   // 是否捕获鼠标输入
-        bool captureGamepadInput = false; // 是否捕获手柄输入
-        bool captureTimestamps = true;    // 是否记录时间戳
-        bool captureGameState = false;    // 是否记录游戏状态（验证用）
-        size_t maxFrames = 0;             // 最大帧数限制（0=无限制）
+        bool captureMouseInput = false;   // Whether to capture mouse input
+        bool captureGamepadInput = false; // Whether to capture gamepad input
+        bool captureTimestamps = true;    // Whether to record timestamps
+        bool captureGameState = false;    // Whether to record game state (for validation)
+        size_t maxFrames = 0;             // Maximum frame limit (0 = unlimited)
     };
 
     virtual void SetOptions(const Options &options) = 0;
@@ -193,7 +194,7 @@ public:
 // ============================================================================
 class StandardRecorder : public IRecordingStrategy {
 public:
-    explicit StandardRecorder(TASEngine *engine);
+    explicit StandardRecorder(ServiceProvider *services);
     ~StandardRecorder() override = default;
 
     Result<void> Start() override;
@@ -208,19 +209,19 @@ public:
     const Options &GetOptions() const override { return m_Options; }
 
 private:
-    TASEngine *m_Engine;
+    ServiceProvider *m_Services;
     std::vector<FrameData> m_Frames;
     bool m_IsRecording = false;
     Options m_Options;
 
-    // 上一帧的键盘状态（用于检测变化）
+    // Previous frame keyboard state (for detecting changes)
     std::vector<unsigned char> m_PreviousKeyState;
 
     bool HasKeyStateChanged(const unsigned char *currentState) const;
 };
 
 // ============================================================================
-// Validation Recording Strategy (装饰器模式)
+// Validation Recording Strategy (Decorator Pattern)
 // ============================================================================
 class ValidationRecorder : public IRecordingStrategy {
 public:
@@ -241,7 +242,7 @@ public:
 private:
     std::unique_ptr<IRecordingStrategy> m_InnerRecorder;
 
-    // 额外的验证数据
+    // Additional validation data
     struct ValidationData {
         float ballPosition[3];
         float ballVelocity[3];

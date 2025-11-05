@@ -4,14 +4,21 @@
  */
 
 #include "TASControllers.h"
-#include "TASEngine.h"
 #include "ServiceContainer.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
 #include "ScriptGenerator.h"
 #include "InputSystem.h"
+#include "DX8InputManager.h"
 #include "GameInterface.h"
+#include "ScriptContextManager.h"
+#include "ProjectManager.h"
+#include "TASHook.h"
 #include "Logger.h"
+
+#ifdef ENABLE_REPL
+#include "LuaREPLServer.h"
+#endif
 
 // ============================================================================
 // RecordingController Implementation
@@ -28,14 +35,8 @@ Result<void> RecordingController::Initialize() {
         return Result<void>::Ok();
     }
 
-    // Resolve TASEngine for strategy creation
-    auto engine = m_ServiceProvider->Resolve<TASEngine>();
-    if (!engine) {
-        return Result<void>::Error("TASEngine not available", "dependency");
-    }
-
     // Create default strategy (StandardRecorder)
-    m_Strategy = std::make_unique<StandardRecorder>(engine);
+    m_Strategy = std::make_unique<StandardRecorder>(m_ServiceProvider);
 
     auto result = m_Strategy->Start();
     if (!result.IsOk()) {
@@ -60,26 +61,27 @@ Result<void> RecordingController::StartRecording(bool useValidation) {
         return Result<void>::Error("Already recording", "state");
     }
 
-    // Resolve TASEngine for strategy creation
-    auto engine = m_ServiceProvider->Resolve<TASEngine>();
-    if (!engine) {
-        return Result<void>::Error("TASEngine not available", "dependency");
-    }
-
     // Create appropriate strategy
     if (useValidation) {
-        auto innerStrategy = std::make_unique<StandardRecorder>(engine);
+        auto innerStrategy = std::make_unique<StandardRecorder>(m_ServiceProvider);
         m_Strategy = std::make_unique<ValidationRecorder>(std::move(innerStrategy));
     } else {
-        m_Strategy = std::make_unique<StandardRecorder>(engine);
+        m_Strategy = std::make_unique<StandardRecorder>(m_ServiceProvider);
     }
+
+    // Reset tick counter
+    ResetTick();
 
     // Setup input system
     SetupInputSystemForRecording();
 
+    // Set up callbacks for recording
+    SetupCallbacks();
+
     // Start the strategy
     auto result = m_Strategy->Start();
     if (!result.IsOk()) {
+        ClearCallbacks();
         CleanupAfterRecording();
         return result;
     }
@@ -97,6 +99,9 @@ Result<std::vector<FrameData>> RecordingController::StopRecording(bool immediate
 
     // Stop the strategy
     auto result = m_Strategy->Stop();
+
+    // Clear callbacks
+    ClearCallbacks();
 
     // Cleanup
     CleanupAfterRecording();
@@ -144,6 +149,48 @@ void RecordingController::CleanupAfterRecording() {
     }
 }
 
+void RecordingController::SetupCallbacks() {
+    // Set up Time Manager callback - sets delta time during recording
+    CKTimeManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!IsRecording()) {
+            return;
+        }
+
+        auto recorder = m_ServiceProvider->Resolve<Recorder>();
+        if (recorder) {
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            timeManager->SetLastDeltaTime(recorder->GetDeltaTime());
+        }
+    });
+
+    // Set up Input Manager callback - records input each frame
+    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!IsRecording()) {
+            return;
+        }
+
+        try {
+            auto recorder = m_ServiceProvider->Resolve<Recorder>();
+            if (recorder) {
+                auto *inputManager = static_cast<CKInputManager *>(man);
+                recorder->Tick(m_CurrentTick, inputManager->GetKeyboardState());
+            }
+
+            IncrementTick();
+        } catch (const std::exception &e) {
+            Log::Error("Recording callback error: %s", e.what());
+        }
+    });
+
+    Log::Info("RecordingController: Callbacks set up");
+}
+
+void RecordingController::ClearCallbacks() {
+    CKTimeManagerHook::ClearPostCallbacks();
+    CKInputManagerHook::ClearPostCallbacks();
+    Log::Info("RecordingController: Callbacks cleared");
+}
+
 // ============================================================================
 // PlaybackController Implementation
 // ============================================================================
@@ -189,12 +236,19 @@ Result<void> PlaybackController::StartPlayback(TASProject *project, PlaybackType
     m_CurrentType = type;
     m_CurrentProject = project;
 
+    // Reset tick counter
+    ResetTick();
+
     // Setup input system
     SetupInputSystemForPlayback(type);
+
+    // Set up callbacks for playback
+    SetupCallbacks(type);
 
     // Start playback
     auto result = m_Strategy->LoadAndPlay(project);
     if (!result.IsOk()) {
+        ClearCallbacks();
         CleanupAfterPlayback();
         m_Strategy.reset();
         m_CurrentType = PlaybackType::None;
@@ -217,6 +271,9 @@ void PlaybackController::StopPlayback(bool clearProject) {
     if (m_Strategy) {
         m_Strategy->Stop();
     }
+
+    // Clear callbacks
+    ClearCallbacks();
 
     CleanupAfterPlayback();
 
@@ -287,23 +344,169 @@ void PlaybackController::CleanupAfterPlayback() {
     }
 }
 
-Result<std::unique_ptr<IPlaybackStrategy>> PlaybackController::CreateStrategy(PlaybackType type) {
-    // Resolve TASEngine for strategy creation
-    auto engine = m_ServiceProvider->Resolve<TASEngine>();
-    if (!engine) {
-        return Result<std::unique_ptr<IPlaybackStrategy>>::Error(
-            "TASEngine not available", "dependency");
+void PlaybackController::SetupCallbacks(PlaybackType type) {
+    if (type == PlaybackType::Script) {
+        SetupScriptPlaybackCallbacks();
+    } else if (type == PlaybackType::Record) {
+        SetupRecordPlaybackCallbacks();
+    }
+}
+
+void PlaybackController::ClearCallbacks() {
+    CKTimeManagerHook::ClearPostCallbacks();
+    CKInputManagerHook::ClearPostCallbacks();
+    Log::Info("PlaybackController: Callbacks cleared");
+}
+
+void PlaybackController::SetupScriptPlaybackCallbacks() {
+    auto projectManager = m_ServiceProvider->Resolve<ProjectManager>();
+
+    CKTimeManagerHook::AddPostCallback([projectManager](CKBaseManager *man) {
+        auto *timeManager = static_cast<CKTimeManager *>(man);
+        TASProject *project = projectManager ? projectManager->GetCurrentProject() : nullptr;
+        if (project && project->IsValid()) {
+            timeManager->SetLastDeltaTime(project->GetDeltaTime());
+        }
+    });
+
+    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        try {
+#ifdef ENABLE_REPL
+            // STEP 0: REPL server tick start (process scheduled commands)
+            auto replServer = m_ServiceProvider->Resolve<LuaREPLServer>();
+            if (replServer && replServer->IsRunning()) {
+                replServer->OnTickStart(m_CurrentTick);
+                replServer->ProcessImmediateCommands();
+            }
+#endif
+
+            // STEP 1: Tick all script contexts (multi-context system)
+            auto scriptManager = m_ServiceProvider->Resolve<ScriptContextManager>();
+            if (scriptManager) {
+                scriptManager->TickAll();
+            }
+
+            // STEP 2: Apply merged inputs from all contexts
+            auto *inputManager = static_cast<DX8InputManager *>(man);
+            ApplyMergedContextInputs(inputManager);
+
+            // STEP 3: Validation recording
+            auto recorder = m_ServiceProvider->Resolve<Recorder>();
+            if (recorder && recorder->IsRecording()) {
+                auto *inputMgr = static_cast<CKInputManager *>(man);
+                recorder->Tick(m_CurrentTick, inputMgr->GetKeyboardState());
+            }
+
+            // STEP 4: Increment frame counter for next iteration
+            IncrementTick();
+
+#ifdef ENABLE_REPL
+            // STEP 5: REPL server tick end (send notifications)
+            if (replServer && replServer->IsRunning()) {
+                replServer->OnTickEnd(m_CurrentTick);
+            }
+#endif
+        } catch (const std::exception &e) {
+            Log::Error("Script playback callback error: %s", e.what());
+        }
+    });
+
+    Log::Info("PlaybackController: Script playback callbacks set up");
+}
+
+void PlaybackController::SetupRecordPlaybackCallbacks() {
+    auto recordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
+
+    // TimeManager callback: Set delta time from record data
+    CKTimeManagerHook::AddPostCallback([this, recordPlayer](CKBaseManager *man) {
+        if (recordPlayer && recordPlayer->IsPlaying()) {
+            auto *timeManager = static_cast<CKTimeManager *>(man);
+            // Set delta time from the current frame in the record
+            float deltaTime = recordPlayer->GetFrameDeltaTime(m_CurrentTick);
+            timeManager->SetLastDeltaTime(deltaTime);
+        }
+    });
+
+    // InputManager callback: Apply keyboard state and advance frame
+    CKInputManagerHook::AddPostCallback([this, recordPlayer](CKBaseManager *man) {
+        if (recordPlayer && recordPlayer->IsPlaying()) {
+            try {
+                auto *inputManager = static_cast<CKInputManager *>(man);
+
+                // This will apply the current frame's input and advance to the next frame
+                recordPlayer->Tick(m_CurrentTick, inputManager->GetKeyboardState());
+
+                IncrementTick();
+            } catch (const std::exception &e) {
+                Log::Error("Record playback callback error: %s", e.what());
+                // Stop on error
+                if (recordPlayer) {
+                    recordPlayer->Stop();
+                }
+            }
+        }
+    });
+
+    Log::Info("PlaybackController: Record playback callbacks set up");
+}
+
+void PlaybackController::ApplyMergedContextInputs(DX8InputManager *inputManager) {
+    auto scriptManager = m_ServiceProvider->Resolve<ScriptContextManager>();
+    if (!inputManager || !scriptManager) {
+        return;
     }
 
+    // Get all active contexts sorted by priority (highest first)
+    auto contexts = scriptManager->GetContextsByPriority();
+
+    // If no contexts are executing, nothing to apply
+    if (contexts.empty()) {
+        return;
+    }
+
+    // Collect inputs from all executing contexts
+    std::vector<const InputSystem *> activeInputs;
+    std::vector<std::string> contextNames; // For conflict logging
+
+    for (const auto &context : contexts) {
+        if (context && context->IsExecuting()) {
+            const InputSystem *inputSys = context->GetInputSystem();
+            if (inputSys) {
+                if (inputSys->IsEnabled()) {
+                    activeInputs.push_back(inputSys);
+                    contextNames.push_back(context->GetName());
+                }
+            } else {
+                // Warn if an executing context has no InputSystem (initialization issue)
+                Log::Warn("Context '%s' is executing but has no InputSystem.",
+                          context->GetName().c_str());
+            }
+        }
+    }
+
+    // If no active inputs, nothing to apply
+    if (activeInputs.empty()) {
+        return;
+    }
+
+    // === Priority-Based Merging Strategy ===
+    // Process from lowest to highest priority (so highest priority wins)
+    for (size_t i = activeInputs.size(); i > 0; --i) {
+        InputSystem *inputSys = const_cast<InputSystem *>(activeInputs[i - 1]);
+        inputSys->Apply(m_CurrentTick, inputManager);
+    }
+}
+
+Result<std::unique_ptr<IPlaybackStrategy>> PlaybackController::CreateStrategy(PlaybackType type) {
     if (type == PlaybackType::Script) {
-        auto strategy = std::make_unique<ScriptPlaybackStrategy>(engine);
+        auto strategy = std::make_unique<ScriptPlaybackStrategy>(m_ServiceProvider);
         auto result = strategy->Initialize();
         if (!result.IsOk()) {
             return Result<std::unique_ptr<IPlaybackStrategy>>::Error(result.GetError());
         }
         return Result<std::unique_ptr<IPlaybackStrategy>>::Ok(std::move(strategy));
     } else if (type == PlaybackType::Record) {
-        auto strategy = std::make_unique<RecordPlaybackStrategy>(engine);
+        auto strategy = std::make_unique<RecordPlaybackStrategy>(m_ServiceProvider);
         auto result = strategy->Initialize();
         if (!result.IsOk()) {
             return Result<std::unique_ptr<IPlaybackStrategy>>::Error(result.GetError());
@@ -361,6 +564,9 @@ Result<void> TranslationController::StartTranslation(TASProject *project,
     // Store generation options
     m_GenerationOptions = options;
 
+    // Reset tick counter
+    ResetTick();
+
     // Configure recorder for translation
     recorder->SetGenerationOptions(options);
     recorder->SetUpdateRate(project->GetUpdateRate());
@@ -379,6 +585,9 @@ Result<void> TranslationController::StartTranslation(TASProject *project,
         recorder->Stop(); // Clean up
         return Result<void>::Error("Failed to start record playback for translation", "playback");
     }
+
+    // Set up callbacks for translation
+    SetupCallbacks();
 
     m_IsTranslating = true;
     m_CurrentProject = project;
@@ -406,6 +615,9 @@ void TranslationController::StopTranslation(bool clearProject) {
         recorder->Stop();
         Log::Info("TranslationController: Recorder stopped, script generated");
     }
+
+    // Clear callbacks
+    ClearCallbacks();
 
     m_IsTranslating = false;
 
@@ -446,6 +658,70 @@ void TranslationController::OnTranslationPlaybackComplete() {
         return;
     }
 
+    Log::Info("Record playback completed during translation. Generating script...");
+
     // Stop translation (Recorder will auto-generate script)
     StopTranslation(false);
+}
+
+void TranslationController::SetupCallbacks() {
+    auto projectManager = m_ServiceProvider->Resolve<ProjectManager>();
+
+    // TimeManager callback: Use delta time from record data
+    CKTimeManagerHook::AddPostCallback([this, projectManager](CKBaseManager *man) {
+        if (!IsTranslating()) {
+            return;
+        }
+
+        auto *timeManager = static_cast<CKTimeManager *>(man);
+        TASProject *project = projectManager ? projectManager->GetCurrentProject() : nullptr;
+        if (project && project->IsValid()) {
+            timeManager->SetLastDeltaTime(project->GetDeltaTime());
+        }
+    });
+
+    // InputManager callback: Apply record input and capture it for recording
+    CKInputManagerHook::AddPostCallback([this](CKBaseManager *man) {
+        if (!IsTranslating()) {
+            return;
+        }
+
+        try {
+            auto *inputManager = static_cast<CKInputManager *>(man);
+            unsigned char *keyboardState = inputManager->GetKeyboardState();
+
+            auto recordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
+            auto recorder = m_ServiceProvider->Resolve<Recorder>();
+
+            // STEP 1: Apply input from record player
+            if (recordPlayer && recordPlayer->IsPlaying()) {
+                recordPlayer->Tick(m_CurrentTick, keyboardState);
+            }
+
+            // STEP 2: Capture the applied input with recorder
+            if (recorder && recorder->IsRecording()) {
+                recorder->Tick(m_CurrentTick, keyboardState);
+            }
+
+            // STEP 3: Increment the current tick for next frame
+            IncrementTick();
+
+            // STEP 4: Check if record playback has finished
+            if (recordPlayer && !recordPlayer->IsPlaying() && IsTranslating()) {
+                // Record playback completed, finish translation
+                OnTranslationPlaybackComplete();
+            }
+        } catch (const std::exception &e) {
+            Log::Error("Translation callback error: %s", e.what());
+            StopTranslation();
+        }
+    });
+
+    Log::Info("TranslationController: Callbacks set up");
+}
+
+void TranslationController::ClearCallbacks() {
+    CKTimeManagerHook::ClearPostCallbacks();
+    CKInputManagerHook::ClearPostCallbacks();
+    Log::Info("TranslationController: Callbacks cleared");
 }

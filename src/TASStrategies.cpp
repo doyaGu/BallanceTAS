@@ -8,7 +8,7 @@
  */
 
 #include "TASStrategies.h"
-#include "TASEngine.h"
+#include "ServiceContainer.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
 #include "ScriptContextManager.h"
@@ -19,14 +19,14 @@
 // ScriptPlaybackStrategy Implementation (Wrapper for ScriptContextManager)
 // ============================================================================
 
-ScriptPlaybackStrategy::ScriptPlaybackStrategy(TASEngine *engine) : m_Engine(engine) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
+ScriptPlaybackStrategy::ScriptPlaybackStrategy(ServiceProvider *services) : m_Services(services) {
+    if (!m_Services) {
+        throw std::invalid_argument("ServiceProvider cannot be null");
     }
 }
 
 Result<void> ScriptPlaybackStrategy::Initialize() {
-    // ScriptContextManager is initialized by TASEngine
+    // ScriptContextManager is initialized during engine startup
     // This strategy just wraps its functionality
     return Result<void>::Ok();
 }
@@ -36,7 +36,7 @@ Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject *project) {
         return Result<void>::Error("Project cannot be null", "invalid_argument");
     }
 
-    auto scriptManager = m_Engine->GetScriptContextManager();
+    auto scriptManager = m_Services->Resolve<ScriptContextManager>();
     if (!scriptManager) {
         return Result<void>::Error("ScriptContextManager not available", "subsystem");
     }
@@ -61,6 +61,7 @@ Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject *project) {
     }
 
     m_CurrentProject = project;
+    m_CurrentTick = 0;
     m_IsPlaying = true;
     m_IsPaused = false;
 
@@ -74,8 +75,10 @@ Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject *project) {
 
 void ScriptPlaybackStrategy::Tick() {
     // Script execution is handled by ScriptContext::Tick() via LuaScheduler
-    // This is called automatically by TASEngine's callback system
-    // No additional work needed here
+    // This is called automatically by the callback system
+    if (m_IsPlaying && !m_IsPaused) {
+        ++m_CurrentTick;
+    }
 }
 
 void ScriptPlaybackStrategy::Stop() {
@@ -83,7 +86,7 @@ void ScriptPlaybackStrategy::Stop() {
         return;
     }
 
-    auto scriptManager = m_Engine->GetScriptContextManager();
+    auto scriptManager = m_Services->Resolve<ScriptContextManager>();
     if (scriptManager) {
         // Stop all active contexts
         auto contexts = scriptManager->GetContextsByPriority();
@@ -97,6 +100,7 @@ void ScriptPlaybackStrategy::Stop() {
     m_IsPlaying = false;
     m_IsPaused = false;
     m_CurrentProject = nullptr;
+    m_CurrentTick = 0;
 
     NotifyStatusChanged();
 
@@ -124,7 +128,7 @@ void ScriptPlaybackStrategy::Resume() {
 }
 
 size_t ScriptPlaybackStrategy::GetCurrentTick() const {
-    return m_Engine ? m_Engine->GetCurrentTick() : 0;
+    return m_CurrentTick;
 }
 
 void ScriptPlaybackStrategy::NotifyStatusChanged() {
@@ -137,15 +141,15 @@ void ScriptPlaybackStrategy::NotifyStatusChanged() {
 // RecordPlaybackStrategy Implementation (Wrapper for RecordPlayer)
 // ============================================================================
 
-RecordPlaybackStrategy::RecordPlaybackStrategy(TASEngine *engine)
-    : m_Engine(engine) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
+RecordPlaybackStrategy::RecordPlaybackStrategy(ServiceProvider *services)
+    : m_Services(services) {
+    if (!m_Services) {
+        throw std::invalid_argument("ServiceProvider cannot be null");
     }
 }
 
 Result<void> RecordPlaybackStrategy::Initialize() {
-    // RecordPlayer is initialized by TASEngine
+    // RecordPlayer is initialized during engine startup
     return Result<void>::Ok();
 }
 
@@ -154,7 +158,7 @@ Result<void> RecordPlaybackStrategy::LoadAndPlay(TASProject *project) {
         return Result<void>::Error("Project cannot be null", "invalid_argument");
     }
 
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_Services->Resolve<RecordPlayer>();
     if (!recordPlayer) {
         return Result<void>::Error("RecordPlayer not available", "subsystem");
     }
@@ -185,7 +189,7 @@ void RecordPlaybackStrategy::Tick() {
         return;
     }
 
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_Services->Resolve<RecordPlayer>();
     if (recordPlayer) {
         m_CurrentFrameIndex = recordPlayer->GetCurrentFrame();
         NotifyProgress();
@@ -197,7 +201,7 @@ void RecordPlaybackStrategy::Stop() {
         return;
     }
 
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_Services->Resolve<RecordPlayer>();
     if (recordPlayer) {
         recordPlayer->Stop();
     }
@@ -217,7 +221,7 @@ void RecordPlaybackStrategy::Pause() {
         return;
     }
 
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_Services->Resolve<RecordPlayer>();
     if (recordPlayer) {
         recordPlayer->Pause();
     }
@@ -232,7 +236,7 @@ void RecordPlaybackStrategy::Resume() {
         return;
     }
 
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_Services->Resolve<RecordPlayer>();
     if (recordPlayer) {
         recordPlayer->Resume();
     }
@@ -258,10 +262,10 @@ void RecordPlaybackStrategy::NotifyProgress() {
 // StandardRecorder Implementation (Wrapper for Recorder)
 // ============================================================================
 
-StandardRecorder::StandardRecorder(TASEngine *engine)
-    : m_Engine(engine) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
+StandardRecorder::StandardRecorder(ServiceProvider *services)
+    : m_Services(services) {
+    if (!m_Services) {
+        throw std::invalid_argument("ServiceProvider cannot be null");
     }
 }
 
@@ -270,7 +274,7 @@ Result<void> StandardRecorder::Start() {
         return Result<void>::Error("Already recording", "state");
     }
 
-    auto recorder = m_Engine->GetRecorder();
+    auto recorder = m_Services->Resolve<Recorder>();
     if (!recorder) {
         return Result<void>::Error("Recorder not available", "subsystem");
     }
@@ -293,7 +297,7 @@ void StandardRecorder::Tick(size_t currentTick, const unsigned char *keyboardSta
         return;
     }
 
-    auto recorder = m_Engine->GetRecorder();
+    auto recorder = m_Services->Resolve<Recorder>();
     if (recorder) {
         recorder->Tick(currentTick, keyboardState);
     }
@@ -307,7 +311,7 @@ Result<std::vector<FrameData>> StandardRecorder::Stop() {
         return Result<std::vector<FrameData>>::Error("Not recording", "state");
     }
 
-    auto recorder = m_Engine->GetRecorder();
+    auto recorder = m_Services->Resolve<Recorder>();
     if (!recorder) {
         return Result<std::vector<FrameData>>::Error("Recorder not available", "subsystem");
     }

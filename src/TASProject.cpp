@@ -35,10 +35,33 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     m_Description = manifest.get_or<std::string>("description", "No description.");
     m_UpdateRate = manifest.get_or<float>("update_rate", 132);
 
+    // Parse project scope (default to Level for backward compatibility)
+    std::string scopeStr = manifest.get_or<std::string>("scope", "level");
+    if (scopeStr == "global") {
+        m_ProjectScope = ProjectScope::Global;
+    } else {
+        m_ProjectScope = ProjectScope::Level; // Default
+    }
 
-    // A project is considered valid if it has the essential fields.
-    if (!m_TargetLevel.empty() && !m_Name.empty() && !m_Author.empty()) {
-        m_IsValid = true;
+    // Parse execution trigger (default to level for backward compatibility)
+    m_ExecutionTrigger = manifest.get_or<std::string>("trigger", "level");
+    if (m_ExecutionTrigger != "startup" && m_ExecutionTrigger != "menu" && m_ExecutionTrigger != "level") {
+        m_ExecutionTrigger = "level"; // Default if invalid
+    }
+
+    // Validation rules:
+    // - Level projects must have a target level
+    // - Global projects can work without a specific target level
+    if (m_ProjectScope == ProjectScope::Level) {
+        // Level projects require a target level to be valid
+        if (!m_TargetLevel.empty() && !m_Name.empty() && !m_Author.empty()) {
+            m_IsValid = true;
+        }
+    } else {
+        // Global projects are valid with just name and author (level is optional)
+        if (!m_Name.empty() && !m_Author.empty()) {
+            m_IsValid = true;
+        }
     }
 }
 

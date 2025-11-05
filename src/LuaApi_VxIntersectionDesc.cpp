@@ -4,7 +4,6 @@
 
 #include <CKTypes.h>
 #include <CKRenderObject.h>
-#include <VxVector.h>
 
 void LuaApi::RegisterVxIntersectionDesc(sol::state &lua) {
     // ===================================================================

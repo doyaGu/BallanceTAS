@@ -3,7 +3,6 @@
 #include <CK3dEntity.h>
 #include <CKObjectAnimation.h>
 #include <CKMesh.h>
-#include <CKPlace.h>
 #include <VxMatrix.h>
 
 void LuaApi::RegisterCK3dEntity(sol::state &lua) {

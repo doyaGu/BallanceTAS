@@ -14,6 +14,15 @@ enum class ProjectType {
 };
 
 /**
+ * @enum ProjectScope
+ * @brief The scope of TAS projects - where they can be executed.
+ */
+enum class ProjectScope {
+    Level,  // Level-specific projects (current system) - work only in specific levels
+    Global  // Global projects - work across menus and multiple levels
+};
+
+/**
  * @class TASProject
  * @brief Represents a single TAS project found on the filesystem.
  *
@@ -36,6 +45,11 @@ public:
     bool IsScriptProject() const { return m_ProjectType == ProjectType::Script; }
     bool IsRecordProject() const { return m_ProjectType == ProjectType::Record; }
 
+    // --- Scope Information ---
+    ProjectScope GetProjectScope() const { return m_ProjectScope; }
+    bool IsLevelProject() const { return m_ProjectScope == ProjectScope::Level; }
+    bool IsGlobalProject() const { return m_ProjectScope == ProjectScope::Global; }
+
     // --- Accessors for Manifest Data ---
     sol::table GetManifestTable() const { return m_Manifest; }
 
@@ -46,6 +60,12 @@ public:
     const std::string &GetEntryScript() const { return m_EntryScript; }
     float GetUpdateRate() const { return m_UpdateRate; }
     float GetDeltaTime() const { return 1000.0f / m_UpdateRate; }
+
+    // --- Execution Trigger Information ---
+    const std::string &GetExecutionTrigger() const { return m_ExecutionTrigger; }
+    bool ShouldExecuteOnStartup() const { return m_ExecutionTrigger == "startup"; }
+    bool ShouldExecuteOnMenu() const { return m_ExecutionTrigger == "menu"; }
+    bool ShouldExecuteOnLevel() const { return m_ExecutionTrigger == "level"; }
 
 
     // --- Path Accessors ---
@@ -107,7 +127,6 @@ public:
         return !m_IsZipProject || !m_ExecutionBasePath.empty();
     }
 
-
     // --- Translation Compatibility ---
 
     /**
@@ -154,6 +173,10 @@ private:
     std::string m_EntryScript = "main.lua";
     std::string m_TargetLevel;
     float m_UpdateRate = 132.0f; // Default to 132 = 66 * 2 (game's physics update rate)
+
+    // Project scope and execution
+    ProjectScope m_ProjectScope = ProjectScope::Level;
+    std::string m_ExecutionTrigger = "level"; // "startup", "menu", or "level"
 
     bool m_IsValid = false;
     bool m_IsZipProject = false;

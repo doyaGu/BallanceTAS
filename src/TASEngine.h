@@ -11,10 +11,14 @@
 // Forward declare TASStateMachine to avoid circular dependency
 class TASStateMachine;
 
-// Forward declare Controllers (Phase 2.3)
+// Forward declare Controllers
 class RecordingController;
 class PlaybackController;
 class TranslationController;
+
+// Forward declare ServiceContainer
+class ServiceContainer;
+class ServiceProvider;
 
 #define BML_TAS_PATH "..\\ModLoader\\TAS\\"
 
@@ -28,7 +32,7 @@ class GameInterface;
 class EventManager;
 
 // Script and record execution subsystems
-class ScriptContextManager;  // Multi-context script system
+class ScriptContextManager; // Multi-context script system
 class ScriptContext;
 class LuaScheduler;
 class RecordPlayer;
@@ -267,25 +271,34 @@ public:
     sol::state &GetLuaState() const;
     LuaScheduler *GetScheduler() const;
 
-    ProjectManager *GetProjectManager() const { return m_ProjectManager.get(); }
-    InputSystem *GetInputSystem() const { return m_InputSystem.get(); }
-    EventManager *GetEventManager() const { return m_EventManager.get(); }
+    ProjectManager *GetProjectManager() const;
+    InputSystem *GetInputSystem() const;
+    EventManager *GetEventManager() const;
 
     // Script execution subsystem
-    ScriptContextManager *GetScriptContextManager() const { return m_ScriptContextManager.get(); }
+    ScriptContextManager *GetScriptContextManager() const;
 #ifdef ENABLE_REPL
-    LuaREPLServer *GetREPLServer() const { return m_REPLServer.get(); }
+    LuaREPLServer *GetREPLServer() const;
 #endif
 
     // Record playback subsystem
-    RecordPlayer *GetRecordPlayer() const { return m_RecordPlayer.get(); }
+    RecordPlayer *GetRecordPlayer() const;
 
     // Recording subsystem accessors
-    Recorder *GetRecorder() const { return m_Recorder.get(); }
-    ScriptGenerator *GetScriptGenerator() const { return m_ScriptGenerator.get(); }
+    Recorder *GetRecorder() const;
+    ScriptGenerator *GetScriptGenerator() const;
 
     // Startup script management accessors
-    StartupProjectManager *GetStartupProjectManager() const { return m_StartupProjectManager.get(); }
+    StartupProjectManager *GetStartupProjectManager() const;
+
+    // Dependency Injection accessor
+    ServiceProvider *GetServiceProvider() const;
+
+    // Controllers and State Machine accessors
+    RecordingController *GetRecordingController() const;
+    PlaybackController *GetPlaybackController() const;
+    TranslationController *GetTranslationController() const;
+    TASStateMachine *GetStateMachine() const;
 
     // --- Tick Management ---
     size_t GetCurrentTick() const;
@@ -396,41 +409,35 @@ private:
 
     GameInterface *m_GameInterface;
 
-    // --- Managers ---
-    std::unique_ptr<ProjectManager> m_ProjectManager;
-    std::unique_ptr<EventManager> m_EventManager;
+    // --- Dependency Injection ---
+    std::unique_ptr<ServiceContainer> m_ServiceContainer;
+    mutable std::unique_ptr<ServiceProvider> m_ServiceProvider; // Lazy-initialized
 
-    // --- Core Logic Modules ---
-    std::unique_ptr<InputSystem> m_InputSystem;
-
-    // --- Execution Modules ---
-    std::unique_ptr<ScriptContextManager> m_ScriptContextManager;  // Multi-context script system
+    // Cached pointers (ServiceContainer owns objects, TASEngine caches for performance)
+    InputSystem *m_InputSystem = nullptr;
+    EventManager *m_EventManager = nullptr;
+    Recorder *m_Recorder = nullptr;
+    ScriptGenerator *m_ScriptGenerator = nullptr;
+    ScriptContextManager *m_ScriptContextManager = nullptr;
+    RecordPlayer *m_RecordPlayer = nullptr;
+    StartupProjectManager *m_StartupProjectManager = nullptr;
+    ProjectManager *m_ProjectManager = nullptr;
 #ifdef ENABLE_REPL
-    std::unique_ptr<LuaREPLServer> m_REPLServer;                   // Remote Lua REPL for debugging
+    LuaREPLServer *m_REPLServer = nullptr;
 #endif
-    std::unique_ptr<RecordPlayer> m_RecordPlayer;
 
-    // --- Recording Modules ---
-    std::unique_ptr<Recorder> m_Recorder;
-    std::unique_ptr<ScriptGenerator> m_ScriptGenerator;
-
-    // --- Startup Script Module ---
-    std::unique_ptr<StartupProjectManager> m_StartupProjectManager;
+    // State Machine and Controllers (cached pointers)
+    TASStateMachine *m_StateMachine = nullptr;
+    RecordingController *m_RecordingController = nullptr;
+    PlaybackController *m_PlaybackController = nullptr;
+    TranslationController *m_TranslationController = nullptr;
 
     // --- State ---
     PlaybackType m_PlaybackType = PlaybackType::None;
-    PendingOperation m_PendingOperation = PendingOperation::None;  // Operation waiting for level load
+    PendingOperation m_PendingOperation = PendingOperation::None; // Operation waiting for level load
     std::atomic<bool> m_ShuttingDown;
     size_t m_CurrentTick = 0;
     std::string m_Path = BML_TAS_PATH;
-
-    // State Machine (Phase 2 refactoring)
-    std::unique_ptr<TASStateMachine> m_StateMachine;
-
-    // Controllers (Phase 2.3 refactoring)
-    std::unique_ptr<RecordingController> m_RecordingController;
-    std::unique_ptr<PlaybackController> m_PlaybackController;
-    std::unique_ptr<TranslationController> m_TranslationController;
 
     bool m_AutoRestart = false; // Automatically restart current project when enter the same level again
     bool m_ValidationEnabled = false;

@@ -5,9 +5,9 @@
 
 #include "TASControllers.h"
 #include "TASEngine.h"
+#include "ServiceContainer.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
-#include "ScriptContextManager.h"
 #include "ScriptGenerator.h"
 #include "InputSystem.h"
 #include "GameInterface.h"
@@ -17,10 +17,9 @@
 // RecordingController Implementation
 // ============================================================================
 
-RecordingController::RecordingController(TASEngine* engine)
-    : m_Engine(engine) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
+RecordingController::RecordingController(ServiceProvider *provider) : m_ServiceProvider(provider) {
+    if (!m_ServiceProvider) {
+        throw std::invalid_argument("ServiceProvider cannot be null");
     }
 }
 
@@ -29,8 +28,14 @@ Result<void> RecordingController::Initialize() {
         return Result<void>::Ok();
     }
 
+    // Resolve TASEngine for strategy creation
+    auto engine = m_ServiceProvider->Resolve<TASEngine>();
+    if (!engine) {
+        return Result<void>::Error("TASEngine not available", "dependency");
+    }
+
     // Create default strategy (StandardRecorder)
-    m_Strategy = std::make_unique<StandardRecorder>(m_Engine);
+    m_Strategy = std::make_unique<StandardRecorder>(engine);
 
     auto result = m_Strategy->Start();
     if (!result.IsOk()) {
@@ -55,12 +60,18 @@ Result<void> RecordingController::StartRecording(bool useValidation) {
         return Result<void>::Error("Already recording", "state");
     }
 
+    // Resolve TASEngine for strategy creation
+    auto engine = m_ServiceProvider->Resolve<TASEngine>();
+    if (!engine) {
+        return Result<void>::Error("TASEngine not available", "dependency");
+    }
+
     // Create appropriate strategy
     if (useValidation) {
-        auto innerStrategy = std::make_unique<StandardRecorder>(m_Engine);
+        auto innerStrategy = std::make_unique<StandardRecorder>(engine);
         m_Strategy = std::make_unique<ValidationRecorder>(std::move(innerStrategy));
     } else {
-        m_Strategy = std::make_unique<StandardRecorder>(m_Engine);
+        m_Strategy = std::make_unique<StandardRecorder>(engine);
     }
 
     // Setup input system
@@ -74,7 +85,7 @@ Result<void> RecordingController::StartRecording(bool useValidation) {
     }
 
     Log::Info("RecordingController: Started %s recording",
-             useValidation ? "validation" : "standard");
+              useValidation ? "validation" : "standard");
 
     return Result<void>::Ok();
 }
@@ -92,7 +103,7 @@ Result<std::vector<FrameData>> RecordingController::StopRecording(bool immediate
 
     if (result.IsOk()) {
         Log::Info("RecordingController: Stopped recording, captured %zu frames",
-                 result.Unwrap().size());
+                  result.Unwrap().size());
     }
 
     return result;
@@ -106,28 +117,28 @@ size_t RecordingController::GetFrameCount() const {
     return m_Strategy ? m_Strategy->GetFrameCount() : 0;
 }
 
-void RecordingController::SetRecordingOptions(const IRecordingStrategy::Options& options) {
+void RecordingController::SetRecordingOptions(const IRecordingStrategy::Options &options) {
     if (m_Strategy) {
         m_Strategy->SetOptions(options);
     }
 }
 
 void RecordingController::SetupInputSystemForRecording() {
-    auto inputSystem = m_Engine->GetInputSystem();
+    auto inputSystem = m_ServiceProvider->Resolve<InputSystem>();
     if (inputSystem) {
         inputSystem->Reset();
-        inputSystem->SetEnabled(false);  // Disable during recording
+        inputSystem->SetEnabled(false); // Disable during recording
     }
 }
 
 void RecordingController::CleanupAfterRecording() {
-    auto inputSystem = m_Engine->GetInputSystem();
+    auto inputSystem = m_ServiceProvider->Resolve<InputSystem>();
     if (inputSystem) {
         inputSystem->Reset();
         inputSystem->SetEnabled(false);
     }
 
-    auto gameInterface = m_Engine->GetGameInterface();
+    auto gameInterface = m_ServiceProvider->Resolve<GameInterface>();
     if (gameInterface) {
         gameInterface->SetUIMode(UIMode::Idle);
     }
@@ -137,10 +148,10 @@ void RecordingController::CleanupAfterRecording() {
 // PlaybackController Implementation
 // ============================================================================
 
-PlaybackController::PlaybackController(TASEngine* engine)
-    : m_Engine(engine), m_CurrentType(PlaybackType::None) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
+PlaybackController::PlaybackController(ServiceProvider *provider)
+    : m_ServiceProvider(provider), m_CurrentType(PlaybackType::None) {
+    if (!m_ServiceProvider) {
+        throw std::invalid_argument("ServiceProvider cannot be null");
     }
 }
 
@@ -155,7 +166,7 @@ Result<void> PlaybackController::Initialize() {
     return Result<void>::Ok();
 }
 
-Result<void> PlaybackController::StartPlayback(TASProject* project, PlaybackType type) {
+Result<void> PlaybackController::StartPlayback(TASProject *project, PlaybackType type) {
     if (!m_IsInitialized) {
         return Result<void>::Error("PlaybackController not initialized", "state");
     }
@@ -192,8 +203,8 @@ Result<void> PlaybackController::StartPlayback(TASProject* project, PlaybackType
     }
 
     Log::Info("PlaybackController: Started %s playback for project '%s'",
-             type == PlaybackType::Script ? "script" : "record",
-             project->GetName().c_str());
+              type == PlaybackType::Script ? "script" : "record",
+              project->GetName().c_str());
 
     return Result<void>::Ok();
 }
@@ -246,7 +257,7 @@ float PlaybackController::GetProgress() const {
 }
 
 void PlaybackController::SetupInputSystemForPlayback(PlaybackType type) {
-    auto inputSystem = m_Engine->GetInputSystem();
+    auto inputSystem = m_ServiceProvider->Resolve<InputSystem>();
     if (!inputSystem) {
         return;
     }
@@ -264,28 +275,35 @@ void PlaybackController::SetupInputSystemForPlayback(PlaybackType type) {
 }
 
 void PlaybackController::CleanupAfterPlayback() {
-    auto inputSystem = m_Engine->GetInputSystem();
+    auto inputSystem = m_ServiceProvider->Resolve<InputSystem>();
     if (inputSystem) {
         inputSystem->Reset();
         inputSystem->SetEnabled(false);
     }
 
-    auto gameInterface = m_Engine->GetGameInterface();
+    auto gameInterface = m_ServiceProvider->Resolve<GameInterface>();
     if (gameInterface) {
         gameInterface->SetUIMode(UIMode::Idle);
     }
 }
 
 Result<std::unique_ptr<IPlaybackStrategy>> PlaybackController::CreateStrategy(PlaybackType type) {
+    // Resolve TASEngine for strategy creation
+    auto engine = m_ServiceProvider->Resolve<TASEngine>();
+    if (!engine) {
+        return Result<std::unique_ptr<IPlaybackStrategy>>::Error(
+            "TASEngine not available", "dependency");
+    }
+
     if (type == PlaybackType::Script) {
-        auto strategy = std::make_unique<ScriptPlaybackStrategy>(m_Engine);
+        auto strategy = std::make_unique<ScriptPlaybackStrategy>(engine);
         auto result = strategy->Initialize();
         if (!result.IsOk()) {
             return Result<std::unique_ptr<IPlaybackStrategy>>::Error(result.GetError());
         }
         return Result<std::unique_ptr<IPlaybackStrategy>>::Ok(std::move(strategy));
     } else if (type == PlaybackType::Record) {
-        auto strategy = std::make_unique<RecordPlaybackStrategy>(m_Engine);
+        auto strategy = std::make_unique<RecordPlaybackStrategy>(engine);
         auto result = strategy->Initialize();
         if (!result.IsOk()) {
             return Result<std::unique_ptr<IPlaybackStrategy>>::Error(result.GetError());
@@ -301,10 +319,10 @@ Result<std::unique_ptr<IPlaybackStrategy>> PlaybackController::CreateStrategy(Pl
 // TranslationController Implementation
 // ============================================================================
 
-TranslationController::TranslationController(TASEngine* engine)
-    : m_Engine(engine) {
-    if (!m_Engine) {
-        throw std::invalid_argument("TASEngine cannot be null");
+TranslationController::TranslationController(ServiceProvider *provider)
+    : m_ServiceProvider(provider) {
+    if (!m_ServiceProvider) {
+        throw std::invalid_argument("ServiceProvider cannot be null");
     }
 }
 
@@ -319,8 +337,8 @@ Result<void> TranslationController::Initialize() {
     return Result<void>::Ok();
 }
 
-Result<void> TranslationController::StartTranslation(TASProject* project,
-                                                      const GenerationOptions& options) {
+Result<void> TranslationController::StartTranslation(TASProject *project,
+                                                     const GenerationOptions &options) {
     if (!m_IsInitialized) {
         return Result<void>::Error("TranslationController not initialized", "state");
     }
@@ -333,8 +351,8 @@ Result<void> TranslationController::StartTranslation(TASProject* project,
         return Result<void>::Error("Already translating", "state");
     }
 
-    auto recorder = m_Engine->GetRecorder();
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recorder = m_ServiceProvider->Resolve<Recorder>();
+    auto recordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
 
     if (!recorder || !recordPlayer) {
         return Result<void>::Error("Recorder or RecordPlayer not available", "subsystem");
@@ -358,7 +376,7 @@ Result<void> TranslationController::StartTranslation(TASProject* project,
     // Start record playback
     bool success = recordPlayer->LoadAndPlay(project);
     if (!success) {
-        recorder->Stop();  // Clean up
+        recorder->Stop(); // Clean up
         return Result<void>::Error("Failed to start record playback for translation", "playback");
     }
 
@@ -366,7 +384,7 @@ Result<void> TranslationController::StartTranslation(TASProject* project,
     m_CurrentProject = project;
 
     Log::Info("TranslationController: Started translation for project '%s'",
-             project->GetName().c_str());
+              project->GetName().c_str());
 
     return Result<void>::Ok();
 }
@@ -377,13 +395,13 @@ void TranslationController::StopTranslation(bool clearProject) {
     }
 
     // Stop record playback
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
     if (recordPlayer) {
         recordPlayer->Stop();
     }
 
     // Stop recorder (will auto-generate script if configured)
-    auto recorder = m_Engine->GetRecorder();
+    auto recorder = m_ServiceProvider->Resolve<Recorder>();
     if (recorder && recorder->IsRecording()) {
         recorder->Stop();
         Log::Info("TranslationController: Recorder stopped, script generated");
@@ -395,7 +413,7 @@ void TranslationController::StopTranslation(bool clearProject) {
         m_CurrentProject = nullptr;
     }
 
-    auto gameInterface = m_Engine->GetGameInterface();
+    auto gameInterface = m_ServiceProvider->Resolve<GameInterface>();
     if (gameInterface) {
         gameInterface->SetUIMode(UIMode::Idle);
     }
@@ -412,7 +430,7 @@ float TranslationController::GetProgress() const {
         return 0.0f;
     }
 
-    auto recordPlayer = m_Engine->GetRecordPlayer();
+    auto recordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
     if (!recordPlayer) {
         return 0.0f;
     }
@@ -430,11 +448,4 @@ void TranslationController::OnTranslationPlaybackComplete() {
 
     // Stop translation (Recorder will auto-generate script)
     StopTranslation(false);
-}
-
-void TranslationController::GenerateScript() {
-    // This method is kept for interface compatibility but is not used.
-    // Script generation is now handled automatically by Recorder when it stops
-    // in auto-generate mode.
-    Log::Warn("TranslationController::GenerateScript() called, but script generation is automatic");
 }

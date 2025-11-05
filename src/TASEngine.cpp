@@ -19,10 +19,11 @@
 #include "UIManager.h"
 #include "StartupProjectManager.h"
 
-// Phase 2 refactoring components
 #include "TASStateMachine.h"
 #include "TASStateHandlers.h"
 #include "TASControllers.h"
+
+#include "ServiceContainer.h"
 
 TASEngine::TASEngine(GameInterface *game) : m_GameInterface(game), m_ShuttingDown(false) {
     if (!m_GameInterface) {
@@ -43,50 +44,81 @@ bool TASEngine::Initialize() {
         return false;
     }
 
-    // 1. Create Core Subsystems
+    // 0. Create ServiceContainer
     try {
-        m_InputSystem = std::make_unique<InputSystem>();
-        m_EventManager = std::make_unique<EventManager>();
+        m_ServiceContainer = std::make_unique<ServiceContainer>();
+        Log::Info("ServiceContainer initialized.");
 
-        // Initialize recording subsystems
-        m_Recorder = std::make_unique<Recorder>(this);
-        m_ScriptGenerator = std::make_unique<ScriptGenerator>(this);
+        // Register external dependencies (TASEngine retains ownership)
+        m_ServiceContainer->RegisterSingletonPtr(m_GameInterface);
+        m_ServiceContainer->RegisterSingletonPtr(this); // Register TASEngine itself for Strategy creation
+    } catch (const std::exception &e) {
+        Log::Error("Failed to initialize ServiceContainer: %s", e.what());
+        return false;
+    }
 
-        // Initialize execution subsystems
-        m_ScriptContextManager = std::make_unique<ScriptContextManager>(this);
-        m_RecordPlayer = std::make_unique<RecordPlayer>(this);
+    // 1. Create Core Subsystems and transfer ownership to ServiceContainer
+    try {
+        // Create subsystems
+        auto inputSystem = std::make_unique<InputSystem>();
+        auto eventManager = std::make_unique<EventManager>();
+        auto recorder = std::make_unique<Recorder>(this);
+        auto scriptGenerator = std::make_unique<ScriptGenerator>(this);
+        auto scriptContextManager = std::make_unique<ScriptContextManager>(this);
+        auto recordPlayer = std::make_unique<RecordPlayer>(this);
+        auto startupProjectManager = std::make_unique<StartupProjectManager>(this);
 
-        // Initialize startup script management
-        m_StartupProjectManager = std::make_unique<StartupProjectManager>(this);
+        // Transfer ownership to container
+        m_ServiceContainer->RegisterSingletonInstance(std::move(inputSystem));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(eventManager));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(recorder));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(scriptGenerator));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(scriptContextManager));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(recordPlayer));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(startupProjectManager));
 
-        // Initialize state machine (Phase 2 refactoring)
-        m_StateMachine = std::make_unique<TASStateMachine>(this);
+        // Initialize state machine
+        auto stateMachine = std::make_unique<TASStateMachine>(this);
 
         // Register state handlers
-        m_StateMachine->RegisterHandler(TASStateMachine::State::Idle,
-            std::make_unique<IdleHandler>(this));
-        m_StateMachine->RegisterHandler(TASStateMachine::State::Recording,
-            std::make_unique<RecordingHandler>(this));
-        m_StateMachine->RegisterHandler(TASStateMachine::State::PlayingScript,
-            std::make_unique<PlayingScriptHandler>(this));
-        m_StateMachine->RegisterHandler(TASStateMachine::State::PlayingRecord,
-            std::make_unique<PlayingRecordHandler>(this));
-        m_StateMachine->RegisterHandler(TASStateMachine::State::Translating,
-            std::make_unique<TranslatingHandler>(this));
-        m_StateMachine->RegisterHandler(TASStateMachine::State::Paused,
-            std::make_unique<PausedHandler>(this));
+        stateMachine->RegisterHandler(TASStateMachine::State::Idle,
+                                      std::make_unique<IdleHandler>(this));
+        stateMachine->RegisterHandler(TASStateMachine::State::Recording,
+                                      std::make_unique<RecordingHandler>(this));
+        stateMachine->RegisterHandler(TASStateMachine::State::PlayingScript,
+                                      std::make_unique<PlayingScriptHandler>(this));
+        stateMachine->RegisterHandler(TASStateMachine::State::PlayingRecord,
+                                      std::make_unique<PlayingRecordHandler>(this));
+        stateMachine->RegisterHandler(TASStateMachine::State::Translating,
+                                      std::make_unique<TranslatingHandler>(this));
+        stateMachine->RegisterHandler(TASStateMachine::State::Paused,
+                                      std::make_unique<PausedHandler>(this));
 
         Log::Info("State machine initialized with all handlers registered.");
 
-        // Initialize controllers (Phase 2.3 refactoring)
-        m_RecordingController = std::make_unique<RecordingController>(this);
-        m_PlaybackController = std::make_unique<PlaybackController>(this);
-        m_TranslationController = std::make_unique<TranslationController>(this);
+        // Transfer to container
+        m_ServiceContainer->RegisterSingletonInstance(std::move(stateMachine));
+
+        // Initialize controllers
+        auto provider = GetServiceProvider();
+
+        auto recordingController = std::make_unique<RecordingController>(provider);
+        auto playbackController = std::make_unique<PlaybackController>(provider);
+        auto translationController = std::make_unique<TranslationController>(provider);
+
+        // Transfer to container
+        m_ServiceContainer->RegisterSingletonInstance(std::move(recordingController));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(playbackController));
+        m_ServiceContainer->RegisterSingletonInstance(std::move(translationController));
 
         // Initialize controllers (they might fail, but that's okay - they'll log errors)
-        m_RecordingController->Initialize();
-        m_PlaybackController->Initialize();
-        m_TranslationController->Initialize();
+        auto recordingCtrl = m_ServiceContainer->Resolve<RecordingController>();
+        auto playbackCtrl = m_ServiceContainer->Resolve<PlaybackController>();
+        auto translationCtrl = m_ServiceContainer->Resolve<TranslationController>();
+
+        if (recordingCtrl) recordingCtrl->Initialize();
+        if (playbackCtrl) playbackCtrl->Initialize();
+        if (translationCtrl) translationCtrl->Initialize();
 
         Log::Info("Controllers initialized.");
     } catch (const std::exception &e) {
@@ -104,17 +136,18 @@ bool TASEngine::Initialize() {
 
 #ifdef ENABLE_REPL
         // Initialize REPL server (optional - for remote debugging)
-        m_REPLServer = std::make_unique<LuaREPLServer>(this);
-        if (m_REPLServer->Initialize(7878, "")) {  // Default port, no auth
-            if (m_REPLServer->Start()) {
+        auto replServer = std::make_unique<LuaREPLServer>(this);
+        if (replServer->Initialize(7878, "")) {
+            // Default port, no auth
+            if (replServer->Start()) {
                 Log::Info("REPL server started on port 7878");
+                // Transfer to container only if successful
+                m_ServiceContainer->RegisterSingletonInstance(std::move(replServer));
             } else {
-                Log::Warn("Failed to start REPL server");
-                m_REPLServer.reset();  // Don't keep failed server
+                Log::Warn("Failed to start REPL server, not registering in container");
             }
         } else {
-            Log::Warn("Failed to initialize REPL server");
-            m_REPLServer.reset();
+            Log::Warn("Failed to initialize REPL server, not registering in container");
         }
 #endif // ENABLE_REPL
     } catch (const std::exception &e) {
@@ -124,15 +157,17 @@ bool TASEngine::Initialize() {
 
     // 3. Initialize Project Manager
     try {
-        m_ProjectManager = std::make_unique<ProjectManager>(this);
+        auto projectManager = std::make_unique<ProjectManager>(this);
+        m_ServiceContainer->RegisterSingletonInstance(std::move(projectManager));
     } catch (const std::exception &e) {
         Log::Error("Failed to initialize project manager: %s", e.what());
         return false;
     }
 
-    // 4. Initialize StartupProjectManager (needs ProjectManager for project access)
+    // 4. Initialize StartupProjectManager
     try {
-        if (!m_StartupProjectManager->Initialize()) {
+        auto startupMgr = GetStartupProjectManager();
+        if (startupMgr && !startupMgr->Initialize()) {
             Log::Error("Failed to initialize StartupProjectManager.");
             return false;
         }
@@ -142,8 +177,9 @@ bool TASEngine::Initialize() {
     }
 
     // 5. Set up callbacks
-    if (m_RecordPlayer) {
-        m_RecordPlayer->SetStatusCallback([this](bool isPlaying) {
+    auto recordPlayer = GetRecordPlayer();
+    if (recordPlayer) {
+        recordPlayer->SetStatusCallback([this](bool isPlaying) {
             if (m_ShuttingDown) return;
 
             if (!isPlaying && IsPlaying() && m_PlaybackType == PlaybackType::Record) {
@@ -152,17 +188,17 @@ bool TASEngine::Initialize() {
         });
     }
 
-    if (m_Recorder) {
-        m_Recorder->SetStatusCallback([this](bool isRecording) {
+    auto recorder = GetRecorder();
+    if (recorder) {
+        recorder->SetStatusCallback([this](bool isRecording) {
             if (m_ShuttingDown) return;
 
-            // UI mode is now managed by StateHandlers (RecordingHandler, IdleHandler)
-            // No need to update bit-mask state here
             m_GameInterface->SetUIMode(isRecording ? UIMode::Recording : UIMode::Idle);
         });
     }
 
     Log::Info("TASEngine and all subsystems initialized.");
+    Log::Info("ServiceContainer holds %zu registered services.", m_ServiceContainer->GetServiceCount());
     return true;
 }
 
@@ -186,30 +222,26 @@ void TASEngine::Shutdown() {
             StopRecordingImmediate();
         }
 
-        // Shutdown in reverse order
-        m_StartupProjectManager.reset();
-        m_ProjectManager.reset();
-        m_ScriptGenerator.reset();
-        m_Recorder.reset();
-
-        // Shutdown execution subsystems
+        // Call shutdown methods on subsystems
 #ifdef ENABLE_REPL
-        if (m_REPLServer) {
-            m_REPLServer->Shutdown();
-            m_REPLServer.reset();
+        auto replServer = GetREPLServer();
+        if (replServer) {
+            replServer->Shutdown();
         }
 #endif
 
-        if (m_ScriptContextManager) {
-            m_ScriptContextManager->Shutdown();
-            m_ScriptContextManager.reset();
+        auto scriptCtxMgr = GetScriptContextManager();
+        if (scriptCtxMgr) {
+            scriptCtxMgr->Shutdown();
         }
-        m_RecordPlayer.reset();
 
-        m_EventManager.reset();
-        m_InputSystem.reset();
+        // Destroy ServiceProvider first (it references the container)
+        m_ServiceProvider.reset();
 
-        Log::Info("TASEngine shutdown complete.");
+        // Clear ServiceContainer - this will destroy all registered services
+        m_ServiceContainer->Clear();
+
+        Log::Info("TASEngine shutdown complete. ServiceContainer cleared.");
     } catch (const std::exception &e) {
         Log::Error("Exception during TASEngine shutdown: %s", e.what());
     }
@@ -271,7 +303,7 @@ void TASEngine::Stop() {
         StopReplay(!shouldKeepScript); // Clear project only if not global script
     } else if (IsRecording()) {
         StopRecording();
-    }  else {
+    } else {
         // Stop any pending operations
         m_PendingOperation = PendingOperation::None;
         m_PlaybackType = PlaybackType::None;
@@ -324,7 +356,7 @@ void TASEngine::StopRecording() {
                 Log::Error("Failed to stop recording: %s", result.GetError().message.c_str());
             } else {
                 // Handle recorded frames if needed
-                auto& frames = result.Unwrap();
+                auto &frames = result.Unwrap();
                 Log::Info("Recording stopped, captured %zu frames", frames.size());
 
                 // Validation dump (if enabled)
@@ -355,7 +387,7 @@ void TASEngine::StopRecordingImmediate() {
                 m_Recorder->SetAutoGenerate(false);
             }
 
-            m_RecordingController->StopRecording(true);  // immediate = true
+            m_RecordingController->StopRecording(true); // immediate = true
         }
 
         SetRecording(false);
@@ -417,7 +449,7 @@ void TASEngine::StopReplay(bool clearProject) {
 
     try {
         // Stop playback via controller
-        m_PlaybackController->StopPlayback(false);  // Don't clear project in controller
+        m_PlaybackController->StopPlayback(false); // Don't clear project in controller
     } catch (const std::exception &e) {
         Log::Error("Exception stopping replay: %s", e.what());
     }
@@ -449,7 +481,7 @@ void TASEngine::StopReplayImmediate() {
     try {
         // Stop playback via controller
         if (m_PlaybackController) {
-            m_PlaybackController->StopPlayback(true);  // Clear project
+            m_PlaybackController->StopPlayback(true); // Clear project
         }
 
         if (IsValidationEnabled()) {
@@ -496,7 +528,7 @@ bool TASEngine::StartTranslation() {
     // Check if record can be accurately translated
     if (!project->CanBeTranslated()) {
         Log::Error("Record cannot be accurately translated: %s",
-                           project->GetTranslationCompatibilityMessage().c_str());
+                   project->GetTranslationCompatibilityMessage().c_str());
         return false;
     }
 
@@ -524,7 +556,7 @@ void TASEngine::StopTranslation(bool clearProject) {
 
     try {
         // Stop translation via controller
-        m_TranslationController->StopTranslation(false);  // Don't clear project in controller
+        m_TranslationController->StopTranslation(false); // Don't clear project in controller
     } catch (const std::exception &e) {
         Log::Error("Exception stopping translation: %s", e.what());
     }
@@ -549,7 +581,7 @@ void TASEngine::StopTranslationImmediate() {
     try {
         // Stop translation via controller
         if (m_TranslationController) {
-            m_TranslationController->StopTranslation(true);  // Clear project
+            m_TranslationController->StopTranslation(true); // Clear project
         }
 
         // Reset keyboard state
@@ -615,7 +647,7 @@ bool TASEngine::StopValidationRecording() {
     bool success = m_Recorder->DumpFrameData(timestampedPath, true);
     if (success) {
         Log::Info("Validation recording completed - %zu frames captured, dumps saved to: %s",
-                          frameData.size(), timestampedPath.c_str());
+                  frameData.size(), timestampedPath.c_str());
     } else {
         Log::Error("Failed to generate validation dumps to: %s", timestampedPath.c_str());
     }
@@ -751,7 +783,7 @@ void TASEngine::StartReplayInternal() {
     }
 
     SetPlayPending(false);
-    m_PlaybackType = playbackType;  // Set PlaybackType BEFORE SetPlaying for StateMachine
+    m_PlaybackType = playbackType; // Set PlaybackType BEFORE SetPlaying for StateMachine
     SetPlaying(true);
 
     if (IsValidationEnabled()) {
@@ -762,8 +794,8 @@ void TASEngine::StartReplayInternal() {
 
     m_GameInterface->SetUIMode(UIMode::Playing);
     Log::Info("Started playing TAS project: %s (%s mode)",
-                      project->GetName().c_str(),
-                      playbackType == PlaybackType::Script ? "Script" : "Record");
+              project->GetName().c_str(),
+              playbackType == PlaybackType::Script ? "Script" : "Record");
 }
 
 void TASEngine::StartTranslationInternal() {
@@ -911,7 +943,7 @@ void TASEngine::SetupScriptPlaybackCallbacks() {
             try {
 #ifdef ENABLE_REPL
                 // STEP 0: REPL server tick start (process scheduled commands)
-                if (m_REPLServer && m_REPLServer->IsRunning()) {
+                if (m_REPLServer &&m_REPLServer->IsRunning()) {
                     m_REPLServer->OnTickStart(m_CurrentTick);
                     m_REPLServer->ProcessImmediateCommands();
                 }
@@ -937,7 +969,7 @@ void TASEngine::SetupScriptPlaybackCallbacks() {
 
 #ifdef ENABLE_REPL
                 // STEP 5: REPL server tick end (send notifications)
-                if (m_REPLServer && m_REPLServer->IsRunning()) {
+                if (m_REPLServer &&m_REPLServer->IsRunning()) {
                     m_REPLServer->OnTickEnd(m_CurrentTick);
                 }
 #endif
@@ -1135,7 +1167,7 @@ void TASEngine::ApplyMergedContextInputs(DX8InputManager *inputManager) {
 
     // Collect inputs from all executing contexts
     std::vector<const InputSystem *> activeInputs;
-    std::vector<std::string> contextNames;  // For conflict logging
+    std::vector<std::string> contextNames; // For conflict logging
 
     for (const auto &context : contexts) {
         if (context && context->IsExecuting()) {
@@ -1148,7 +1180,7 @@ void TASEngine::ApplyMergedContextInputs(DX8InputManager *inputManager) {
             } else {
                 // Warn if an executing context has no InputSystem (initialization issue)
                 Log::Warn("Context '%s' is executing but has no InputSystem.",
-                                 context->GetName().c_str());
+                          context->GetName().c_str());
             }
         }
     }
@@ -1179,9 +1211,9 @@ void TASEngine::ApplyMergedContextInputs(DX8InputManager *inputManager) {
                 std::vector<std::string> conflicts;
                 if (inputSys->HasConflicts(*activeInputs[j], &conflicts)) {
                     Log::Info("Input conflicts between '%s' and '%s': %zu conflicts",
-                                      contextNames[idx].c_str(),
-                                      contextNames[j].c_str(),
-                                      conflicts.size());
+                              contextNames[idx].c_str(),
+                              contextNames[j].c_str(),
+                              conflicts.size());
                     // Optionally log detailed conflicts
                     // for (const auto &conflict : conflicts) {
                     //     Log::Info("  - %s", conflict.c_str());
@@ -1307,12 +1339,12 @@ bool TASEngine::IsPaused() const {
 
 bool TASEngine::IsPlayingScript() const {
     return m_StateMachine &&
-           m_StateMachine->GetCurrentState() == TASStateMachine::State::PlayingScript;
+        m_StateMachine->GetCurrentState() == TASStateMachine::State::PlayingScript;
 }
 
 bool TASEngine::IsPlayingRecord() const {
     return m_StateMachine &&
-           m_StateMachine->GetCurrentState() == TASStateMachine::State::PlayingRecord;
+        m_StateMachine->GetCurrentState() == TASStateMachine::State::PlayingRecord;
 }
 
 // ============================================================================
@@ -1341,7 +1373,7 @@ void TASEngine::SetPlaying(bool playing) {
             auto result = m_StateMachine->ForceSetState(targetState);
             if (!result.IsOk()) {
                 Log::Error("Failed to transition StateMachine to playing state: %s",
-                          result.GetError().message.c_str());
+                           result.GetError().message.c_str());
             }
         }
     } else {
@@ -1352,7 +1384,7 @@ void TASEngine::SetPlaying(bool playing) {
             auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Idle);
             if (!result.IsOk()) {
                 Log::Error("Failed to transition StateMachine to idle state: %s",
-                          result.GetError().message.c_str());
+                           result.GetError().message.c_str());
             }
         }
     }
@@ -1375,7 +1407,7 @@ void TASEngine::SetRecording(bool recording) {
             auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Recording);
             if (!result.IsOk()) {
                 Log::Error("Failed to transition StateMachine to recording state: %s",
-                          result.GetError().message.c_str());
+                           result.GetError().message.c_str());
             }
         }
     } else {
@@ -1384,7 +1416,7 @@ void TASEngine::SetRecording(bool recording) {
             auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Idle);
             if (!result.IsOk()) {
                 Log::Error("Failed to transition StateMachine to idle state: %s",
-                          result.GetError().message.c_str());
+                           result.GetError().message.c_str());
             }
         }
     }
@@ -1407,7 +1439,7 @@ void TASEngine::SetTranslating(bool translating) {
             auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Translating);
             if (!result.IsOk()) {
                 Log::Error("Failed to transition StateMachine to translating state: %s",
-                          result.GetError().message.c_str());
+                           result.GetError().message.c_str());
             }
         }
     } else {
@@ -1416,8 +1448,70 @@ void TASEngine::SetTranslating(bool translating) {
             auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Idle);
             if (!result.IsOk()) {
                 Log::Error("Failed to transition StateMachine to idle state: %s",
-                          result.GetError().message.c_str());
+                           result.GetError().message.c_str());
             }
         }
     }
+}
+
+ServiceProvider *TASEngine::GetServiceProvider() const {
+    if (!m_ServiceProvider && m_ServiceContainer) {
+        // Lazy-initialize ServiceProvider
+        m_ServiceProvider = std::make_unique<ServiceProvider>(*m_ServiceContainer);
+    }
+    return m_ServiceProvider.get();
+}
+
+ProjectManager *TASEngine::GetProjectManager() const {
+    return m_ProjectManager;
+}
+
+InputSystem *TASEngine::GetInputSystem() const {
+    return m_InputSystem;
+}
+
+EventManager *TASEngine::GetEventManager() const {
+    return m_EventManager;
+}
+
+ScriptContextManager *TASEngine::GetScriptContextManager() const {
+    return m_ScriptContextManager;
+}
+
+#ifdef ENABLE_REPL
+LuaREPLServer *TASEngine::GetREPLServer() const {
+    return m_REPLServer;
+}
+#endif
+
+RecordPlayer *TASEngine::GetRecordPlayer() const {
+    return m_RecordPlayer;
+}
+
+Recorder *TASEngine::GetRecorder() const {
+    return m_Recorder;
+}
+
+ScriptGenerator *TASEngine::GetScriptGenerator() const {
+    return m_ScriptGenerator;
+}
+
+StartupProjectManager *TASEngine::GetStartupProjectManager() const {
+    return m_StartupProjectManager;
+}
+
+RecordingController *TASEngine::GetRecordingController() const {
+    return m_RecordingController;
+}
+
+PlaybackController *TASEngine::GetPlaybackController() const {
+    return m_PlaybackController;
+}
+
+TranslationController *TASEngine::GetTranslationController() const {
+    return m_TranslationController;
+}
+
+TASStateMachine *TASEngine::GetStateMachine() const {
+    return m_StateMachine;
 }

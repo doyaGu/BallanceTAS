@@ -37,6 +37,7 @@ set(TAS_PRIVATE_HEADERS
 		TASStateHandlers.h
 		TASStrategies.h
 		TASControllers.h
+		ServiceContainer.h
 		ResourceManager.h
 )
 
@@ -103,6 +104,7 @@ set(TAS_SOURCES
 		TASStateHandlers.cpp
 		TASStrategies.cpp
 		TASControllers.cpp
+		ServiceContainer.cpp
 		ResourceManager.cpp
 )
 

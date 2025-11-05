@@ -10,19 +10,30 @@
  * - RecordingController: Manages recording lifecycle
  * - PlaybackController: Manages playback lifecycle (Script/Record)
  * - TranslationController: Manages record-to-script translation
+ *
+ * Dependency Injection:
+ * Controllers now have access to ServiceProvider through TASEngine::GetServiceProvider().
+ * Future enhancements can resolve dependencies via the service container instead of
+ * direct TASEngine accessors, enabling full decoupling.
+ *
+ * Example:
+ *   auto provider = m_Engine->GetServiceProvider();
+ *   auto recorder = provider->Resolve<Recorder>();
+ *   auto inputSystem = provider->Resolve<InputSystem>();
  */
 
 #pragma once
 
+#include <memory>
+
 #include "Result.h"
 #include "TASProject.h"
 #include "TASStrategies.h"
-#include "ScriptGenerator.h"  // For GenerationOptions
-#include <memory>
-#include <string>
+#include "ScriptGenerator.h"
 
 // Forward declarations
 class TASEngine;
+class ServiceProvider;
 class Recorder;
 class RecordPlayer;
 class ScriptContextManager;
@@ -47,12 +58,16 @@ enum class PlaybackType;
  */
 class RecordingController {
 public:
-    explicit RecordingController(TASEngine* engine);
+    /**
+     * @brief Constructs RecordingController with dependency injection
+     * @param provider ServiceProvider for resolving dependencies
+     */
+    explicit RecordingController(ServiceProvider *provider);
     ~RecordingController() = default;
 
     // RecordingController is not copyable or movable
-    RecordingController(const RecordingController&) = delete;
-    RecordingController& operator=(const RecordingController&) = delete;
+    RecordingController(const RecordingController &) = delete;
+    RecordingController &operator=(const RecordingController &) = delete;
 
     /**
      * @brief Initializes the recording controller
@@ -87,10 +102,10 @@ public:
     /**
      * @brief Sets recording options
      */
-    void SetRecordingOptions(const IRecordingStrategy::Options& options);
+    void SetRecordingOptions(const IRecordingStrategy::Options &options);
 
 private:
-    TASEngine* m_Engine;
+    ServiceProvider *m_ServiceProvider;
     std::unique_ptr<IRecordingStrategy> m_Strategy;
     bool m_IsInitialized = false;
 
@@ -114,12 +129,12 @@ private:
  */
 class PlaybackController {
 public:
-    explicit PlaybackController(TASEngine* engine);
+    explicit PlaybackController(ServiceProvider *provider);
     ~PlaybackController() = default;
 
     // PlaybackController is not copyable or movable
-    PlaybackController(const PlaybackController&) = delete;
-    PlaybackController& operator=(const PlaybackController&) = delete;
+    PlaybackController(const PlaybackController &) = delete;
+    PlaybackController &operator=(const PlaybackController &) = delete;
 
     /**
      * @brief Initializes the playback controller
@@ -132,7 +147,7 @@ public:
      * @param type Playback type (Script or Record)
      * @return Result indicating success or failure
      */
-    Result<void> StartPlayback(TASProject* project, PlaybackType type);
+    Result<void> StartPlayback(TASProject *project, PlaybackType type);
 
     /**
      * @brief Stops the current playback
@@ -171,10 +186,10 @@ public:
     float GetProgress() const;
 
 private:
-    TASEngine* m_Engine;
+    ServiceProvider *m_ServiceProvider;
     std::unique_ptr<IPlaybackStrategy> m_Strategy;
-    TASProject* m_CurrentProject = nullptr;
-    PlaybackType m_CurrentType;  // Initialized in constructor
+    TASProject *m_CurrentProject = nullptr;
+    PlaybackType m_CurrentType; // Initialized in constructor
     bool m_IsInitialized = false;
 
     // Helper methods
@@ -197,12 +212,12 @@ private:
  */
 class TranslationController {
 public:
-    explicit TranslationController(TASEngine* engine);
+    explicit TranslationController(ServiceProvider *provider);
     ~TranslationController() = default;
 
     // TranslationController is not copyable or movable
-    TranslationController(const TranslationController&) = delete;
-    TranslationController& operator=(const TranslationController&) = delete;
+    TranslationController(const TranslationController &) = delete;
+    TranslationController &operator=(const TranslationController &) = delete;
 
     /**
      * @brief Initializes the translation controller
@@ -215,7 +230,7 @@ public:
      * @param options Script generation options
      * @return Result indicating success or failure
      */
-    Result<void> StartTranslation(TASProject* project, const GenerationOptions& options);
+    Result<void> StartTranslation(TASProject *project, const GenerationOptions &options);
 
     /**
      * @brief Stops the current translation
@@ -234,13 +249,12 @@ public:
     float GetProgress() const;
 
 private:
-    TASEngine* m_Engine;
-    TASProject* m_CurrentProject = nullptr;
+    ServiceProvider *m_ServiceProvider;
+    TASProject *m_CurrentProject = nullptr;
     GenerationOptions m_GenerationOptions;
     bool m_IsTranslating = false;
     bool m_IsInitialized = false;
 
     // Helper methods
     void OnTranslationPlaybackComplete();
-    void GenerateScript();
 };

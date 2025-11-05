@@ -3,16 +3,24 @@ set(TAS_PUBLIC_HEADERS)
 set(TAS_PRIVATE_HEADERS
         BallanceTAS.h
 		TASEngine.h
+		Logger.h
 		InputSystem.h
+		DX8InputManager.h
 		EventManager.h
 		GameInterface.h
         ProjectManager.h
 		TASProject.h
-		ScriptExecutor.h
+		ScriptContext.h
+		ScriptContextManager.h
+		SharedDataManager.h
+		MessageBus.h
 		LuaScheduler.h
+		LuaREPLServer.h
 		RecordPlayer.h
 		Recorder.h
 		ScriptGenerator.h
+		StartupProjectManager.h
+		AsyncTask.h
 
 		LuaApi.h
 
@@ -22,24 +30,50 @@ set(TAS_PRIVATE_HEADERS
 		UIManager.h
 		TASMenu.h
 		InGameOSD.h
+
+		# Phase 1 Refactoring Components
+		Result.h
+		TASStateMachine.h
+		TASStateHandlers.h
+		TASStrategies.h
+		TASControllers.h
+		ResourceManager.h
 )
 
 set(TAS_SOURCES
 		BallanceTAS.cpp
 		TASEngine.cpp
+		Logger.cpp
 		InputSystem.cpp
 		EventManager.cpp
 		GameInterface.cpp
         ProjectManager.cpp
 		TASProject.cpp
-		ScriptExecutor.cpp
+		ScriptContext.cpp
+		ScriptContextManager.cpp
+		SharedDataManager.cpp
+		MessageBus.cpp
 		LuaScheduler.cpp
+		LuaREPLServer.cpp
 		RecordPlayer.cpp
 		Recorder.cpp
 		ScriptGenerator.cpp
+		StartupProjectManager.cpp
+		AsyncTask.cpp
 
 		LuaApi.cpp
-		LuaApi_TAS.cpp
+		LuaApi_Core.cpp
+		LuaApi_Input.cpp
+		LuaApi_World.cpp
+		LuaApi_Concurrency.cpp
+		LuaApi_Context.cpp
+		LuaApi_Record.cpp
+		LuaApi_Project.cpp
+		LuaApi_Level.cpp
+		LuaApi_Menu.cpp
+		LuaApi_SharedBuffer.cpp
+		LuaApi_Result.cpp
+		LuaApi_Async.cpp
 		LuaApi_VxColor.cpp
 		LuaApi_VxMatrix.cpp
 		LuaApi_VxQuaternion.cpp
@@ -55,11 +89,18 @@ set(TAS_SOURCES
 		LuaApi_CKCamera.cpp
 		LuaApi_PhysicsObject.cpp
 
-		physics_RT.cpp
+        physics_RT.cpp
 
 		UIManager.cpp
 		TASMenu.cpp
 		InGameOSD.cpp
+
+		# Phase 1 Refactoring Components
+		TASStateMachine.cpp
+		TASStateHandlers.cpp
+		TASStrategies.cpp
+		TASControllers.cpp
+		ResourceManager.cpp
 )
 
 add_library(BallanceTAS SHARED
@@ -78,7 +119,7 @@ target_link_libraries(BallanceTAS
         PUBLIC
 		BML CK2 VxMath
         PRIVATE
-		minhook lua::lua sol2 zip fmt::fmt
+		minhook lua::lua sol2 zip fmt::fmt yyjson dinput8
 )
 
 target_compile_options(BallanceTAS PRIVATE

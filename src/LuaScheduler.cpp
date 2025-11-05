@@ -23,7 +23,7 @@ EventWaitTask::EventWaitTask(std::string eventName, TASEngine *engine, EventMana
 
     if (m_ListenerId == EventManager::kInvalidListenerId && m_Engine) {
         Log::Error("EventWaitTask: Failed to register listener for event '%s'",
-                                     m_EventName.c_str());
+                   m_EventName.c_str());
         m_EventReceived = true; // Prevent the coroutine from stalling forever
     }
 }
@@ -55,9 +55,9 @@ bool MessageResponseTask::IsComplete() {
     if (m_TimeoutTicks <= 0) {
         if (m_Engine) {
             Log::Warn("MessageResponseTask: Timeout waiting for response (correlation_id: %s)",
-                                       m_CorrelationId.c_str());
+                      m_CorrelationId.c_str());
         }
-        return true;  // Timeout
+        return true; // Timeout
     }
 
     // Try to get response from MessageBus
@@ -68,14 +68,14 @@ bool MessageResponseTask::IsComplete() {
         if (m_Engine) {
             Log::Error("MessageResponseTask: MessageBus not available");
         }
-        return true;  // Error - complete to avoid hanging
+        return true; // Error - complete to avoid hanging
     }
 
     auto response = messageBus->TryGetResponse(m_CorrelationId);
     if (response.has_value()) {
         // Response received! Store the serialized value
         m_ResponseReceived = true;
-        m_ResponseData = response->data;  // Store MessageBus::Message::SerializedValue as std::any
+        m_ResponseData = response->data; // Store MessageBus::Message::SerializedValue as std::any
         return true;
     }
 

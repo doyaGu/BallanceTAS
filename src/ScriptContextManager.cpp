@@ -416,7 +416,7 @@ void ScriptContextManager::SubscribeToEvent(const std::string &contextName, cons
     if (std::find(subscribers.begin(), subscribers.end(), contextName) == subscribers.end()) {
         subscribers.push_back(contextName);
         Log::Info("Context '%s' subscribed to event '%s'.",
-                                     contextName.c_str(), eventName.c_str());
+                  contextName.c_str(), eventName.c_str());
     }
 }
 
@@ -424,8 +424,7 @@ void ScriptContextManager::UnsubscribeFromEvent(const std::string &contextName, 
     auto it = m_EventSubscriptions.find(eventName);
     if (it != m_EventSubscriptions.end()) {
         auto &subscribers = it->second;
-        subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName),
-                         subscribers.end());
+        subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName), subscribers.end());
 
         // Clean up empty subscription lists
         if (subscribers.empty()) {
@@ -437,8 +436,7 @@ void ScriptContextManager::UnsubscribeFromEvent(const std::string &contextName, 
 void ScriptContextManager::UnsubscribeFromAllEvents(const std::string &contextName) {
     for (auto it = m_EventSubscriptions.begin(); it != m_EventSubscriptions.end();) {
         auto &subscribers = it->second;
-        subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName),
-                         subscribers.end());
+        subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName), subscribers.end());
 
         // Clean up empty subscription lists
         if (subscribers.empty()) {
@@ -472,7 +470,7 @@ std::shared_ptr<ScriptContext> ScriptContextManager::AcquirePooledContext(Script
     for (auto it = m_ContextPool.begin(); it != m_ContextPool.end(); ++it) {
         if (it->type == type) {
             Log::Info("Reusing pooled context for '%s' (type: %d).",
-                                       name.c_str(), static_cast<int>(type));
+                      name.c_str(), static_cast<int>(type));
 
             // Move context out of pool
             auto context = std::move(it->context);
@@ -497,7 +495,7 @@ std::shared_ptr<ScriptContext> ScriptContextManager::AcquirePooledContext(Script
 
 bool ScriptContextManager::ReleaseOrPoolContext(ScriptContext *context) {
     if (!context || !m_PoolConfig.enablePooling) {
-        return false;  // Not pooled, will be destroyed
+        return false; // Not pooled, will be destroyed
     }
 
     // Check if pool is full
@@ -505,12 +503,11 @@ bool ScriptContextManager::ReleaseOrPoolContext(ScriptContext *context) {
         // Pool is full, evict LRU (oldest)
         if (!m_ContextPool.empty()) {
             auto oldestIt = std::min_element(m_ContextPool.begin(), m_ContextPool.end(),
-                [](const PooledContext &a, const PooledContext &b) {
-                    return a.lastUsedTick < b.lastUsedTick;
-                });
+                                             [](const PooledContext &a, const PooledContext &b) {
+                                                 return a.lastUsedTick < b.lastUsedTick;
+                                             });
 
-            Log::Info("Pool full, evicting context (last used: %zu).",
-                                        oldestIt->lastUsedTick);
+            Log::Info("Pool full, evicting context (last used: %zu).", oldestIt->lastUsedTick);
             m_ContextPool.erase(oldestIt);
         }
     }
@@ -537,7 +534,7 @@ bool ScriptContextManager::ReleaseOrPoolContext(ScriptContext *context) {
         m_Contexts.erase(it);
 
         Log::Info("Context '%s' moved to pool (pool size: %zu).",
-                                   contextName.c_str(), m_ContextPool.size());
+                  contextName.c_str(), m_ContextPool.size());
         return true;
     }
 
@@ -548,13 +545,11 @@ bool ScriptContextManager::ReleaseOrPoolContext(ScriptContext *context) {
 // Custom Context Management
 // ============================================================================
 
-std::shared_ptr<ScriptContext> ScriptContextManager::CreateCustomContext(const std::string &name,
-                                                         int priority,
-                                                         const CustomContextLimits &limits) {
+std::shared_ptr<ScriptContext> ScriptContextManager::CreateCustomContext(const std::string &name, int priority, const CustomContextLimits &limits) {
     // Check total custom context limit
     if (m_CustomContextCount >= limits.maxTotalCustomContexts) {
         Log::Warn("Cannot create custom context '%s': total limit reached (%zu).",
-                                   name.c_str(), limits.maxTotalCustomContexts);
+                  name.c_str(), limits.maxTotalCustomContexts);
         return nullptr;
     }
 
@@ -570,7 +565,7 @@ std::shared_ptr<ScriptContext> ScriptContextManager::CreateCustomContext(const s
 
         if (perLevelCount >= limits.maxCustomContextsPerLevel) {
             Log::Warn("Cannot create custom context '%s': per-level limit reached for '%s' (%zu).",
-                                       name.c_str(), levelLabel.c_str(), limits.maxCustomContextsPerLevel);
+                      name.c_str(), levelLabel.c_str(), limits.maxCustomContextsPerLevel);
             return nullptr;
         }
     }

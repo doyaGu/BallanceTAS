@@ -59,16 +59,16 @@ public:
      * @brief Configuration for message queue bounds.
      */
     struct QueueConfig {
-        size_t maxQueueSize = 1000;           // Maximum messages in queue
+        size_t maxQueueSize = 1000; // Maximum messages in queue
         OverflowPolicy overflowPolicy = OverflowPolicy::DropOldest;
-        bool enablePriority = true;           // Use priority queue (always enabled with lock-free queue)
-        int requestTimeoutMs = 5000;          // Default timeout for requests
+        bool enablePriority = true;  // Use priority queue (always enabled with lock-free queue)
+        int requestTimeoutMs = 5000; // Default timeout for requests
 
-        // NEW: Message size limits (Sprint 2)
-        size_t maxMessageSize = 1024 * 1024;  // 1MB default max message size
-        size_t warnThreshold = 100 * 1024;    // 100KB - warn if message exceeds this
-        bool warnOnLargeMessage = true;       // Enable warnings for large messages
-        bool rejectOversized = true;          // Reject messages exceeding maxMessageSize
+        // Message size limits (Sprint 2)
+        size_t maxMessageSize = 1024 * 1024; // 1MB default max message size
+        size_t warnThreshold = 100 * 1024;   // 100KB - warn if message exceeds this
+        bool warnOnLargeMessage = true;      // Enable warnings for large messages
+        bool rejectOversized = true;         // Reject messages exceeding maxMessageSize
     };
 
     /**
@@ -86,11 +86,11 @@ public:
                 String,
                 Array,
                 Table,
-                SharedBufferRef  // NEW: Reference to shared buffer (zero-copy)
+                SharedBufferRef // NEW: Reference to shared buffer (zero-copy)
             };
 
             Type type = Type::Nil;
-            std::any data;  // For SharedBufferRef: std::shared_ptr<SharedBuffer>
+            std::any data; // For SharedBufferRef: std::shared_ptr<SharedBuffer>
 
             SerializedValue() = default;
 
@@ -111,7 +111,8 @@ public:
         std::string correlationId; // Correlation ID for request/response pattern
         bool isResponse;           // True if this is a response message
 
-        Message() : priority(Priority::Normal), isResponse(false) {}
+        Message() : priority(Priority::Normal), isResponse(false) {
+        }
 
         Message(std::string sender, std::string target, std::string type,
                 SerializedValue payload,
@@ -309,11 +310,12 @@ private:
      * @brief Represents a handler entry with context lifetime tracking.
      */
     struct HandlerEntry {
-        std::weak_ptr<ScriptContext> context;  // Weak pointer to track context lifetime
-        MessageHandler handler;                 // Handler callback function
-        uint64_t generation;                    // Generation counter for versioning
+        std::weak_ptr<ScriptContext> context; // Weak pointer to track context lifetime
+        MessageHandler handler;               // Handler callback function
+        uint64_t generation;                  // Generation counter for versioning
 
         HandlerEntry() : generation(0) {}
+
         HandlerEntry(std::weak_ptr<ScriptContext> ctx, MessageHandler h, uint64_t gen)
             : context(std::move(ctx)), handler(std::move(h)), generation(gen) {}
     };
@@ -413,7 +415,7 @@ private:
     // Message handlers: contextName -> messageType -> HandlerEntries
     mutable std::mutex m_HandlersMutex;
     std::unordered_map<std::string, std::unordered_map<std::string, std::vector<HandlerEntry>>> m_Handlers;
-    uint64_t m_HandlerGeneration = 0;  // Global generation counter for handler versioning
+    uint64_t m_HandlerGeneration = 0; // Global generation counter for handler versioning
 
     // Request/Response tracking
     mutable std::mutex m_ResponseMutex;

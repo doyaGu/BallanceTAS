@@ -16,30 +16,30 @@
 // BaseTASStateHandler Implementation
 // ============================================================================
 
-BaseTASStateHandler::BaseTASStateHandler(TASEngine* engine)
+BaseTASStateHandler::BaseTASStateHandler(TASEngine *engine)
     : m_Engine(engine) {
     if (!m_Engine) {
         throw std::invalid_argument("TASEngine cannot be null");
     }
 }
 
-Recorder* BaseTASStateHandler::GetRecorder() const {
+Recorder *BaseTASStateHandler::GetRecorder() const {
     return m_Engine ? m_Engine->GetRecorder() : nullptr;
 }
 
-RecordPlayer* BaseTASStateHandler::GetRecordPlayer() const {
+RecordPlayer *BaseTASStateHandler::GetRecordPlayer() const {
     return m_Engine ? m_Engine->GetRecordPlayer() : nullptr;
 }
 
-ScriptContextManager* BaseTASStateHandler::GetScriptContextManager() const {
+ScriptContextManager *BaseTASStateHandler::GetScriptContextManager() const {
     return m_Engine ? m_Engine->GetScriptContextManager() : nullptr;
 }
 
-InputSystem* BaseTASStateHandler::GetInputSystem() const {
+InputSystem *BaseTASStateHandler::GetInputSystem() const {
     return m_Engine ? m_Engine->GetInputSystem() : nullptr;
 }
 
-GameInterface* BaseTASStateHandler::GetGameInterface() const {
+GameInterface *BaseTASStateHandler::GetGameInterface() const {
     return m_Engine ? m_Engine->GetGameInterface() : nullptr;
 }
 
@@ -47,7 +47,7 @@ GameInterface* BaseTASStateHandler::GetGameInterface() const {
 // IdleHandler Implementation
 // ============================================================================
 
-IdleHandler::IdleHandler(TASEngine* engine)
+IdleHandler::IdleHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
@@ -82,16 +82,16 @@ void IdleHandler::OnTick() {
 bool IdleHandler::CanTransitionTo(TASStateMachine::State newState) const {
     // From Idle, can transition to any active state
     return newState == TASStateMachine::State::Recording ||
-           newState == TASStateMachine::State::PlayingScript ||
-           newState == TASStateMachine::State::PlayingRecord ||
-           newState == TASStateMachine::State::Translating;
+        newState == TASStateMachine::State::PlayingScript ||
+        newState == TASStateMachine::State::PlayingRecord ||
+        newState == TASStateMachine::State::Translating;
 }
 
 // ============================================================================
 // RecordingHandler Implementation
 // ============================================================================
 
-RecordingHandler::RecordingHandler(TASEngine* engine)
+RecordingHandler::RecordingHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
@@ -118,7 +118,7 @@ Result<void> RecordingHandler::OnEnter() {
 
     try {
         recorder->Start();
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         return Result<void>::Error(
             std::string("Failed to start recorder: ") + e.what(),
             "recorder"
@@ -142,7 +142,7 @@ Result<void> RecordingHandler::OnExit() {
     if (recorder && recorder->IsRecording()) {
         try {
             recorder->Stop();
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             Log::Error("Exception while stopping recorder: %s", e.what());
             // Continue with cleanup even if stop fails
         }
@@ -166,14 +166,14 @@ void RecordingHandler::OnTick() {
 bool RecordingHandler::CanTransitionTo(TASStateMachine::State newState) const {
     // From Recording, can only transition to Idle or Paused
     return newState == TASStateMachine::State::Idle ||
-           newState == TASStateMachine::State::Paused;
+        newState == TASStateMachine::State::Paused;
 }
 
 // ============================================================================
 // PlayingScriptHandler Implementation
 // ============================================================================
 
-PlayingScriptHandler::PlayingScriptHandler(TASEngine* engine)
+PlayingScriptHandler::PlayingScriptHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
@@ -206,7 +206,7 @@ Result<void> PlayingScriptHandler::OnExit() {
     auto scriptManager = GetScriptContextManager();
     if (scriptManager) {
         auto contexts = scriptManager->GetContextsByPriority();
-        for (const auto& ctx : contexts) {
+        for (const auto &ctx : contexts) {
             if (ctx && ctx->IsExecuting()) {
                 Log::Info("Stopping script execution in context: %s", ctx->GetName().c_str());
                 ctx->Stop();
@@ -232,14 +232,14 @@ void PlayingScriptHandler::OnTick() {
 bool PlayingScriptHandler::CanTransitionTo(TASStateMachine::State newState) const {
     // From PlayingScript, can transition to Idle or Paused
     return newState == TASStateMachine::State::Idle ||
-           newState == TASStateMachine::State::Paused;
+        newState == TASStateMachine::State::Paused;
 }
 
 // ============================================================================
 // PlayingRecordHandler Implementation
 // ============================================================================
 
-PlayingRecordHandler::PlayingRecordHandler(TASEngine* engine)
+PlayingRecordHandler::PlayingRecordHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
@@ -274,7 +274,7 @@ Result<void> PlayingRecordHandler::OnExit() {
     if (recordPlayer && recordPlayer->IsPlaying()) {
         try {
             recordPlayer->Stop();
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             Log::Error("Exception while stopping record player: %s", e.what());
         }
     }
@@ -297,14 +297,14 @@ void PlayingRecordHandler::OnTick() {
 bool PlayingRecordHandler::CanTransitionTo(TASStateMachine::State newState) const {
     // From PlayingRecord, can transition to Idle or Paused
     return newState == TASStateMachine::State::Idle ||
-           newState == TASStateMachine::State::Paused;
+        newState == TASStateMachine::State::Paused;
 }
 
 // ============================================================================
 // TranslatingHandler Implementation
 // ============================================================================
 
-TranslatingHandler::TranslatingHandler(TASEngine* engine)
+TranslatingHandler::TranslatingHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
@@ -339,7 +339,7 @@ Result<void> TranslatingHandler::OnExit() {
     if (recordPlayer && recordPlayer->IsPlaying()) {
         try {
             recordPlayer->Stop();
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             Log::Error("Exception while stopping record player: %s", e.what());
         }
     }
@@ -348,7 +348,7 @@ Result<void> TranslatingHandler::OnExit() {
     if (recorder && recorder->IsRecording()) {
         try {
             recorder->Stop();
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             Log::Error("Exception while stopping recorder: %s", e.what());
         }
     }
@@ -378,7 +378,7 @@ bool TranslatingHandler::CanTransitionTo(TASStateMachine::State newState) const 
 // PausedHandler Implementation
 // ============================================================================
 
-PausedHandler::PausedHandler(TASEngine* engine)
+PausedHandler::PausedHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
@@ -411,6 +411,6 @@ void PausedHandler::OnTick() {
 bool PausedHandler::CanTransitionTo(TASStateMachine::State newState) const {
     // From Paused, can resume to playing states or go to Idle
     return newState == TASStateMachine::State::Idle ||
-           newState == TASStateMachine::State::PlayingScript ||
-           newState == TASStateMachine::State::PlayingRecord;
+        newState == TASStateMachine::State::PlayingScript ||
+        newState == TASStateMachine::State::PlayingRecord;
 }

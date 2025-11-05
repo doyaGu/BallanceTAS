@@ -25,18 +25,18 @@ class GameInterface;
  */
 class BaseTASStateHandler : public TASStateMachine::IStateHandler {
 public:
-    explicit BaseTASStateHandler(TASEngine* engine);
+    explicit BaseTASStateHandler(TASEngine *engine);
     virtual ~BaseTASStateHandler() = default;
 
 protected:
-    TASEngine* m_Engine;
+    TASEngine *m_Engine;
 
     // Helper methods for accessing TASEngine subsystems
-    Recorder* GetRecorder() const;
-    RecordPlayer* GetRecordPlayer() const;
-    ScriptContextManager* GetScriptContextManager() const;
-    InputSystem* GetInputSystem() const;
-    GameInterface* GetGameInterface() const;
+    Recorder *GetRecorder() const;
+    RecordPlayer *GetRecordPlayer() const;
+    ScriptContextManager *GetScriptContextManager() const;
+    InputSystem *GetInputSystem() const;
+    GameInterface *GetGameInterface() const;
 };
 
 // ============================================================================
@@ -51,13 +51,13 @@ protected:
  */
 class IdleHandler : public BaseTASStateHandler {
 public:
-    explicit IdleHandler(TASEngine* engine);
+    explicit IdleHandler(TASEngine *engine);
 
     Result<void> OnEnter() override;
     Result<void> OnExit() override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
-    const char* GetStateName() const override { return "IdleHandler"; }
+    const char *GetStateName() const override { return "IdleHandler"; }
 };
 
 // ============================================================================
@@ -71,13 +71,13 @@ public:
  */
 class RecordingHandler : public BaseTASStateHandler {
 public:
-    explicit RecordingHandler(TASEngine* engine);
+    explicit RecordingHandler(TASEngine *engine);
 
     Result<void> OnEnter() override;
     Result<void> OnExit() override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
-    const char* GetStateName() const override { return "RecordingHandler"; }
+    const char *GetStateName() const override { return "RecordingHandler"; }
 };
 
 // ============================================================================
@@ -91,13 +91,13 @@ public:
  */
 class PlayingScriptHandler : public BaseTASStateHandler {
 public:
-    explicit PlayingScriptHandler(TASEngine* engine);
+    explicit PlayingScriptHandler(TASEngine *engine);
 
     Result<void> OnEnter() override;
     Result<void> OnExit() override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
-    const char* GetStateName() const override { return "PlayingScriptHandler"; }
+    const char *GetStateName() const override { return "PlayingScriptHandler"; }
 };
 
 // ============================================================================
@@ -111,13 +111,13 @@ public:
  */
 class PlayingRecordHandler : public BaseTASStateHandler {
 public:
-    explicit PlayingRecordHandler(TASEngine* engine);
+    explicit PlayingRecordHandler(TASEngine *engine);
 
     Result<void> OnEnter() override;
     Result<void> OnExit() override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
-    const char* GetStateName() const override { return "PlayingRecordHandler"; }
+    const char *GetStateName() const override { return "PlayingRecordHandler"; }
 };
 
 // ============================================================================
@@ -132,13 +132,13 @@ public:
  */
 class TranslatingHandler : public BaseTASStateHandler {
 public:
-    explicit TranslatingHandler(TASEngine* engine);
+    explicit TranslatingHandler(TASEngine *engine);
 
     Result<void> OnEnter() override;
     Result<void> OnExit() override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
-    const char* GetStateName() const override { return "TranslatingHandler"; }
+    const char *GetStateName() const override { return "TranslatingHandler"; }
 };
 
 // ============================================================================
@@ -152,11 +152,11 @@ public:
  */
 class PausedHandler : public BaseTASStateHandler {
 public:
-    explicit PausedHandler(TASEngine* engine);
+    explicit PausedHandler(TASEngine *engine);
 
     Result<void> OnEnter() override;
     Result<void> OnExit() override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
-    const char* GetStateName() const override { return "PausedHandler"; }
+    const char *GetStateName() const override { return "PausedHandler"; }
 };

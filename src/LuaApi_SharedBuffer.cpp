@@ -20,7 +20,7 @@ void LuaApi::RegisterSharedBufferApi(sol::table &tas, ScriptContext *context) {
     // Register SharedBuffer userdata type
     sol::usertype<SharedBuffer> buffer_type = lua.new_usertype<SharedBuffer>(
         "SharedBuffer",
-        sol::no_constructor  // Use factory functions instead
+        sol::no_constructor // Use factory functions instead
     );
 
     // --- Properties ---
@@ -148,10 +148,10 @@ void LuaApi::RegisterSharedBufferApi(sol::table &tas, ScriptContext *context) {
             if (offset + len > self.Size()) {
                 throw sol::error("SharedBuffer read_string: length exceeds buffer size");
             }
-            return std::string(reinterpret_cast<const char*>(self.Data() + offset), len);
+            return std::string(reinterpret_cast<const char *>(self.Data() + offset), len);
         } else {
             // Null-terminated read
-            const char* str = reinterpret_cast<const char*>(self.Data() + offset);
+            const char *str = reinterpret_cast<const char *>(self.Data() + offset);
             size_t remaining = self.Size() - offset;
 
             // Find null terminator or end of buffer

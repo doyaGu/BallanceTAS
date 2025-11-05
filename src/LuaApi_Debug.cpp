@@ -42,13 +42,13 @@ void LuaApi::RegisterDebugApi(sol::table &tas, ScriptContext *context) {
         sol::state_view lua = context->GetLuaState();
         sol::table trace = lua.create_table();
 
-        int depth = max_depth.value_or(20);  // Default max 20 frames
-        int level = 1;  // Start at calling function (skip this C function)
+        int depth = max_depth.value_or(20); // Default max 20 frames
+        int level = 1; // Start at calling function (skip this C function)
 
         while (level <= depth) {
             lua_Debug ar;
             if (lua_getstack(lua.lua_state(), level, &ar) == 0) {
-                break;  // No more stack frames
+                break; // No more stack frames
             }
 
             lua_getinfo(lua.lua_state(), "nSl", &ar);
@@ -143,13 +143,13 @@ void LuaApi::RegisterDebugApi(sol::table &tas, ScriptContext *context) {
 
     // tas.force_gc() - Force garbage collection
     tas["force_gc"] = [context]() -> int {
-        lua_State* L = context->GetLuaState().lua_state();
+        lua_State *L = context->GetLuaState().lua_state();
         return lua_gc(L, LUA_GCCOLLECT, 0);
     };
 
     // tas.get_memory_usage() - Get current memory usage
     tas["get_memory_usage"] = [context]() -> double {
-        lua_State* L = context->GetLuaState().lua_state();
+        lua_State *L = context->GetLuaState().lua_state();
         int kb = lua_gc(L, LUA_GCCOUNT, 0);
         int bytes = lua_gc(L, LUA_GCCOUNTB, 0);
         return kb + (bytes / 1024.0);

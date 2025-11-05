@@ -7,17 +7,12 @@ extern "C" {
 #include <lauxlib.h>
 }
 
-AsyncTask::AsyncTask(LuaScheduler* scheduler, sol::coroutine coroutine, ScriptContext* context)
-    : m_Scheduler(scheduler)
-    , m_Context(context)
-    , m_Coroutine(std::move(coroutine))
-    , m_Result(sol::nil)
-{
-}
+AsyncTask::AsyncTask(LuaScheduler *scheduler, sol::coroutine coroutine, ScriptContext *context)
+    : m_Scheduler(scheduler), m_Context(context), m_Coroutine(std::move(coroutine)), m_Result(sol::nil) {}
 
 void AsyncTask::Start() {
     if (m_State != AsyncTaskState::Pending) {
-        return;  // Already started
+        return; // Already started
     }
 
     m_State = AsyncTaskState::Running;
@@ -27,21 +22,21 @@ void AsyncTask::Start() {
     m_Scheduler->StartCoroutine(m_Coroutine);
 
     // Store coroutine for tracking (the coroutine itself serves as our ID)
-    m_CoroutineId = 1;  // Mark as started
+    m_CoroutineId = 1; // Mark as started
 }
 
 void AsyncTask::Cancel() {
     if (IsDone()) {
-        return;  // Already done
+        return; // Already done
     }
 
     m_State = AsyncTaskState::Cancelled;
-    m_CoroutineId = -1;  // Mark as cancelled
+    m_CoroutineId = -1; // Mark as cancelled
 }
 
 bool AsyncTask::Poll() {
     if (IsDone()) {
-        return false;  // Done, no more polling needed
+        return false; // Done, no more polling needed
     }
 
     if (m_State == AsyncTaskState::Pending) {
@@ -49,7 +44,7 @@ bool AsyncTask::Poll() {
     }
 
     // Check coroutine status via Lua C API
-    lua_State* L = m_Coroutine.lua_state();
+    lua_State *L = m_Coroutine.lua_state();
     int status = lua_status(L);
 
     if (status == LUA_OK) {
@@ -77,7 +72,7 @@ bool AsyncTask::Poll() {
 
         // Try to get error message from Lua stack
         if (lua_gettop(L) > 0 && lua_type(L, -1) == LUA_TSTRING) {
-            const char* err = lua_tostring(L, -1);
+            const char *err = lua_tostring(L, -1);
             if (err) {
                 error_msg = err;
             }
@@ -93,7 +88,7 @@ void AsyncTask::SetResult(sol::object result) {
     m_State = AsyncTaskState::Completed;
 }
 
-void AsyncTask::SetError(const std::string& error) {
+void AsyncTask::SetError(const std::string &error) {
     m_Error = error;
     m_State = AsyncTaskState::Failed;
 }

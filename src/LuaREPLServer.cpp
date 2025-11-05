@@ -21,12 +21,8 @@ using TcpEndpoint = ip::tcp::endpoint;
 // ClientSession Implementation
 // =============================================================================
 
-ClientSession::ClientSession(TcpSocket socket, LuaREPLServer* server)
-    : m_Socket(std::move(socket))
-    , m_Server(server)
-    , m_ReadBuffer(MAX_MESSAGE_SIZE)
-    , m_MessageBuffer() {
-
+ClientSession::ClientSession(TcpSocket socket, LuaREPLServer *server)
+    : m_Socket(std::move(socket)), m_Server(server), m_ReadBuffer(MAX_MESSAGE_SIZE), m_MessageBuffer() {
     if (!m_Server) {
         throw std::invalid_argument("ClientSession requires valid LuaREPLServer");
     }
@@ -56,8 +52,7 @@ void ClientSession::Start() {
         }
 
         DoRead();
-
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         if (m_Server->m_Engine) {
             m_Server->Log::Error(
                 "REPL client %s failed to start: %s",
@@ -68,7 +63,7 @@ void ClientSession::Start() {
     }
 }
 
-void ClientSession::SendMessage(const repl::Message& message) {
+void ClientSession::SendMessage(const repl::Message &message) {
     if (!m_Connected.load()) {
         return;
     }
@@ -100,7 +95,7 @@ std::string ClientSession::GetEndpoint() const {
             auto endpoint = m_Socket.remote_endpoint();
             return endpoint.address().to_string() + ":" + std::to_string(endpoint.port());
         }
-    } catch (const std::exception&) {
+    } catch (const std::exception &) {
         // Fall through to return unknown
     }
     return "unknown";
@@ -120,13 +115,12 @@ void ClientSession::DoRead() {
                 try {
                     // Append to message buffer
                     m_MessageBuffer.insert(m_MessageBuffer.end(),
-                                         m_ReadBuffer.begin(),
-                                         m_ReadBuffer.begin() + bytesTransferred);
+                                           m_ReadBuffer.begin(),
+                                           m_ReadBuffer.begin() + bytesTransferred);
 
                     ProcessReceivedData(m_MessageBuffer);
                     DoRead(); // Continue reading
-
-                } catch (const std::exception& e) {
+                } catch (const std::exception &e) {
                     if (m_Server->m_Engine) {
                         m_Server->Log::Error(
                             "REPL client %s message processing error: %s",
@@ -154,7 +148,7 @@ void ClientSession::DoWrite() {
     }
 
     auto self = shared_from_this();
-    auto& message = m_WriteQueue.front();
+    auto &message = m_WriteQueue.front();
 
     try {
         // Serialize message
@@ -187,8 +181,7 @@ void ClientSession::DoWrite() {
                 }
             }
         );
-
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         if (m_Server->m_Engine) {
             m_Server->Log::Error(
                 "REPL client %s serialization error: %s",
@@ -199,17 +192,17 @@ void ClientSession::DoWrite() {
     }
 }
 
-void ClientSession::ProcessReceivedData(const std::vector<uint8_t>& data) {
+void ClientSession::ProcessReceivedData(const std::vector<uint8_t> &data) {
     size_t offset = 0;
 
     while (offset < data.size()) {
         try {
             // Try to unpack a complete message
-            size_t off = 0;  // Track how much was consumed
+            size_t off = 0; // Track how much was consumed
             msgpack::object_handle handle = msgpack::unpack(
-                reinterpret_cast<const char*>(data.data()) + offset,
+                reinterpret_cast<const char *>(data.data()) + offset,
                 data.size() - offset,
-                off  // This output parameter receives the number of bytes consumed
+                off // This output parameter receives the number of bytes consumed
             );
 
             auto message = handle.get().as<repl::Message>();
@@ -222,11 +215,10 @@ void ClientSession::ProcessReceivedData(const std::vector<uint8_t>& data) {
             }
 
             offset += off;
-
-        } catch (const msgpack::insufficient_bytes&) {
+        } catch (const msgpack::insufficient_bytes &) {
             // Need more data - keep what we have
             break;
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             if (m_Server->m_Engine) {
                 m_Server->Log::Error(
                     "REPL client %s message parse error: %s",
@@ -248,45 +240,45 @@ void ClientSession::ProcessReceivedData(const std::vector<uint8_t>& data) {
     }
 }
 
-void ClientSession::HandleMessage(const repl::Message& message) {
+void ClientSession::HandleMessage(const repl::Message &message) {
     switch (message.Type) {
-        case repl::MessageType::AUTH: {
-            auto authReq = message.GetPayload<repl::AuthRequest>();
-            m_Server->HandleAuthRequest(shared_from_this(), authReq);
-            break;
+    case repl::MessageType::AUTH: {
+        auto authReq = message.GetPayload<repl::AuthRequest>();
+        m_Server->HandleAuthRequest(shared_from_this(), authReq);
+        break;
+    }
+    case repl::MessageType::COMMAND: {
+        if (!IsAuthenticated()) {
+            repl::Message errorMsg;
+            errorMsg.Type = repl::MessageType::ERROR;
+            errorMsg.SetPayload(std::string("Authentication required"));
+            SendMessage(errorMsg);
+            return;
         }
-        case repl::MessageType::COMMAND: {
-            if (!IsAuthenticated()) {
-                repl::Message errorMsg;
-                errorMsg.Type = repl::MessageType::ERROR;
-                errorMsg.SetPayload(std::string("Authentication required"));
-                SendMessage(errorMsg);
-                return;
-            }
-            auto command = message.GetPayload<repl::REPLCommand>();
-            m_Server->HandleCommand(shared_from_this(), command);
-            break;
+        auto command = message.GetPayload<repl::REPLCommand>();
+        m_Server->HandleCommand(shared_from_this(), command);
+        break;
+    }
+    case repl::MessageType::CONTROL: {
+        if (!IsAuthenticated()) {
+            repl::Message errorMsg;
+            errorMsg.Type = repl::MessageType::ERROR;
+            errorMsg.SetPayload(std::string("Authentication required"));
+            SendMessage(errorMsg);
+            return;
         }
-        case repl::MessageType::CONTROL: {
-            if (!IsAuthenticated()) {
-                repl::Message errorMsg;
-                errorMsg.Type = repl::MessageType::ERROR;
-                errorMsg.SetPayload(std::string("Authentication required"));
-                SendMessage(errorMsg);
-                return;
-            }
-            auto control = message.GetPayload<repl::ControlCommand>();
-            m_Server->HandleControlCommand(shared_from_this(), control);
-            break;
+        auto control = message.GetPayload<repl::ControlCommand>();
+        m_Server->HandleControlCommand(shared_from_this(), control);
+        break;
+    }
+    default:
+        if (m_Server->m_Engine) {
+            m_Server->Log::Warn(
+                "REPL client %s sent unknown message type: %d",
+                GetEndpoint().c_str(), static_cast<int>(message.Type)
+            );
         }
-        default:
-            if (m_Server->m_Engine) {
-                m_Server->Log::Warn(
-                    "REPL client %s sent unknown message type: %d",
-                    GetEndpoint().c_str(), static_cast<int>(message.Type)
-                );
-            }
-            break;
+        break;
     }
 }
 
@@ -294,7 +286,7 @@ void ClientSession::HandleMessage(const repl::Message& message) {
 // LuaREPLServer Implementation
 // =============================================================================
 
-LuaREPLServer::LuaREPLServer(TASEngine* engine) : m_Engine(engine) {
+LuaREPLServer::LuaREPLServer(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::invalid_argument("LuaREPLServer requires a valid TASEngine instance");
     }
@@ -304,7 +296,7 @@ LuaREPLServer::~LuaREPLServer() {
     Shutdown();
 }
 
-bool LuaREPLServer::Initialize(uint16_t port, const std::string& authToken) {
+bool LuaREPLServer::Initialize(uint16_t port, const std::string &authToken) {
     if (m_Initialized.load()) {
         if (m_Engine) {
             Log::Warn("LuaREPLServer already initialized");
@@ -333,8 +325,7 @@ bool LuaREPLServer::Initialize(uint16_t port, const std::string& authToken) {
         }
 
         return true;
-
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         if (m_Engine) {
             Log::Error("Failed to initialize LuaREPLServer: %s", e.what());
         }
@@ -372,8 +363,7 @@ bool LuaREPLServer::Start() {
         }
 
         return true;
-
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         if (m_Engine) {
             Log::Error("Failed to start LuaREPLServer: %s", e.what());
         }
@@ -401,7 +391,7 @@ void LuaREPLServer::Stop() {
     // Disconnect all clients
     {
         std::lock_guard<std::mutex> lock(m_ClientsMutex);
-        for (auto& client : m_Clients) {
+        for (auto &client : m_Clients) {
             client->Disconnect();
         }
         m_Clients.clear();
@@ -413,7 +403,11 @@ void LuaREPLServer::Stop() {
     }
 
     // Wait for I/O thread
-    if (m_IOThread && m_IOThread->joinable()) {
+    if (m_IOThread &&m_IOThread
+    ->
+    joinable()
+    )
+    {
         m_IOThread->join();
         m_IOThread.reset();
     }
@@ -467,7 +461,7 @@ void LuaREPLServer::OnTickStart(size_t currentTick) {
     }
 
     // Process scheduled commands for this tick
-    std::vector<ScheduledCommand> commandsToExecute;
+    std::vector < ScheduledCommand > commandsToExecute;
     {
         std::lock_guard<std::mutex> lock(m_ScheduledCommandsMutex);
         auto it = m_ScheduledCommands.find(currentTick);
@@ -478,7 +472,7 @@ void LuaREPLServer::OnTickStart(size_t currentTick) {
     }
 
     // Execute scheduled commands
-    for (const auto& scheduledCmd : commandsToExecute) {
+    for (const auto &scheduledCmd : commandsToExecute) {
         auto [success, result] = ExecuteLuaCommand(scheduledCmd.Command.LuaCode, currentTick);
 
         repl::CommandResult cmdResult;
@@ -502,14 +496,14 @@ void LuaREPLServer::OnTickEnd(size_t currentTick) {
     BroadcastTickNotification(currentTick);
 
     // Process pending results
-    std::queue<PendingResult> results;
+    std::queue < PendingResult > results;
     {
         std::lock_guard<std::mutex> lock(m_ResultsMutex);
         results.swap(m_PendingResults);
     }
 
     while (!results.empty()) {
-        const auto& pendingResult = results.front();
+        const auto &pendingResult = results.front();
 
         if (auto session = pendingResult.Session.lock()) {
             repl::Message msg;
@@ -525,14 +519,14 @@ void LuaREPLServer::OnTickEnd(size_t currentTick) {
 void LuaREPLServer::ProcessImmediateCommands() {
     if (!m_Running.load()) return;
 
-    std::queue<ScheduledCommand> commands;
+    std::queue < ScheduledCommand > commands;
     {
         std::lock_guard<std::mutex> lock(m_ImmediateCommandsMutex);
         commands.swap(m_ImmediateCommands);
     }
 
     while (!commands.empty()) {
-        const auto& scheduledCmd = commands.front();
+        const auto &scheduledCmd = commands.front();
 
         auto [success, result] = ExecuteLuaCommand(scheduledCmd.Command.LuaCode, m_CurrentTick);
 
@@ -577,7 +571,7 @@ size_t LuaREPLServer::GetClientCount() const {
     return m_Clients.size();
 }
 
-void LuaREPLServer::HandleAuthRequest(std::shared_ptr<ClientSession> session, const repl::AuthRequest& request) {
+void LuaREPLServer::HandleAuthRequest(std::shared_ptr<ClientSession> session, const repl::AuthRequest &request) {
     repl::AuthResponse response;
 
     if (!m_RequireAuth || request.Token == m_AuthToken) {
@@ -606,11 +600,11 @@ void LuaREPLServer::HandleAuthRequest(std::shared_ptr<ClientSession> session, co
     }
 }
 
-void LuaREPLServer::HandleCommand(std::shared_ptr<ClientSession> session, const repl::REPLCommand& command) {
+void LuaREPLServer::HandleCommand(std::shared_ptr<ClientSession> session, const repl::REPLCommand &command) {
     ScheduleCommand(command, session);
 }
 
-void LuaREPLServer::HandleControlCommand(std::shared_ptr<ClientSession> session, const repl::ControlCommand& control) {
+void LuaREPLServer::HandleControlCommand(std::shared_ptr<ClientSession> session, const repl::ControlCommand &control) {
     repl::ControlResponse response;
     response.Action = control.Action;
     response.Success = true;
@@ -634,7 +628,7 @@ void LuaREPLServer::HandleControlCommand(std::shared_ptr<ClientSession> session,
             size_t targetTick = std::stoull(control.Value);
             session->SetWaitingForTick(true, targetTick);
             response.Message = "Waiting for tick " + std::to_string(targetTick);
-        } catch (const std::exception&) {
+        } catch (const std::exception &) {
             response.Success = false;
             response.Message = "Invalid tick number";
         }
@@ -660,7 +654,7 @@ void LuaREPLServer::OnClientDisconnect(std::shared_ptr<ClientSession> session) {
     }
 }
 
-std::pair<bool, std::string> LuaREPLServer::ExecuteLuaCommand(const std::string& code, size_t executionTick) {
+std::pair<bool, std::string> LuaREPLServer::ExecuteLuaCommand(const std::string &code, size_t executionTick) {
     try {
         auto *contextManager = m_Engine->GetScriptContextManager();
         if (!contextManager) {
@@ -697,15 +691,15 @@ std::pair<bool, std::string> LuaREPLServer::ExecuteLuaCommand(const std::string&
             sol::error err = result;
             return {false, err.what()};
         }
-
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         return {false, e.what()};
     }
 }
 
-void LuaREPLServer::ScheduleCommand(const repl::REPLCommand& command, std::shared_ptr<ClientSession> session) {
+void LuaREPLServer::ScheduleCommand(const repl::REPLCommand &command, std::shared_ptr<ClientSession> session) {
     // Validate command size to prevent abuse
-    if (command.LuaCode.size() > 8192) { // 8KB limit
+    if (command.LuaCode.size() > 8192) {
+        // 8KB limit
         repl::CommandResult errorResult;
         errorResult.CommandId = command.Id;
         errorResult.Success = false;
@@ -718,79 +712,79 @@ void LuaREPLServer::ScheduleCommand(const repl::REPLCommand& command, std::share
     ScheduledCommand scheduledCmd(command, std::weak_ptr<ClientSession>(session));
 
     switch (command.Mode) {
-        case repl::CommandExecutionMode::IMMEDIATE:
-        case repl::CommandExecutionMode::PAUSED_ONLY: {
-            if (command.Mode == repl::CommandExecutionMode::PAUSED_ONLY && !m_TickingPaused.load()) {
-                repl::CommandResult errorResult;
-                errorResult.CommandId = command.Id;
-                errorResult.Success = false;
-                errorResult.Error = "Command requires paused state";
-                errorResult.ExecutionTick = m_CurrentTick;
-                SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
-                return;
-            }
+    case repl::CommandExecutionMode::IMMEDIATE:
+    case repl::CommandExecutionMode::PAUSED_ONLY: {
+        if (command.Mode == repl::CommandExecutionMode::PAUSED_ONLY && !m_TickingPaused.load()) {
+            repl::CommandResult errorResult;
+            errorResult.CommandId = command.Id;
+            errorResult.Success = false;
+            errorResult.Error = "Command requires paused state";
+            errorResult.ExecutionTick = m_CurrentTick;
+            SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
+            return;
+        }
 
-            std::lock_guard<std::mutex> lock(m_ImmediateCommandsMutex);
-            if (m_ImmediateCommands.size() < MAX_COMMAND_QUEUE_SIZE) {
-                m_ImmediateCommands.push(std::move(scheduledCmd));
-            } else {
-                // Queue full, send error
-                repl::CommandResult errorResult;
-                errorResult.CommandId = command.Id;
-                errorResult.Success = false;
-                errorResult.Error = "Command queue full";
-                errorResult.ExecutionTick = m_CurrentTick;
-                SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
-            }
-            break;
+        std::lock_guard<std::mutex> lock(m_ImmediateCommandsMutex);
+        if (m_ImmediateCommands.size() < MAX_COMMAND_QUEUE_SIZE) {
+            m_ImmediateCommands.push(std::move(scheduledCmd));
+        } else {
+            // Queue full, send error
+            repl::CommandResult errorResult;
+            errorResult.CommandId = command.Id;
+            errorResult.Success = false;
+            errorResult.Error = "Command queue full";
+            errorResult.ExecutionTick = m_CurrentTick;
+            SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
         }
-        case repl::CommandExecutionMode::NEXT_TICK: {
-            std::lock_guard<std::mutex> lock(m_ScheduledCommandsMutex);
-            auto& tickCommands = m_ScheduledCommands[m_CurrentTick + 1];
-            if (tickCommands.size() < MAX_COMMAND_QUEUE_SIZE) {
-                tickCommands.push_back(std::move(scheduledCmd));
-            } else {
-                // Queue full for this tick
-                repl::CommandResult errorResult;
-                errorResult.CommandId = command.Id;
-                errorResult.Success = false;
-                errorResult.Error = "Tick command queue full";
-                errorResult.ExecutionTick = m_CurrentTick;
-                SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
-            }
-            break;
+        break;
+    }
+    case repl::CommandExecutionMode::NEXT_TICK: {
+        std::lock_guard<std::mutex> lock(m_ScheduledCommandsMutex);
+        auto &tickCommands = m_ScheduledCommands[m_CurrentTick + 1];
+        if (tickCommands.size() < MAX_COMMAND_QUEUE_SIZE) {
+            tickCommands.push_back(std::move(scheduledCmd));
+        } else {
+            // Queue full for this tick
+            repl::CommandResult errorResult;
+            errorResult.CommandId = command.Id;
+            errorResult.Success = false;
+            errorResult.Error = "Tick command queue full";
+            errorResult.ExecutionTick = m_CurrentTick;
+            SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
         }
-        case repl::CommandExecutionMode::SPECIFIC_TICK: {
-            if (command.TargetTick < m_CurrentTick) {
-                // Can't schedule for past ticks
-                repl::CommandResult errorResult;
-                errorResult.CommandId = command.Id;
-                errorResult.Success = false;
-                errorResult.Error = "Cannot schedule command for past tick";
-                errorResult.ExecutionTick = m_CurrentTick;
-                SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
-                return;
-            }
+        break;
+    }
+    case repl::CommandExecutionMode::SPECIFIC_TICK: {
+        if (command.TargetTick < m_CurrentTick) {
+            // Can't schedule for past ticks
+            repl::CommandResult errorResult;
+            errorResult.CommandId = command.Id;
+            errorResult.Success = false;
+            errorResult.Error = "Cannot schedule command for past tick";
+            errorResult.ExecutionTick = m_CurrentTick;
+            SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
+            return;
+        }
 
-            std::lock_guard<std::mutex> lock(m_ScheduledCommandsMutex);
-            auto& tickCommands = m_ScheduledCommands[command.TargetTick];
-            if (tickCommands.size() < MAX_COMMAND_QUEUE_SIZE) {
-                tickCommands.push_back(std::move(scheduledCmd));
-            } else {
-                // Queue full for this tick
-                repl::CommandResult errorResult;
-                errorResult.CommandId = command.Id;
-                errorResult.Success = false;
-                errorResult.Error = "Tick command queue full";
-                errorResult.ExecutionTick = m_CurrentTick;
-                SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
-            }
-            break;
+        std::lock_guard<std::mutex> lock(m_ScheduledCommandsMutex);
+        auto &tickCommands = m_ScheduledCommands[command.TargetTick];
+        if (tickCommands.size() < MAX_COMMAND_QUEUE_SIZE) {
+            tickCommands.push_back(std::move(scheduledCmd));
+        } else {
+            // Queue full for this tick
+            repl::CommandResult errorResult;
+            errorResult.CommandId = command.Id;
+            errorResult.Success = false;
+            errorResult.Error = "Tick command queue full";
+            errorResult.ExecutionTick = m_CurrentTick;
+            SendResultToClient(std::weak_ptr<ClientSession>(session), errorResult);
         }
+        break;
+    }
     }
 }
 
-void LuaREPLServer::SendResultToClient(std::weak_ptr<ClientSession> weakSession, const repl::CommandResult& result) {
+void LuaREPLServer::SendResultToClient(std::weak_ptr<ClientSession> weakSession, const repl::CommandResult &result) {
     if (auto session = weakSession.lock()) {
         repl::Message msg;
         msg.Type = repl::MessageType::RESULT;
@@ -809,7 +803,7 @@ void LuaREPLServer::BroadcastTickNotification(size_t tick) {
     msg.SetPayload(notification);
 
     std::lock_guard<std::mutex> lock(m_ClientsMutex);
-    for (auto& client : m_Clients) {
+    for (auto &client : m_Clients) {
         if (client->IsAuthenticated() && (client->IsStepping() || client->IsWaitingForTick())) {
             // Check if wait condition is met
             bool waitComplete = false;
@@ -867,8 +861,7 @@ void LuaREPLServer::DoAccept() {
                     }
 
                     session->Start();
-
-                } catch (const std::exception& e) {
+                } catch (const std::exception &e) {
                     if (m_Engine) {
                         Log::Error("Failed to create client session: %s", e.what());
                     }
@@ -893,65 +886,65 @@ void LuaREPLServer::RunIOContext() {
         if (m_Engine) {
             Log::Info("REPL I/O thread stopped");
         }
-
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         if (m_Engine) {
             Log::Error("REPL I/O context error: %s", e.what());
         }
     }
 }
 
-std::string LuaREPLServer::FormatLuaValue(const sol::object& obj) {
+std::string LuaREPLServer::FormatLuaValue(const sol::object &obj) {
     switch (obj.get_type()) {
-        case sol::type::lua_nil:
-            return "nil";
-        case sol::type::boolean:
-            return obj.as<bool>() ? "true" : "false";
-        case sol::type::number: {
-            double num = obj.as<double>();
-            // Check if it's an integer
-            if (num == std::floor(num) && num >= std::numeric_limits<int64_t>::min() && num <= std::numeric_limits<int64_t>::max()) {
-                return std::to_string(static_cast<int64_t>(num));
-            } else {
-                return std::to_string(num);
-            }
+    case sol::type::lua_nil:
+        return "nil";
+    case sol::type::boolean:
+        return obj.as<bool>() ? "true" : "false";
+    case sol::type::number: {
+        double num = obj.as<double>();
+        // Check if it's an integer
+        if (num == std::floor(num) && num >= std::numeric_limits<int64_t>::min() && num <= std::numeric_limits<
+            int64_t>::max()) {
+            return std::to_string(static_cast<int64_t>(num));
+        } else {
+            return std::to_string(num);
         }
-        case sol::type::string:
-            return obj.as<std::string>();
-        case sol::type::table: {
-            std::ostringstream oss;
-            oss << "{ ";
-            sol::table table = obj.as<sol::table>();
-            bool first = true;
-            size_t count = 0;
+    }
+    case sol::type::string:
+        return obj.as<std::string>();
+    case sol::type::table: {
+        std::ostringstream oss;
+        oss << "{ ";
+        sol::table table = obj.as<sol::table>();
+        bool first = true;
+        size_t count = 0;
 
-            try {
-                for (const auto& pair : table) {
-                    if (!first) oss << ", ";
-                    oss << FormatLuaValue(pair.first) << " = " << FormatLuaValue(pair.second);
-                    first = false;
-                    if (++count > 20) {
-                        oss << ", ... (truncated)";
-                        break;
-                    }
+        try {
+            for (const auto &pair : table) {
+                if (!first) oss << ", ";
+                oss << FormatLuaValue(pair.first) << " = " << FormatLuaValue(pair.second);
+                first = false;
+                if (++count > 20) {
+                    oss << ", ... (truncated)";
+                    break;
                 }
-            } catch (const std::exception&) {
-                oss << "error formatting table";
             }
-
-            oss << " }";
-            return oss.str();
+        } catch (const std::exception &) {
+            oss << "error formatting table";
         }
-        case sol::type::function:
-            return "[function]";
-        case sol::type::userdata:
-            return "[userdata]";
-        case sol::type::lightuserdata:
-            return "[lightuserdata]";
-        case sol::type::thread:
-            return "[thread]";
-        default:
-            return "[unknown]";
+
+        oss << " }";
+        return oss.str();
+    }
+    case sol::type::function:
+        return "[function]";
+    case sol::type::userdata:
+        return "[userdata]";
+    case sol::type::lightuserdata:
+        return "[lightuserdata]";
+    case sol::type::thread:
+        return "[thread]";
+    default:
+        return "[unknown]";
     }
 }
 

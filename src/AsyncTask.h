@@ -13,11 +13,11 @@ class ScriptContext;
  * @brief Async task state
  */
 enum class AsyncTaskState {
-    Pending,    // Not started or waiting
-    Running,    // Currently executing
-    Completed,  // Finished successfully
-    Failed,     // Finished with error
-    Cancelled   // Cancelled by user
+    Pending,   // Not started or waiting
+    Running,   // Currently executing
+    Completed, // Finished successfully
+    Failed,    // Finished with error
+    Cancelled  // Cancelled by user
 };
 
 /**
@@ -44,15 +44,15 @@ public:
      * @param coroutine The Lua coroutine to wrap
      * @param context The script context
      */
-    AsyncTask(LuaScheduler* scheduler, sol::coroutine coroutine, ScriptContext* context);
+    AsyncTask(LuaScheduler *scheduler, sol::coroutine coroutine, ScriptContext *context);
 
     ~AsyncTask() = default;
 
     // AsyncTask is not copyable but is movable
-    AsyncTask(const AsyncTask&) = delete;
-    AsyncTask& operator=(const AsyncTask&) = delete;
-    AsyncTask(AsyncTask&&) = default;
-    AsyncTask& operator=(AsyncTask&&) = default;
+    AsyncTask(const AsyncTask &) = delete;
+    AsyncTask &operator=(const AsyncTask &) = delete;
+    AsyncTask(AsyncTask &&) = default;
+    AsyncTask &operator=(AsyncTask &&) = default;
 
     /**
      * @brief Gets the current task state
@@ -129,7 +129,7 @@ public:
     /**
      * @brief Sets the error (called when task fails)
      */
-    void SetError(const std::string& error);
+    void SetError(const std::string &error);
 
     /**
      * @brief Gets the underlying coroutine
@@ -142,8 +142,8 @@ public:
     int GetCoroutineId() const { return m_CoroutineId; }
 
 private:
-    LuaScheduler* m_Scheduler;
-    ScriptContext* m_Context;
+    LuaScheduler *m_Scheduler;
+    ScriptContext *m_Context;
     sol::coroutine m_Coroutine;
     int m_CoroutineId = -1;
 

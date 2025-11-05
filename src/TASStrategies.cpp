@@ -19,8 +19,7 @@
 // ScriptPlaybackStrategy Implementation (Wrapper for ScriptContextManager)
 // ============================================================================
 
-ScriptPlaybackStrategy::ScriptPlaybackStrategy(TASEngine* engine)
-    : m_Engine(engine) {
+ScriptPlaybackStrategy::ScriptPlaybackStrategy(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::invalid_argument("TASEngine cannot be null");
     }
@@ -32,7 +31,7 @@ Result<void> ScriptPlaybackStrategy::Initialize() {
     return Result<void>::Ok();
 }
 
-Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject* project) {
+Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject *project) {
     if (!project) {
         return Result<void>::Error("Project cannot be null", "invalid_argument");
     }
@@ -48,8 +47,8 @@ Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject* project) {
 
     // Get or create appropriate context
     auto ctx = isGlobal
-        ? scriptManager->GetOrCreateGlobalContext()
-        : scriptManager->GetOrCreateLevelContext(project->GetName());
+                   ? scriptManager->GetOrCreateGlobalContext()
+                   : scriptManager->GetOrCreateLevelContext(project->GetName());
 
     if (!ctx) {
         return Result<void>::Error("Failed to create script context", "context");
@@ -68,7 +67,7 @@ Result<void> ScriptPlaybackStrategy::LoadAndPlay(TASProject* project) {
     NotifyStatusChanged();
 
     Log::Info("ScriptPlaybackStrategy: Started playing project '%s' in context '%s'",
-             project->GetName().c_str(), contextName.c_str());
+              project->GetName().c_str(), contextName.c_str());
 
     return Result<void>::Ok();
 }
@@ -88,7 +87,7 @@ void ScriptPlaybackStrategy::Stop() {
     if (scriptManager) {
         // Stop all active contexts
         auto contexts = scriptManager->GetContextsByPriority();
-        for (const auto& ctx : contexts) {
+        for (const auto &ctx : contexts) {
             if (ctx && ctx->IsExecuting()) {
                 ctx->Stop();
             }
@@ -138,7 +137,7 @@ void ScriptPlaybackStrategy::NotifyStatusChanged() {
 // RecordPlaybackStrategy Implementation (Wrapper for RecordPlayer)
 // ============================================================================
 
-RecordPlaybackStrategy::RecordPlaybackStrategy(TASEngine* engine)
+RecordPlaybackStrategy::RecordPlaybackStrategy(TASEngine *engine)
     : m_Engine(engine) {
     if (!m_Engine) {
         throw std::invalid_argument("TASEngine cannot be null");
@@ -150,7 +149,7 @@ Result<void> RecordPlaybackStrategy::Initialize() {
     return Result<void>::Ok();
 }
 
-Result<void> RecordPlaybackStrategy::LoadAndPlay(TASProject* project) {
+Result<void> RecordPlaybackStrategy::LoadAndPlay(TASProject *project) {
     if (!project) {
         return Result<void>::Error("Project cannot be null", "invalid_argument");
     }
@@ -176,7 +175,7 @@ Result<void> RecordPlaybackStrategy::LoadAndPlay(TASProject* project) {
     NotifyProgress();
 
     Log::Info("RecordPlaybackStrategy: Started playing record with %zu frames",
-             m_TotalFrames);
+              m_TotalFrames);
 
     return Result<void>::Ok();
 }
@@ -225,7 +224,7 @@ void RecordPlaybackStrategy::Pause() {
 
     m_IsPaused = true;
     Log::Info("RecordPlaybackStrategy: Paused at frame %zu/%zu",
-             m_CurrentFrameIndex, m_TotalFrames);
+              m_CurrentFrameIndex, m_TotalFrames);
 }
 
 void RecordPlaybackStrategy::Resume() {
@@ -240,7 +239,7 @@ void RecordPlaybackStrategy::Resume() {
 
     m_IsPaused = false;
     Log::Info("RecordPlaybackStrategy: Resumed from frame %zu/%zu",
-             m_CurrentFrameIndex, m_TotalFrames);
+              m_CurrentFrameIndex, m_TotalFrames);
 }
 
 void RecordPlaybackStrategy::NotifyStatusChanged() {
@@ -259,7 +258,7 @@ void RecordPlaybackStrategy::NotifyProgress() {
 // StandardRecorder Implementation (Wrapper for Recorder)
 // ============================================================================
 
-StandardRecorder::StandardRecorder(TASEngine* engine)
+StandardRecorder::StandardRecorder(TASEngine *engine)
     : m_Engine(engine) {
     if (!m_Engine) {
         throw std::invalid_argument("TASEngine cannot be null");
@@ -289,7 +288,7 @@ Result<void> StandardRecorder::Start() {
     return Result<void>::Ok();
 }
 
-void StandardRecorder::Tick(size_t currentTick, const unsigned char* keyboardState) {
+void StandardRecorder::Tick(size_t currentTick, const unsigned char *keyboardState) {
     if (!m_IsRecording) {
         return;
     }
@@ -324,7 +323,7 @@ Result<std::vector<FrameData>> StandardRecorder::Stop() {
     return Result<std::vector<FrameData>>::Ok(std::move(frames));
 }
 
-bool StandardRecorder::HasKeyStateChanged(const unsigned char* currentState) const {
+bool StandardRecorder::HasKeyStateChanged(const unsigned char *currentState) const {
     if (m_PreviousKeyState.empty()) {
         return true; // First frame, always changed
     }
@@ -354,7 +353,7 @@ Result<void> ValidationRecorder::Start() {
     return m_InnerRecorder->Start();
 }
 
-void ValidationRecorder::Tick(size_t currentTick, const unsigned char* keyboardState) {
+void ValidationRecorder::Tick(size_t currentTick, const unsigned char *keyboardState) {
     // First, let the inner recorder do its work
     m_InnerRecorder->Tick(currentTick, keyboardState);
 
@@ -367,13 +366,13 @@ Result<std::vector<FrameData>> ValidationRecorder::Stop() {
 
     if (result.IsOk()) {
         Log::Info("ValidationRecorder: Captured %zu frames with %zu validation data points",
-                 result.Unwrap().size(), m_ValidationData.size());
+                  result.Unwrap().size(), m_ValidationData.size());
     }
 
     return result;
 }
 
-void ValidationRecorder::SetOptions(const Options& options) {
+void ValidationRecorder::SetOptions(const Options &options) {
     m_InnerRecorder->SetOptions(options);
 
     // Force enable game state capture for validation

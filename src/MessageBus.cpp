@@ -176,10 +176,7 @@ MessageBus::Message::SerializedValue MessageBus::Message::SerializedValue::FromL
     }
 }
 
-MessageBus::MessageBus(TASEngine *engine)
-    : m_Engine(engine)
-    , m_MessageQueue(m_QueueConfig.maxQueueSize)  // Initialize with configured max size
-{
+MessageBus::MessageBus(TASEngine *engine) : m_Engine(engine), m_MessageQueue(m_QueueConfig.maxQueueSize) {
     if (!m_Engine) {
         throw std::runtime_error("MessageBus requires a valid TASEngine instance.");
     }
@@ -242,7 +239,7 @@ bool MessageBus::SendMessage(const std::string &senderContext,
                              Priority priority) {
     if (messageType.empty()) {
         Log::Warn("[%s] MessageBus: Cannot send message with empty type to '%s'.",
-                                   senderContext.c_str(), targetContext.c_str());
+                  senderContext.c_str(), targetContext.c_str());
         return false;
     }
 
@@ -274,7 +271,7 @@ bool MessageBus::SendMessage(const std::string &senderContext,
         return EnqueueMessage(std::move(msg));
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to send message '%s' to '%s': %s",
-                                     senderContext.c_str(), messageType.c_str(), targetContext.c_str(), e.what());
+                   senderContext.c_str(), messageType.c_str(), targetContext.c_str(), e.what());
         return false;
     }
 }
@@ -301,7 +298,7 @@ void MessageBus::RegisterHandler(const std::string &contextName,
         m_Handlers[contextName][messageType].push_back(std::move(entry));
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to register handler for '%s': %s",
-                                     contextName.c_str(), messageType.c_str(), e.what());
+                   contextName.c_str(), messageType.c_str(), e.what());
     }
 }
 
@@ -321,7 +318,7 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
         if (!context) {
             // Context has been destroyed, skip this handler
             Log::Warn("MessageBus: Handler skipped for destroyed context '%s' (type: %s)",
-                                       contextName.c_str(), messageType.c_str());
+                      contextName.c_str(), messageType.c_str());
             return;
         }
 
@@ -334,7 +331,7 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
             // Verify the handler's VM matches the context's VM (safety check)
             if (luaHandler.lua_state() != lua.lua_state()) {
                 Log::Error("MessageBus: Handler VM mismatch for context '%s' (type: %s) - handler not invoked",
-                                            contextName.c_str(), messageType.c_str());
+                           contextName.c_str(), messageType.c_str());
                 return;
             }
 
@@ -356,11 +353,11 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
             if (!result.valid()) {
                 sol::error err = result;
                 Log::Error("MessageBus: Lua handler error (%s, %s): %s",
-                                             contextName.c_str(), messageType.c_str(), err.what());
+                           contextName.c_str(), messageType.c_str(), err.what());
             }
         } catch (const std::exception &e) {
             Log::Error("MessageBus: Exception in Lua handler (%s, %s): %s",
-                                         contextName.c_str(), messageType.c_str(), e.what());
+                       contextName.c_str(), messageType.c_str(), e.what());
         }
     };
 
@@ -370,10 +367,10 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
         HandlerEntry entry(contextPtr, std::move(handler), ++m_HandlerGeneration);
         m_Handlers[contextName][messageType].push_back(std::move(entry));
         Log::Info("[%s] Registered handler for message type '%s' (generation: %llu).",
-                                   contextName.c_str(), messageType.c_str(), m_HandlerGeneration);
+                  contextName.c_str(), messageType.c_str(), m_HandlerGeneration);
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to register Lua handler for '%s': %s",
-                                     contextName.c_str(), messageType.c_str(), e.what());
+                   contextName.c_str(), messageType.c_str(), e.what());
     }
 }
 
@@ -408,7 +405,7 @@ bool MessageBus::EnqueueMessage(Message message) {
             // Message was already rejected by queue
             m_DroppedMessageCount.fetch_add(1, std::memory_order_relaxed);
             Log::Warn("MessageBus: Queue full, dropping newest message (type: %s).",
-                                        message.messageType.c_str());
+                      message.messageType.c_str());
             return false;
 
         case OverflowPolicy::DropOldest:
@@ -416,7 +413,7 @@ bool MessageBus::EnqueueMessage(Message message) {
             // Falling back to DropNewest behavior (documented limitation)
             m_DroppedMessageCount.fetch_add(1, std::memory_order_relaxed);
             Log::Warn("MessageBus: Queue full, dropping newest message "
-                                        "(DropOldest not supported with lock-free queue).");
+                "(DropOldest not supported with lock-free queue).");
             return false;
 
         case OverflowPolicy::Block:
@@ -437,7 +434,7 @@ bool MessageBus::SendRequestAsync(const std::string &senderContext,
                                   const std::string &correlationId) {
     if (correlationId.empty()) {
         Log::Error("[%s] MessageBus: Cannot send async request to '%s' with empty correlation ID.",
-                                     senderContext.c_str(), targetContext.c_str());
+                   senderContext.c_str(), targetContext.c_str());
         return false;
     }
 
@@ -449,7 +446,7 @@ bool MessageBus::SendRequestAsync(const std::string &senderContext,
         return EnqueueMessage(std::move(requestMsg));
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to send async request '%s' to '%s': %s",
-                                     senderContext.c_str(), requestType.c_str(), targetContext.c_str(), e.what());
+                   senderContext.c_str(), requestType.c_str(), targetContext.c_str(), e.what());
         return false;
     }
 }
@@ -476,12 +473,12 @@ sol::object MessageBus::SendRequest(const std::string &senderContext,
 
         if (!EnqueueMessage(std::move(requestMsg))) {
             Log::Error("[%s] MessageBus: Failed to enqueue request '%s' to '%s'.",
-                                         senderContext.c_str(), requestType.c_str(), targetContext.c_str());
+                       senderContext.c_str(), requestType.c_str(), targetContext.c_str());
             return sol::make_object(callerState, sol::nil);
         }
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to serialize request payload for '%s': %s",
-                                     senderContext.c_str(), requestType.c_str(), e.what());
+                   senderContext.c_str(), requestType.c_str(), e.what());
         return sol::make_object(callerState, sol::nil);
     }
 
@@ -491,8 +488,8 @@ sol::object MessageBus::SendRequest(const std::string &senderContext,
         return response->data.ToLuaObject(callerState);
     } else {
         Log::Warn("[%s] MessageBus: Request '%s' to '%s' timeout (correlation: %s)",
-                                    senderContext.c_str(), requestType.c_str(), targetContext.c_str(),
-                                    correlationId.c_str());
+                  senderContext.c_str(), requestType.c_str(), targetContext.c_str(),
+                  correlationId.c_str());
         return sol::make_object(callerState, sol::nil);
     }
 }
@@ -503,7 +500,7 @@ bool MessageBus::SendResponse(const std::string &senderContext,
                               sol::object responseData) {
     if (correlationId.empty()) {
         Log::Warn("[%s] MessageBus: Cannot send response to '%s' with empty correlation ID.",
-                                    senderContext.c_str(), targetContext.c_str());
+                  senderContext.c_str(), targetContext.c_str());
         return false;
     }
 
@@ -517,7 +514,7 @@ bool MessageBus::SendResponse(const std::string &senderContext,
         }
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to serialize response payload to '%s': %s",
-                                     senderContext.c_str(), targetContext.c_str(), e.what());
+                   senderContext.c_str(), targetContext.c_str(), e.what());
         return false;
     }
 
@@ -574,7 +571,7 @@ void MessageBus::ProcessMessages() {
     // Drain queue directly (lock-free dequeue by single consumer)
     // Messages are automatically delivered in priority order
     while (auto maybeMessage = m_MessageQueue.Dequeue()) {
-        const Message& msg = *maybeMessage;
+        const Message &msg = *maybeMessage;
 
         try {
             // Check if this is a response message
@@ -587,8 +584,8 @@ void MessageBus::ProcessMessages() {
             }
         } catch (const std::exception &e) {
             Log::Error("[%s] MessageBus: Exception delivering message '%s' to '%s': %s",
-                                         msg.senderContext.c_str(), msg.messageType.c_str(),
-                                         msg.targetContext.c_str(), e.what());
+                       msg.senderContext.c_str(), msg.messageType.c_str(),
+                       msg.targetContext.c_str(), e.what());
         }
     }
 }
@@ -666,7 +663,7 @@ void MessageBus::InvokeHandlers(const std::string &contextName,
             entry.handler(message);
         } catch (const std::exception &e) {
             Log::Error("MessageBus: Exception in handler (%s, %s): %s",
-                                         contextName.c_str(), message.messageType.c_str(), e.what());
+                       contextName.c_str(), message.messageType.c_str(), e.what());
         }
     }
 }
@@ -712,8 +709,8 @@ size_t MessageBus::Message::SerializedValue::EstimateSize() const {
         const auto &tableData = std::any_cast<const MessageBus::SerializedTable &>(data);
         size_t total = 0;
         for (const auto &entry : tableData) {
-            total += entry.first.size();  // Key size
-            total += entry.second.EstimateSize();  // Value size
+            total += entry.first.size();          // Key size
+            total += entry.second.EstimateSize(); // Value size
         }
         return total;
     }

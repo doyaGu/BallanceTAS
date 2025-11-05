@@ -480,4 +480,3 @@ void GameInterface::OnCloseMenu() {
 void GameInterface::AddTimer(size_t tick, const std::function<void()> &callback) {
     m_BML->AddTimer(static_cast<CKDWORD>(tick), callback);
 }
-

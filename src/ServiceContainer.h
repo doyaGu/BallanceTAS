@@ -22,14 +22,13 @@
 #include <unordered_map>
 #include <functional>
 #include <typeindex>
-#include <stdexcept>
 
 // ============================================================================
 // Service Lifetime Enum
 // ============================================================================
 enum class ServiceLifetime {
-    Singleton,   // Single instance shared across all requests
-    Transient    // New instance created for each request
+    Singleton, // Single instance shared across all requests
+    Transient  // New instance created for each request
 };
 
 // ============================================================================
@@ -38,24 +37,23 @@ enum class ServiceLifetime {
 class ServiceDescriptor {
 public:
     virtual ~ServiceDescriptor() = default;
-    virtual void* Resolve() = 0;
+    virtual void *Resolve() = 0;
     virtual bool IsSingleton() const = 0;
 };
 
 // ============================================================================
 // Typed Service Descriptor
 // ============================================================================
-template<typename T>
+template <typename T>
 class TypedServiceDescriptor : public ServiceDescriptor {
 public:
     // Use shared_ptr in factory signature to avoid deleter type issues
     using Factory = std::function<std::shared_ptr<T>()>;
 
     TypedServiceDescriptor(Factory factory, ServiceLifetime lifetime)
-        : m_Factory(std::move(factory))
-        , m_Lifetime(lifetime) {}
+        : m_Factory(std::move(factory)), m_Lifetime(lifetime) {}
 
-    void* Resolve() override {
+    void *Resolve() override {
         if (m_Lifetime == ServiceLifetime::Singleton) {
             if (!m_Instance) {
                 m_Instance = m_Factory();
@@ -75,7 +73,7 @@ public:
 private:
     Factory m_Factory;
     ServiceLifetime m_Lifetime;
-    std::shared_ptr<T> m_Instance;  // Use shared_ptr to type-erase deleter
+    std::shared_ptr<T> m_Instance; // Use shared_ptr to type-erase deleter
 };
 
 // ============================================================================
@@ -104,8 +102,8 @@ public:
     ~ServiceContainer() = default;
 
     // ServiceContainer is not copyable or movable (manages singleton lifetimes)
-    ServiceContainer(const ServiceContainer&) = delete;
-    ServiceContainer& operator=(const ServiceContainer&) = delete;
+    ServiceContainer(const ServiceContainer &) = delete;
+    ServiceContainer &operator=(const ServiceContainer &) = delete;
 
     // ========================================================================
     // Service Registration
@@ -116,7 +114,7 @@ public:
      * @tparam T Service type
      * @param factory Factory function to create the service (can return unique_ptr or shared_ptr)
      */
-    template<typename T>
+    template <typename T>
     void RegisterSingleton(std::function<std::shared_ptr<T>()> factory) {
         auto descriptor = std::make_unique<TypedServiceDescriptor<T>>(
             std::move(factory), ServiceLifetime::Singleton);
@@ -128,7 +126,7 @@ public:
      * @tparam T Service type
      * @param factory Factory function returning unique_ptr
      */
-    template<typename T>
+    template <typename T>
     void RegisterSingleton(std::function<std::unique_ptr<T>()> factory) {
         auto sharedFactory = [factory = std::move(factory)]() {
             return std::shared_ptr<T>(factory());
@@ -141,7 +139,7 @@ public:
      * @tparam T Service type
      * @param instance Existing instance to register (ownership transferred to container)
      */
-    template<typename T>
+    template <typename T>
     void RegisterSingletonInstance(std::unique_ptr<T> instance) {
         auto capturedInstance = std::shared_ptr<T>(std::move(instance));
         RegisterSingleton<T>([capturedInstance]() {
@@ -159,11 +157,12 @@ public:
      * without transferring ownership. The caller is responsible for the lifetime
      * of the object.
      */
-    template<typename T>
-    void RegisterSingletonPtr(T* ptr) {
+    template <typename T>
+    void RegisterSingletonPtr(T *ptr) {
         RegisterSingleton<T>([ptr]() {
             // Create a shared_ptr that doesn't own the object (no-op deleter)
-            return std::shared_ptr<T>(ptr, [](T*){});
+            return std::shared_ptr<T>(ptr, [](T *) {
+            });
         });
     }
 
@@ -172,7 +171,7 @@ public:
      * @tparam T Service type
      * @param factory Factory function to create the service
      */
-    template<typename T>
+    template <typename T>
     void RegisterTransient(std::function<std::unique_ptr<T>()> factory) {
         auto descriptor = std::make_unique<TypedServiceDescriptor<T>>(
             std::move(factory), ServiceLifetime::Transient);
@@ -185,7 +184,7 @@ public:
      * @param factory Factory function
      * @param lifetime Service lifetime
      */
-    template<typename T>
+    template <typename T>
     void Register(std::function<std::unique_ptr<T>()> factory, ServiceLifetime lifetime) {
         if (lifetime == ServiceLifetime::Singleton) {
             RegisterSingleton<T>(std::move(factory));
@@ -203,14 +202,14 @@ public:
      * @tparam T Service type
      * @return Pointer to the service (nullptr if not registered)
      */
-    template<typename T>
-    T* Resolve() {
+    template <typename T>
+    T *Resolve() {
         auto it = m_Services.find(std::type_index(typeid(T)));
         if (it == m_Services.end()) {
             return nullptr;
         }
 
-        return static_cast<T*>(it->second->Resolve());
+        return static_cast<T *>(it->second->Resolve());
     }
 
     /**
@@ -218,25 +217,25 @@ public:
      * @tparam T Service type
      * @return Result containing pointer to service or error
      */
-    template<typename T>
-    Result<T*> TryResolve() {
+    template <typename T>
+    Result<T *> TryResolve() {
         auto it = m_Services.find(std::type_index(typeid(T)));
         if (it == m_Services.end()) {
-            return Result<T*>::Error(
+            return Result<T *>::Error(
                 std::string("Service not registered: ") + typeid(T).name(),
                 "service_not_found"
             );
         }
 
-        T* service = static_cast<T*>(it->second->Resolve());
+        T *service = static_cast<T *>(it->second->Resolve());
         if (!service) {
-            return Result<T*>::Error(
+            return Result<T *>::Error(
                 std::string("Failed to resolve service: ") + typeid(T).name(),
                 "resolution_failed"
             );
         }
 
-        return Result<T*>::Ok(service);
+        return Result<T *>::Ok(service);
     }
 
     /**
@@ -244,7 +243,7 @@ public:
      * @tparam T Service type
      * @return True if registered
      */
-    template<typename T>
+    template <typename T>
     bool IsRegistered() const {
         return m_Services.find(std::type_index(typeid(T))) != m_Services.end();
     }
@@ -254,7 +253,7 @@ public:
      * @tparam T Service type
      * @return True if singleton, false if transient or not registered
      */
-    template<typename T>
+    template <typename T>
     bool IsSingleton() const {
         auto it = m_Services.find(std::type_index(typeid(T)));
         if (it == m_Services.end()) {
@@ -298,24 +297,25 @@ private:
  */
 class ServiceProvider {
 public:
-    explicit ServiceProvider(ServiceContainer& container)
-        : m_Container(&container) {}
+    explicit ServiceProvider(ServiceContainer &container)
+        : m_Container(&container) {
+    }
 
-    template<typename T>
-    T* Resolve() {
+    template <typename T>
+    T *Resolve() {
         return m_Container->Resolve<T>();
     }
 
-    template<typename T>
-    Result<T*> TryResolve() {
+    template <typename T>
+    Result<T *> TryResolve() {
         return m_Container->TryResolve<T>();
     }
 
-    template<typename T>
+    template <typename T>
     bool IsRegistered() const {
         return m_Container->IsRegistered<T>();
     }
 
 private:
-    ServiceContainer* m_Container;
+    ServiceContainer *m_Container;
 };

@@ -159,17 +159,18 @@ void LuaApi::RegisterInputApi(sol::table &tas, ScriptContext *context) {
     };
 
     // tas.mouse.hold(button, duration_ticks)
-    mouse["hold"] = sol::yielding([inputSystem, scheduler, getMouseButtonIndex](const std::string &button, int duration) {
-        if (button.empty()) {
-            throw sol::error("mouse.hold: button cannot be empty");
-        }
-        if (duration <= 0) {
-            throw sol::error("mouse.hold: duration must be positive");
-        }
-        int buttonIndex = getMouseButtonIndex(button);
-        inputSystem->HoldMouseButton(buttonIndex, duration);
-        scheduler->YieldTicks(duration);
-    });
+    mouse["hold"] = sol::yielding(
+        [inputSystem, scheduler, getMouseButtonIndex](const std::string &button, int duration) {
+            if (button.empty()) {
+                throw sol::error("mouse.hold: button cannot be empty");
+            }
+            if (duration <= 0) {
+                throw sol::error("mouse.hold: duration must be positive");
+            }
+            int buttonIndex = getMouseButtonIndex(button);
+            inputSystem->HoldMouseButton(buttonIndex, duration);
+            scheduler->YieldTicks(duration);
+        });
 
     // tas.mouse.button_down(button)
     mouse["button_down"] = [inputSystem, getMouseButtonIndex](const std::string &button) {

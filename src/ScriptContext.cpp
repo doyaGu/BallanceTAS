@@ -153,7 +153,7 @@ bool ScriptContext::Reinitialize(const std::string &newName, int newPriority) {
     }
 
     Log::Info("[%s] Reinitializing ScriptContext as '%s' with priority %d...",
-                                m_Name.c_str(), newName.c_str(), newPriority);
+              m_Name.c_str(), newName.c_str(), newPriority);
 
     try {
         // 1. Clean up inter-context communication registrations
@@ -197,7 +197,7 @@ bool ScriptContext::Reinitialize(const std::string &newName, int newPriority) {
         // 7. Force Lua garbage collection to clean up previous script's memory
         lua_State *L = m_LuaState.lua_state();
         if (L) {
-            lua_gc(L, LUA_GCCOLLECT, 0);  // Full GC cycle
+            lua_gc(L, LUA_GCCOLLECT, 0); // Full GC cycle
         }
 
         // 8. Update context identity
@@ -210,7 +210,7 @@ bool ScriptContext::Reinitialize(const std::string &newName, int newPriority) {
         return true;
     } catch (const std::exception &e) {
         Log::Error("[%s] Failed to reinitialize ScriptContext: %s",
-                                     m_Name.c_str(), e.what());
+                   m_Name.c_str(), e.what());
         return false;
     }
 }
@@ -236,7 +236,7 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
         std::string executionPath = PrepareProjectForExecution(project);
         if (executionPath.empty()) {
             Log::Error("[%s] Failed to prepare script project for execution: %s",
-                                        m_Name.c_str(), project->GetName().c_str());
+                       m_Name.c_str(), project->GetName().c_str());
             return false;
         }
 
@@ -244,19 +244,19 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
         std::string entryScriptPath = project->GetEntryScriptPath(executionPath);
         if (entryScriptPath.empty()) {
             Log::Error("[%s] No entry script found for project: %s",
-                                        m_Name.c_str(), project->GetName().c_str());
+                       m_Name.c_str(), project->GetName().c_str());
             return false;
         }
 
         Log::Info("[%s] Loading TAS script: %s",
-                                    m_Name.c_str(), entryScriptPath.c_str());
+                  m_Name.c_str(), entryScriptPath.c_str());
 
         // Load and execute the main script file in the Lua VM
         auto result = m_LuaState.safe_script_file(entryScriptPath, &sol::script_pass_on_error);
         if (!result.valid()) {
             sol::error err = result;
             Log::Error("[%s] Failed to execute script: %s",
-                                        m_Name.c_str(), err.what());
+                       m_Name.c_str(), err.what());
             CleanupCurrentProject();
             return false;
         }
@@ -265,7 +265,7 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
         sol::function mainFunc = m_LuaState["main"];
         if (!mainFunc.valid()) {
             Log::Error("[%s] 'main' function not found in entry script.",
-                                        m_Name.c_str());
+                       m_Name.c_str());
             CleanupCurrentProject();
             return false;
         }
@@ -283,11 +283,11 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
         NotifyStatusChange(true);
 
         Log::Info("[%s] TAS script '%s' loaded and started.",
-                                    m_Name.c_str(), project->GetName().c_str());
+                  m_Name.c_str(), project->GetName().c_str());
         return true;
     } catch (const std::exception &e) {
         Log::Error("[%s] Exception loading TAS script: %s",
-                                    m_Name.c_str(), e.what());
+                   m_Name.c_str(), e.what());
         CleanupCurrentProject();
         return false;
     }
@@ -338,7 +338,7 @@ void ScriptContext::Tick() {
     if (m_Sleeping) {
         m_TicksSinceLastActive++;
         if (m_TicksSinceLastActive < m_SleepInterval) {
-            return;  // Skip this tick, still sleeping
+            return; // Skip this tick, still sleeping
         }
         // Time for a sleep-tick, reset counter
         m_TicksSinceLastActive = 0;
@@ -403,14 +403,14 @@ std::string ScriptContext::PrepareProjectForExecution(TASProject *project) {
         auto *projectManager = m_Engine->GetProjectManager();
         if (!projectManager) {
             Log::Error("[%s] ProjectManager not available for zip project preparation.",
-                                        m_Name.c_str());
+                       m_Name.c_str());
             return "";
         }
 
         std::string executionPath = projectManager->PrepareProjectForExecution(project);
         if (executionPath.empty()) {
             Log::Error("[%s] Failed to prepare zip project for execution: %s",
-                                        m_Name.c_str(), project->GetName().c_str());
+                       m_Name.c_str(), project->GetName().c_str());
             return "";
         }
 
@@ -418,7 +418,7 @@ std::string ScriptContext::PrepareProjectForExecution(TASProject *project) {
         project->SetExecutionBasePath(executionPath);
 
         Log::Info("[%s] Zip project prepared for execution: %s -> %s",
-                                    m_Name.c_str(), project->GetPath().c_str(), executionPath.c_str());
+                  m_Name.c_str(), project->GetPath().c_str(), executionPath.c_str());
         return executionPath;
     } else {
         // For directory projects, use the project path directly
@@ -441,15 +441,15 @@ void ScriptContext::CleanupCurrentProject() {
     m_CurrentExecutionPath.clear();
 }
 
-ProjectManager * ScriptContext::GetProjectManager() const {
+ProjectManager *ScriptContext::GetProjectManager() const {
     return m_Engine->GetProjectManager();
 }
 
-RecordPlayer * ScriptContext::GetRecordPlayer() const {
+RecordPlayer *ScriptContext::GetRecordPlayer() const {
     return m_Engine->GetRecordPlayer();
 }
 
-GameInterface * ScriptContext::GetGameInterface() const {
+GameInterface *ScriptContext::GetGameInterface() const {
     return m_Engine->GetGameInterface();
 }
 
@@ -468,51 +468,51 @@ bool ScriptContext::SetGCMode(LuaGCMode mode) {
 
         // STACK SAFETY: lua_gc() does not manipulate the Lua stack, so no stack guard needed.
         // However, we record the stack top for debug validation.
-        #ifdef _DEBUG
-            int stackTop = lua_gettop(L);
-        #endif
+#ifdef _DEBUG
+        int stackTop = lua_gettop(L);
+#endif
 
         // Lua 5.4+ GC modes: LUA_GCGEN (generational), LUA_GCINC (incremental)
         // Note: Check Lua version and availability
-        #if LUA_VERSION_NUM >= 504
-            if (mode == LuaGCMode::Generational) {
-                // Switch to generational mode
-                lua_gc(L, LUA_GCGEN, 0, 0);
-                m_GCMode = LuaGCMode::Generational;
-                Log::Info("[%s] GC mode set to Generational.", m_Name.c_str());
-            } else {
-                // Switch to incremental mode
-                lua_gc(L, LUA_GCINC, 0, 0, 0);
-                m_GCMode = LuaGCMode::Incremental;
-                Log::Info("[%s] GC mode set to Incremental.", m_Name.c_str());
-            }
-
-            // DEBUG: Verify stack balance
-            #ifdef _DEBUG
-                int stackTopAfter = lua_gettop(L);
-                if (stackTop != stackTopAfter) {
-                    Log::Error("[%s] STACK IMBALANCE in SetGCMode: before=%d, after=%d",
-                                                 m_Name.c_str(), stackTop, stackTopAfter);
-                }
-            #endif
-
-            return true;
-        #else
-            // Lua 5.3 or earlier - only incremental GC available
+#if LUA_VERSION_NUM >= 504
+        if (mode == LuaGCMode::Generational) {
+            // Switch to generational mode
+            lua_gc(L, LUA_GCGEN, 0, 0);
+            m_GCMode = LuaGCMode::Generational;
+            Log::Info("[%s] GC mode set to Generational.", m_Name.c_str());
+        } else {
+            // Switch to incremental mode
+            lua_gc(L, LUA_GCINC, 0, 0, 0);
             m_GCMode = LuaGCMode::Incremental;
-            Log::Warn("[%s] Lua version < 5.4: only incremental GC available.", m_Name.c_str());
+            Log::Info("[%s] GC mode set to Incremental.", m_Name.c_str());
+        }
 
-            // DEBUG: Verify stack balance
-            #ifdef _DEBUG
-                int stackTopAfter = lua_gettop(L);
-                if (stackTop != stackTopAfter) {
-                    Log::Error("[%s] STACK IMBALANCE in SetGCMode: before=%d, after=%d",
-                                                 m_Name.c_str(), stackTop, stackTopAfter);
-                }
-            #endif
+        // DEBUG: Verify stack balance
+#ifdef _DEBUG
+        int stackTopAfter = lua_gettop(L);
+        if (stackTop != stackTopAfter) {
+            Log::Error("[%s] STACK IMBALANCE in SetGCMode: before=%d, after=%d",
+                       m_Name.c_str(), stackTop, stackTopAfter);
+        }
+#endif
 
-            return false;
-        #endif
+        return true;
+#else
+        // Lua 5.3 or earlier - only incremental GC available
+        m_GCMode = LuaGCMode::Incremental;
+        Log::Warn("[%s] Lua version < 5.4: only incremental GC available.", m_Name.c_str());
+
+        // DEBUG: Verify stack balance
+#ifdef _DEBUG
+        int stackTopAfter = lua_gettop(L);
+        if (stackTop != stackTopAfter) {
+            Log::Error("[%s] STACK IMBALANCE in SetGCMode: before=%d, after=%d",
+                       m_Name.c_str(), stackTop, stackTopAfter);
+        }
+#endif
+
+        return false;
+#endif
     } catch (const std::exception &e) {
         Log::Error("[%s] Failed to set GC mode: %s", m_Name.c_str(), e.what());
         // NOTE: If an exception occurs, the stack should still be balanced since lua_gc()
@@ -560,12 +560,12 @@ double ScriptContext::GetLuaMemoryKB() const {
 
 bool ScriptContext::ShouldSleep() const {
     if (!m_IsExecuting) {
-        return true;  // Not executing, can sleep
+        return true; // Not executing, can sleep
     }
 
     // Check if scheduler has active tasks
     if (m_Scheduler && m_Scheduler->IsRunning()) {
-        return false;  // Has active coroutines, don't sleep
+        return false; // Has active coroutines, don't sleep
     }
 
     // Note: Message delivery and event callbacks wake the context by scheduling work

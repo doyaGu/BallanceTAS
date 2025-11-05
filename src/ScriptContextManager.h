@@ -17,8 +17,8 @@ class MessageBus;
  * @brief Configuration for context pool
  */
 struct ContextPoolConfig {
-    size_t maxPoolSize = 4;          // Maximum contexts in pool
-    bool enablePooling = true;       // Enable pooling feature
+    size_t maxPoolSize = 4;           // Maximum contexts in pool
+    bool enablePooling = true;        // Enable pooling feature
     int hibernateFrameThreshold = 60; // Frames of inactivity before hibernation
 };
 
@@ -26,9 +26,9 @@ struct ContextPoolConfig {
  * @brief Configuration for custom context creation
  */
 struct CustomContextLimits {
-    size_t maxTotalCustomContexts = 10;     // Max total custom contexts
-    size_t maxCustomContextsPerLevel = 5;   // Max custom contexts per level
-    size_t memoryLimitBytes = 10 * 1024 * 1024;  // 10MB per custom context
+    size_t maxTotalCustomContexts = 10;         // Max total custom contexts
+    size_t maxCustomContextsPerLevel = 5;       // Max custom contexts per level
+    size_t memoryLimitBytes = 10 * 1024 * 1024; // 10MB per custom context
 };
 
 /**
@@ -317,6 +317,7 @@ private:
         ScriptContextType type;
         size_t lastUsedTick;
     };
+
     std::vector<PooledContext> m_ContextPool;
     ContextPoolConfig m_PoolConfig;
 

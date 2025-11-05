@@ -59,7 +59,7 @@ void LuaApi::RegisterResultApi(sol::table &tas, ScriptContext *context) {
     // Register Result userdata type
     sol::usertype<LuaResult> result_type = lua.new_usertype<LuaResult>(
         "Result",
-        sol::no_constructor  // Use factory functions
+        sol::no_constructor // Use factory functions
     );
 
     // --- State Checking Methods ---
@@ -165,7 +165,7 @@ void LuaApi::RegisterResultApi(sol::table &tas, ScriptContext *context) {
             return LuaResult::Err(result.get<std::string>());
         }
 
-        return LuaResult::Err(self.error_msg);  // Keep original if transform fails
+        return LuaResult::Err(self.error_msg); // Keep original if transform fails
     };
 
     // result:and_then(fn) - Flat-map (fn returns Result)
@@ -289,7 +289,7 @@ void LuaApi::RegisterResultApi(sol::table &tas, ScriptContext *context) {
                 return LuaResult::Err("result.all: all elements must be Result");
             }
 
-            LuaResult &result = obj.as<LuaResult&>();
+            LuaResult &result = obj.as<LuaResult &>();
             if (!result.is_success) {
                 // First error short-circuits
                 return LuaResult::Err(result.error_msg);
@@ -312,7 +312,7 @@ void LuaApi::RegisterResultApi(sol::table &tas, ScriptContext *context) {
                 return LuaResult::Err("result.any: all elements must be Result");
             }
 
-            LuaResult &result = obj.as<LuaResult&>();
+            LuaResult &result = obj.as<LuaResult &>();
             if (result.is_success) {
                 // First success wins
                 return LuaResult::Ok(result.value);

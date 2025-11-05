@@ -20,15 +20,15 @@ public:
 
     // 回放类型
     enum class Type {
-        Script,     // Lua脚本回放
-        Record      // 二进制记录回放
+        Script, // Lua脚本回放
+        Record  // 二进制记录回放
     };
 
     // 初始化策略
     virtual Result<void> Initialize() = 0;
 
     // 加载并开始播放项目
-    virtual Result<void> LoadAndPlay(TASProject* project) = 0;
+    virtual Result<void> LoadAndPlay(TASProject *project) = 0;
 
     // 每帧调用
     virtual void Tick() = 0;
@@ -48,7 +48,7 @@ public:
     // 播放进度
     virtual size_t GetCurrentTick() const = 0;
     virtual size_t GetTotalTicks() const = 0;
-    virtual float GetProgress() const = 0;  // 0.0 - 1.0
+    virtual float GetProgress() const = 0; // 0.0 - 1.0
 
     // 观察者模式: 状态变化通知
     using StatusCallback = std::function<void(bool isPlaying)>;
@@ -63,11 +63,11 @@ public:
 // ============================================================================
 class ScriptPlaybackStrategy : public IPlaybackStrategy {
 public:
-    explicit ScriptPlaybackStrategy(TASEngine* engine);
+    explicit ScriptPlaybackStrategy(TASEngine *engine);
     ~ScriptPlaybackStrategy() override = default;
 
     Result<void> Initialize() override;
-    Result<void> LoadAndPlay(TASProject* project) override;
+    Result<void> LoadAndPlay(TASProject *project) override;
     void Tick() override;
     void Stop() override;
     void Pause() override;
@@ -78,7 +78,7 @@ public:
     Type GetType() const override { return Type::Script; }
 
     size_t GetCurrentTick() const override;
-    size_t GetTotalTicks() const override { return 0; }  // 脚本回放无法预知总长度
+    size_t GetTotalTicks() const override { return 0; } // 脚本回放无法预知总长度
     float GetProgress() const override { return 0.0f; }
 
     void SetStatusCallback(StatusCallback callback) override {
@@ -90,8 +90,8 @@ public:
     }
 
 private:
-    TASEngine* m_Engine;
-    TASProject* m_CurrentProject = nullptr;
+    TASEngine *m_Engine;
+    TASProject *m_CurrentProject = nullptr;
     bool m_IsPlaying = false;
     bool m_IsPaused = false;
     StatusCallback m_StatusCallback;
@@ -105,11 +105,11 @@ private:
 // ============================================================================
 class RecordPlaybackStrategy : public IPlaybackStrategy {
 public:
-    explicit RecordPlaybackStrategy(TASEngine* engine);
+    explicit RecordPlaybackStrategy(TASEngine *engine);
     ~RecordPlaybackStrategy() override = default;
 
     Result<void> Initialize() override;
-    Result<void> LoadAndPlay(TASProject* project) override;
+    Result<void> LoadAndPlay(TASProject *project) override;
     void Tick() override;
     void Stop() override;
     void Pause() override;
@@ -121,6 +121,7 @@ public:
 
     size_t GetCurrentTick() const override { return m_CurrentFrameIndex; }
     size_t GetTotalTicks() const override { return m_TotalFrames; }
+
     float GetProgress() const override {
         return m_TotalFrames > 0 ? static_cast<float>(m_CurrentFrameIndex) / m_TotalFrames : 0.0f;
     }
@@ -134,7 +135,7 @@ public:
     }
 
 private:
-    TASEngine* m_Engine;
+    TASEngine *m_Engine;
     std::vector<FrameData> m_Frames;
     size_t m_CurrentFrameIndex = 0;
     size_t m_TotalFrames = 0;
@@ -156,15 +157,15 @@ public:
 
     // 录制类型
     enum class Type {
-        Standard,       // 标准录制
-        Validation      // 验证录制（记录更多信息）
+        Standard,  // 标准录制
+        Validation // 验证录制（记录更多信息）
     };
 
     // 开始录制
     virtual Result<void> Start() = 0;
 
     // 每帧录制输入
-    virtual void Tick(size_t currentTick, const unsigned char* keyboardState) = 0;
+    virtual void Tick(size_t currentTick, const unsigned char *keyboardState) = 0;
 
     // 停止录制并返回数据
     virtual Result<std::vector<FrameData>> Stop() = 0;
@@ -176,15 +177,15 @@ public:
 
     // 录制选项
     struct Options {
-        bool captureMouseInput = false;      // 是否捕获鼠标输入
-        bool captureGamepadInput = false;    // 是否捕获手柄输入
-        bool captureTimestamps = true;       // 是否记录时间戳
-        bool captureGameState = false;       // 是否记录游戏状态（验证用）
-        size_t maxFrames = 0;                // 最大帧数限制（0=无限制）
+        bool captureMouseInput = false;   // 是否捕获鼠标输入
+        bool captureGamepadInput = false; // 是否捕获手柄输入
+        bool captureTimestamps = true;    // 是否记录时间戳
+        bool captureGameState = false;    // 是否记录游戏状态（验证用）
+        size_t maxFrames = 0;             // 最大帧数限制（0=无限制）
     };
 
-    virtual void SetOptions(const Options& options) = 0;
-    virtual const Options& GetOptions() const = 0;
+    virtual void SetOptions(const Options &options) = 0;
+    virtual const Options &GetOptions() const = 0;
 };
 
 // ============================================================================
@@ -192,22 +193,22 @@ public:
 // ============================================================================
 class StandardRecorder : public IRecordingStrategy {
 public:
-    explicit StandardRecorder(TASEngine* engine);
+    explicit StandardRecorder(TASEngine *engine);
     ~StandardRecorder() override = default;
 
     Result<void> Start() override;
-    void Tick(size_t currentTick, const unsigned char* keyboardState) override;
+    void Tick(size_t currentTick, const unsigned char *keyboardState) override;
     Result<std::vector<FrameData>> Stop() override;
 
     bool IsRecording() const override { return m_IsRecording; }
     size_t GetFrameCount() const override { return m_Frames.size(); }
     Type GetType() const override { return Type::Standard; }
 
-    void SetOptions(const Options& options) override { m_Options = options; }
-    const Options& GetOptions() const override { return m_Options; }
+    void SetOptions(const Options &options) override { m_Options = options; }
+    const Options &GetOptions() const override { return m_Options; }
 
 private:
-    TASEngine* m_Engine;
+    TASEngine *m_Engine;
     std::vector<FrameData> m_Frames;
     bool m_IsRecording = false;
     Options m_Options;
@@ -215,7 +216,7 @@ private:
     // 上一帧的键盘状态（用于检测变化）
     std::vector<unsigned char> m_PreviousKeyState;
 
-    bool HasKeyStateChanged(const unsigned char* currentState) const;
+    bool HasKeyStateChanged(const unsigned char *currentState) const;
 };
 
 // ============================================================================
@@ -227,15 +228,15 @@ public:
     ~ValidationRecorder() override = default;
 
     Result<void> Start() override;
-    void Tick(size_t currentTick, const unsigned char* keyboardState) override;
+    void Tick(size_t currentTick, const unsigned char *keyboardState) override;
     Result<std::vector<FrameData>> Stop() override;
 
     bool IsRecording() const override { return m_InnerRecorder->IsRecording(); }
     size_t GetFrameCount() const override { return m_InnerRecorder->GetFrameCount(); }
     Type GetType() const override { return Type::Validation; }
 
-    void SetOptions(const Options& options) override;
-    const Options& GetOptions() const override { return m_InnerRecorder->GetOptions(); }
+    void SetOptions(const Options &options) override;
+    const Options &GetOptions() const override { return m_InnerRecorder->GetOptions(); }
 
 private:
     std::unique_ptr<IRecordingStrategy> m_InnerRecorder;

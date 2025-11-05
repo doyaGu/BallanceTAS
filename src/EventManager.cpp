@@ -101,7 +101,7 @@ bool EventManager::UnregisterListener(const std::string &eventName, ListenerId i
     return false;
 }
 
-bool EventManager::IsCallbackValid(const CallbackEntry& entry) {
+bool EventManager::IsCallbackValid(const CallbackEntry &entry) {
     if (std::holds_alternative<sol::function>(entry.callback)) {
         return std::get<sol::function>(entry.callback).valid();
     } else {

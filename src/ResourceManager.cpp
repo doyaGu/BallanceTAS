@@ -10,9 +10,7 @@
 // ============================================================================
 
 ResourceManager::TemporaryFile::TemporaryFile(std::filesystem::path path, bool autoDelete)
-    : m_Path(std::move(path))
-    , m_AutoDelete(autoDelete)
-{
+    : m_Path(std::move(path)), m_AutoDelete(autoDelete) {
 }
 
 ResourceManager::TemporaryFile::~TemporaryFile() {
@@ -25,20 +23,18 @@ ResourceManager::TemporaryFile::~TemporaryFile() {
     }
 }
 
-ResourceManager::TemporaryFile::TemporaryFile(TemporaryFile&& other) noexcept
-    : m_Path(std::move(other.m_Path))
-    , m_AutoDelete(other.m_AutoDelete)
-    , m_Deleted(other.m_Deleted)
-{
-    other.m_Deleted = true;  // 防止other析构时删除
+ResourceManager::TemporaryFile::TemporaryFile(TemporaryFile &&other) noexcept
+    : m_Path(std::move(other.m_Path)), m_AutoDelete(other.m_AutoDelete), m_Deleted(other.m_Deleted) {
+    other.m_Deleted = true; // 防止other析构时删除
 }
 
-ResourceManager::TemporaryFile& ResourceManager::TemporaryFile::operator=(TemporaryFile&& other) noexcept {
+ResourceManager::TemporaryFile &ResourceManager::TemporaryFile::operator=(TemporaryFile &&other) noexcept {
     if (this != &other) {
         if (m_AutoDelete && !m_Deleted) {
             try {
                 Delete();
-            } catch (...) {}
+            } catch (...) {
+            }
         }
 
         m_Path = std::move(other.m_Path);
@@ -68,7 +64,7 @@ Result<void> ResourceManager::TemporaryFile::Delete() {
         }
         m_Deleted = true;
         return Result<void>::Ok();
-    } catch (const std::filesystem::filesystem_error& e) {
+    } catch (const std::filesystem::filesystem_error &e) {
         return Result<void>::Error(
             std::string("Failed to delete file: ") + e.what(),
             "filesystem",
@@ -86,9 +82,8 @@ ResourceManager::~ResourceManager() {
 }
 
 std::shared_ptr<ResourceManager::TemporaryFile> ResourceManager::CreateTempFile(
-    const std::string& prefix,
-    const std::string& extension)
-{
+    const std::string &prefix,
+    const std::string &extension) {
     std::lock_guard<std::mutex> lock(m_Mutex);
 
     auto tempDir = GetTempDirectory();
@@ -112,8 +107,7 @@ std::shared_ptr<ResourceManager::TemporaryFile> ResourceManager::CreateTempFile(
 }
 
 std::shared_ptr<ResourceManager::TemporaryFile> ResourceManager::CreateTempDirectory(
-    const std::string& prefix)
-{
+    const std::string &prefix) {
     std::lock_guard<std::mutex> lock(m_Mutex);
 
     auto tempDir = GetTempDirectory();
@@ -138,12 +132,12 @@ void ResourceManager::RegisterCleanupHandler(CleanupHandler handler) {
     m_CleanupHandlers.push_back(std::move(handler));
 }
 
-void ResourceManager::RegisterCleanupHandler(const std::string& name, CleanupHandler handler) {
+void ResourceManager::RegisterCleanupHandler(const std::string &name, CleanupHandler handler) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     m_NamedCleanupHandlers[name] = std::move(handler);
 }
 
-bool ResourceManager::UnregisterCleanupHandler(const std::string& name) {
+bool ResourceManager::UnregisterCleanupHandler(const std::string &name) {
     std::lock_guard<std::mutex> lock(m_Mutex);
     return m_NamedCleanupHandlers.erase(name) > 0;
 }
@@ -167,7 +161,7 @@ void ResourceManager::CleanupAll() {
     }
 
     // 2. 执行命名的清理回调
-    for (auto& [name, handler] : m_NamedCleanupHandlers) {
+    for (auto &[name, handler] : m_NamedCleanupHandlers) {
         try {
             handler();
         } catch (...) {
@@ -203,7 +197,7 @@ std::filesystem::path ResourceManager::GetTempDirectory() {
     return tempPath;
 }
 
-std::string ResourceManager::GenerateUniqueFilename(const std::string& prefix, const std::string& extension) {
+std::string ResourceManager::GenerateUniqueFilename(const std::string &prefix, const std::string &extension) {
     // 使用当前时间戳和随机数生成唯一文件名
     auto now = std::chrono::system_clock::now();
     auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(

@@ -21,141 +21,139 @@
 class TASEngine;
 
 namespace repl {
+    /**
+     * @enum CommandExecutionMode
+     * @brief Defines when and how a command should be executed.
+     */
+    enum class CommandExecutionMode : uint8_t {
+        IMMEDIATE     = 0, // Execute immediately on main thread
+        NEXT_TICK     = 1, // Execute at start of next tick
+        SPECIFIC_TICK = 2, // Execute at specific tick number
+        PAUSED_ONLY   = 3  // Only execute when paused
+    };
 
-/**
- * @enum CommandExecutionMode
- * @brief Defines when and how a command should be executed.
- */
-enum class CommandExecutionMode : uint8_t {
-    IMMEDIATE = 0,       // Execute immediately on main thread
-    NEXT_TICK = 1,       // Execute at start of next tick
-    SPECIFIC_TICK = 2,   // Execute at specific tick number
-    PAUSED_ONLY = 3      // Only execute when paused
-};
+    /**
+     * @struct REPLCommand
+     * @brief Represents a command to be executed.
+     */
+    struct REPLCommand {
+        uint32_t Id;
+        std::string LuaCode;
+        CommandExecutionMode Mode;
+        size_t TargetTick;
 
-/**
- * @struct REPLCommand
- * @brief Represents a command to be executed.
- */
-struct REPLCommand {
-    uint32_t Id;
-    std::string LuaCode;
-    CommandExecutionMode Mode;
-    size_t TargetTick;
+        MSGPACK_DEFINE(Id, LuaCode, Mode, TargetTick);
+    };
 
-    MSGPACK_DEFINE(Id, LuaCode, Mode, TargetTick);
-};
+    /**
+     * @struct CommandResult
+     * @brief Represents the result of command execution.
+     */
+    struct CommandResult {
+        uint32_t CommandId;
+        bool Success;
+        std::string Result;
+        std::string Error;
+        size_t ExecutionTick;
 
-/**
- * @struct CommandResult
- * @brief Represents the result of command execution.
- */
-struct CommandResult {
-    uint32_t CommandId;
-    bool Success;
-    std::string Result;
-    std::string Error;
-    size_t ExecutionTick;
+        MSGPACK_DEFINE(CommandId, Success, Result, Error, ExecutionTick);
+    };
 
-    MSGPACK_DEFINE(CommandId, Success, Result, Error, ExecutionTick);
-};
+    /**
+     * @struct TickNotification
+     * @brief Notification sent to clients about tick updates.
+     */
+    struct TickNotification {
+        size_t Tick;
+        bool Paused;
+        bool WaitComplete = false;
 
-/**
- * @struct TickNotification
- * @brief Notification sent to clients about tick updates.
- */
-struct TickNotification {
-    size_t Tick;
-    bool Paused;
-    bool WaitComplete = false;
+        MSGPACK_DEFINE(Tick, Paused, WaitComplete);
+    };
 
-    MSGPACK_DEFINE(Tick, Paused, WaitComplete);
-};
+    /**
+     * @struct ControlCommand
+     * @brief Control commands for REPL server state.
+     */
+    struct ControlCommand {
+        std::string Action; // "pause", "resume", "step", "step_mode", "wait_tick"
+        std::string Value;  // Additional data for the command
 
-/**
- * @struct ControlCommand
- * @brief Control commands for REPL server state.
- */
-struct ControlCommand {
-    std::string Action; // "pause", "resume", "step", "step_mode", "wait_tick"
-    std::string Value;  // Additional data for the command
+        MSGPACK_DEFINE(Action, Value);
+    };
 
-    MSGPACK_DEFINE(Action, Value);
-};
+    /**
+     * @struct ControlResponse
+     * @brief Response to control commands.
+     */
+    struct ControlResponse {
+        std::string Action;
+        bool Success;
+        std::string Message;
 
-/**
- * @struct ControlResponse
- * @brief Response to control commands.
- */
-struct ControlResponse {
-    std::string Action;
-    bool Success;
-    std::string Message;
+        MSGPACK_DEFINE(Action, Success, Message);
+    };
 
-    MSGPACK_DEFINE(Action, Success, Message);
-};
+    /**
+     * @struct AuthRequest
+     * @brief Authentication request from client.
+     */
+    struct AuthRequest {
+        std::string Token;
 
-/**
- * @struct AuthRequest
- * @brief Authentication request from client.
- */
-struct AuthRequest {
-    std::string Token;
+        MSGPACK_DEFINE (Token);
+    };
 
-    MSGPACK_DEFINE(Token);
-};
+    /**
+     * @struct AuthResponse
+     * @brief Authentication response to client.
+     */
+    struct AuthResponse {
+        bool Success;
+        std::string Message;
+        size_t CurrentTick;
+        bool Paused;
 
-/**
- * @struct AuthResponse
- * @brief Authentication response to client.
- */
-struct AuthResponse {
-    bool Success;
-    std::string Message;
-    size_t CurrentTick;
-    bool Paused;
+        MSGPACK_DEFINE(Success, Message, CurrentTick, Paused);
+    };
 
-    MSGPACK_DEFINE(Success, Message, CurrentTick, Paused);
-};
+    /**
+     * @enum MessageType
+     * @brief Types of messages exchanged between client and server.
+     */
+    enum class MessageType : uint8_t {
+        AUTH              = 0,
+        COMMAND           = 1,
+        CONTROL           = 2,
+        RESULT            = 3,
+        TICK_NOTIFICATION = 4,
+        ERROR             = 5
+    };
 
-/**
- * @enum MessageType
- * @brief Types of messages exchanged between client and server.
- */
-enum class MessageType : uint8_t {
-    AUTH = 0,
-    COMMAND = 1,
-    CONTROL = 2,
-    RESULT = 3,
-    TICK_NOTIFICATION = 4,
-    ERROR = 5
-};
+    /**
+     * @struct Message
+     * @brief Base message structure with type and payload.
+     */
+    struct Message {
+        MessageType Type;
+        std::vector<uint8_t> Payload;
 
-/**
- * @struct Message
- * @brief Base message structure with type and payload.
- */
-struct Message {
-    MessageType Type;
-    std::vector<uint8_t> Payload;
+        template <typename T>
+        void SetPayload(const T &data) {
+            std::stringstream ss;
+            msgpack::pack(ss, data);
+            auto str = ss.str();
+            Payload.assign(str.begin(), str.end());
+        }
 
-    template<typename T>
-    void SetPayload(const T& data) {
-        std::stringstream ss;
-        msgpack::pack(ss, data);
-        auto str = ss.str();
-        Payload.assign(str.begin(), str.end());
-    }
+        template <typename T>
+        T GetPayload() const {
+            auto handle = msgpack::unpack(reinterpret_cast<const char *>(Payload.data()), Payload.size());
+            return handle.get().as<T>();
+        }
 
-    template<typename T>
-    T GetPayload() const {
-        auto handle = msgpack::unpack(reinterpret_cast<const char*>(Payload.data()), Payload.size());
-        return handle.get().as<T>();
-    }
-
-    MSGPACK_DEFINE(Type, Payload);
-};
-
+        MSGPACK_DEFINE(Type, Payload);
+    };
 } // namespace repl
 
 /**
@@ -169,15 +167,15 @@ class ClientSession : public std::enable_shared_from_this<ClientSession> {
 public:
     using TcpSocket = boost::asio::ip::tcp::socket;
 
-    explicit ClientSession(TcpSocket socket, class LuaREPLServer* server);
+    explicit ClientSession(TcpSocket socket, class LuaREPLServer *server);
     ~ClientSession();
 
     // Non-copyable, non-movable
-    ClientSession(const ClientSession&) = delete;
-    ClientSession& operator=(const ClientSession&) = delete;
+    ClientSession(const ClientSession &) = delete;
+    ClientSession &operator=(const ClientSession &) = delete;
 
     void Start();
-    void SendMessage(const repl::Message& message);
+    void SendMessage(const repl::Message &message);
     void Disconnect();
 
     // Thread-safe client state accessors
@@ -188,6 +186,7 @@ public:
     void SetStepping(bool step) { m_Stepping.store(step); }
 
     bool IsWaitingForTick() const { return m_WaitingForTick.load(); }
+
     void SetWaitingForTick(bool waiting, size_t target = 0) {
         m_WaitingForTick.store(waiting);
         m_WaitTargetTick.store(target);
@@ -201,11 +200,11 @@ public:
 private:
     void DoRead();
     void DoWrite();
-    void HandleMessage(const repl::Message& message);
-    void ProcessReceivedData(const std::vector<uint8_t>& data);
+    void HandleMessage(const repl::Message &message);
+    void ProcessReceivedData(const std::vector<uint8_t> &data);
 
     TcpSocket m_Socket;
-    LuaREPLServer* m_Server;
+    LuaREPLServer *m_Server;
     std::queue<repl::Message> m_WriteQueue;
     std::vector<uint8_t> m_ReadBuffer;
     std::vector<uint8_t> m_MessageBuffer; // Accumulates partial messages
@@ -235,12 +234,12 @@ public:
     using TcpAcceptor = boost::asio::ip::tcp::acceptor;
     using TcpEndpoint = boost::asio::ip::tcp::endpoint;
 
-    explicit LuaREPLServer(TASEngine* engine);
+    explicit LuaREPLServer(TASEngine *engine);
     ~LuaREPLServer();
 
     // Non-copyable, non-movable
-    LuaREPLServer(const LuaREPLServer&) = delete;
-    LuaREPLServer& operator=(const LuaREPLServer&) = delete;
+    LuaREPLServer(const LuaREPLServer &) = delete;
+    LuaREPLServer &operator=(const LuaREPLServer &) = delete;
 
     // =========================================================================
     // Lifecycle Management
@@ -252,7 +251,7 @@ public:
      * @param authToken Optional authentication token for security
      * @return True if initialization was successful.
      */
-    bool Initialize(uint16_t port = 7878, const std::string& authToken = "");
+    bool Initialize(uint16_t port = 7878, const std::string &authToken = "");
 
     /**
      * @brief Starts the REPL server.
@@ -328,15 +327,15 @@ public:
     // =========================================================================
 
     void SetAuthenticationRequired(bool required) { m_RequireAuth = required; }
-    void SetAuthenticationToken(const std::string& token) { m_AuthToken = token; }
+    void SetAuthenticationToken(const std::string &token) { m_AuthToken = token; }
 
     // =========================================================================
     // Internal Message Handling (Called by ClientSession)
     // =========================================================================
 
-    void HandleAuthRequest(std::shared_ptr<ClientSession> session, const repl::AuthRequest& request);
-    void HandleCommand(std::shared_ptr<ClientSession> session, const repl::REPLCommand& command);
-    void HandleControlCommand(std::shared_ptr<ClientSession> session, const repl::ControlCommand& control);
+    void HandleAuthRequest(std::shared_ptr<ClientSession> session, const repl::AuthRequest &request);
+    void HandleCommand(std::shared_ptr<ClientSession> session, const repl::REPLCommand &command);
+    void HandleControlCommand(std::shared_ptr<ClientSession> session, const repl::ControlCommand &control);
     void OnClientDisconnect(std::shared_ptr<ClientSession> session);
 
 private:
@@ -349,7 +348,8 @@ private:
         std::weak_ptr<ClientSession> Session;
 
         ScheduledCommand(repl::REPLCommand cmd, std::weak_ptr<ClientSession> sess)
-            : Command(std::move(cmd)), Session(std::move(sess)) {}
+            : Command(std::move(cmd)), Session(std::move(sess)) {
+        }
     };
 
     struct PendingResult {
@@ -357,18 +357,19 @@ private:
         std::weak_ptr<ClientSession> Session;
 
         PendingResult(repl::CommandResult res, std::weak_ptr<ClientSession> sess)
-            : Result(std::move(res)), Session(std::move(sess)) {}
+            : Result(std::move(res)), Session(std::move(sess)) {
+        }
     };
 
     // =========================================================================
     // Command Execution (Main Thread Only)
     // =========================================================================
 
-    std::pair<bool, std::string> ExecuteLuaCommand(const std::string& code, size_t executionTick);
-    void ScheduleCommand(const repl::REPLCommand& command, std::shared_ptr<ClientSession> session);
-    void SendResultToClient(std::weak_ptr<ClientSession> session, const repl::CommandResult& result);
+    std::pair<bool, std::string> ExecuteLuaCommand(const std::string &code, size_t executionTick);
+    void ScheduleCommand(const repl::REPLCommand &command, std::shared_ptr<ClientSession> session);
+    void SendResultToClient(std::weak_ptr<ClientSession> session, const repl::CommandResult &result);
     void BroadcastTickNotification(size_t tick);
-    std::string FormatLuaValue(const sol::object& obj);
+    std::string FormatLuaValue(const sol::object &obj);
 
     // =========================================================================
     // Network Operations (I/O Thread)
@@ -381,7 +382,7 @@ private:
     // Core Members
     // =========================================================================
 
-    TASEngine* m_Engine;
+    TASEngine *m_Engine;
 
     // Network components
     std::unique_ptr<boost::asio::io_context> m_IOContext;

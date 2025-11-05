@@ -50,7 +50,7 @@ public:
      * @brief Options for setting shared data.
      */
     struct SetOptions {
-        int ttl_ms = 0;  // Time-to-live in milliseconds (0 = no expiry)
+        int ttl_ms = 0; // Time-to-live in milliseconds (0 = no expiry)
     };
 
     /**
@@ -136,11 +136,12 @@ private:
      * @brief Represents a watch entry with context lifetime tracking.
      */
     struct WatchEntry {
-        std::weak_ptr<ScriptContext> context;  // Weak pointer to track context lifetime
-        sol::function callback;                 // Lua callback function
-        uint64_t generation;                    // Generation counter for versioning
+        std::weak_ptr<ScriptContext> context; // Weak pointer to track context lifetime
+        sol::function callback;               // Lua callback function
+        uint64_t generation;                  // Generation counter for versioning
 
         WatchEntry() : generation(0) {}
+
         WatchEntry(std::weak_ptr<ScriptContext> ctx, sol::function cb, uint64_t gen)
             : context(std::move(ctx)), callback(std::move(cb)), generation(gen) {}
     };
@@ -159,11 +160,11 @@ private:
 
         Type type = Type::Nil;
         std::any data;
-        int64_t expiryTime = 0;  // 0 = no expiry, otherwise milliseconds since epoch
+        int64_t expiryTime = 0; // 0 = no expiry, otherwise milliseconds since epoch
 
         StoredValue() = default;
-        StoredValue(Type t, std::any d, int64_t expiry = 0)
-            : type(t), data(std::move(d)), expiryTime(expiry) {}
+
+        StoredValue(Type t, std::any d, int64_t expiry = 0) : type(t), data(std::move(d)), expiryTime(expiry) {}
 
         // Check if value has expired
         bool IsExpired(int64_t currentTime) const {
@@ -191,7 +192,7 @@ private:
      * @return The deserialized Lua table.
      */
     static sol::table DeserializeTable(sol::state_view lua,
-                                      const std::unordered_map<std::string, StoredValue> &data);
+                                       const std::unordered_map<std::string, StoredValue> &data);
 
     /**
      * @brief Gets current time in milliseconds since epoch.
@@ -220,7 +221,7 @@ private:
 
     // Watch callbacks: key -> (contextName -> WatchEntry)
     std::unordered_map<std::string, std::unordered_map<std::string, WatchEntry>> m_Watches;
-    uint64_t m_WatchGeneration = 0;  // Global generation counter for watch versioning
+    uint64_t m_WatchGeneration = 0; // Global generation counter for watch versioning
 
     // Pending watch notifications (queued for delivery on Tick())
     struct WatchNotification {
@@ -228,6 +229,7 @@ private:
         StoredValue oldValue;
         StoredValue newValue;
     };
+
     std::vector<WatchNotification> m_PendingNotifications;
 
     // Initialization state

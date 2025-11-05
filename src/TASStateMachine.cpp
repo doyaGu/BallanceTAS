@@ -1,11 +1,8 @@
 #include "TASStateMachine.h"
 #include <chrono>
 
-TASStateMachine::TASStateMachine(TASEngine* engine)
-    : m_Engine(engine)
-    , m_CurrentState(State::Idle)
-    , m_PreviousState(State::Idle)
-{
+TASStateMachine::TASStateMachine(TASEngine *engine)
+    : m_Engine(engine), m_CurrentState(State::Idle), m_PreviousState(State::Idle) {
     InitializeTransitionTable();
 }
 
@@ -26,7 +23,7 @@ void TASStateMachine::InitializeTransitionTable() {
     // 暂停和恢复
     m_TransitionTable[{State::PlayingScript, Event::Pause}] = State::Paused;
     m_TransitionTable[{State::PlayingRecord, Event::Pause}] = State::Paused;
-    m_TransitionTable[{State::Paused, Event::Resume}] = State::PlayingScript;  // 默认恢复到脚本播放
+    m_TransitionTable[{State::Paused, Event::Resume}] = State::PlayingScript; // 默认恢复到脚本播放
 
     // 关卡切换会停止当前操作
     m_TransitionTable[{State::Recording, Event::LevelChange}] = State::Idle;
@@ -35,8 +32,10 @@ void TASStateMachine::InitializeTransitionTable() {
     m_TransitionTable[{State::Translating, Event::LevelChange}] = State::Idle;
 
     // 错误处理 - 任何状态遇到错误都返回Idle
-    for (auto state : {State::Recording, State::PlayingScript, State::PlayingRecord,
-                      State::Translating, State::Paused}) {
+    for (auto state : {
+             State::Recording, State::PlayingScript, State::PlayingRecord,
+             State::Translating, State::Paused
+         }) {
         m_TransitionTable[{state, Event::Error}] = State::Idle;
     }
 }
@@ -47,8 +46,8 @@ Result<void> TASStateMachine::Transition(Event event) {
     // 检查转换是否在转换表中定义
     if (targetState == m_CurrentState) {
         std::string errorMsg = std::string("Invalid state transition: ") +
-                              StateToString(m_CurrentState) + " -> " +
-                              EventToString(event);
+            StateToString(m_CurrentState) + " -> " +
+            EventToString(event);
         RecordTransition(m_CurrentState, event, m_CurrentState, false);
         return Result<void>::Error(errorMsg, "state_machine", ErrorSeverity::Warning);
     }
@@ -58,24 +57,24 @@ Result<void> TASStateMachine::Transition(Event event) {
         handler != m_Handlers.end()) {
         if (!handler->second->CanTransitionTo(targetState)) {
             std::string errorMsg = std::string("Transition blocked by handler: ") +
-                                  StateToString(m_CurrentState) + " -> " +
-                                  StateToString(targetState);
+                StateToString(m_CurrentState) + " -> " +
+                StateToString(targetState);
             RecordTransition(m_CurrentState, event, targetState, false);
             return Result<void>::Error(errorMsg, "state_machine", ErrorSeverity::Warning);
         }
     }
 
     // 执行转换
-    State oldState = m_CurrentState;  // Capture state before transition
+    State oldState = m_CurrentState; // Capture state before transition
     return TransitionToState(targetState)
-        .AndThen([this, event, oldState, targetState]() {
-            RecordTransition(oldState, event, targetState, true);
-            return Result<void>::Ok();
-        })
-        .OrElse([this, event, oldState, targetState](const ErrorInfo& error) {
-            RecordTransition(oldState, event, targetState, false);
-            return Result<void>::Error(error);
-        });
+           .AndThen([this, event, oldState, targetState]() {
+               RecordTransition(oldState, event, targetState, true);
+               return Result<void>::Ok();
+           })
+           .OrElse([this, event, oldState, targetState](const ErrorInfo &error) {
+               RecordTransition(oldState, event, targetState, false);
+               return Result<void>::Error(error);
+           });
 }
 
 Result<void> TASStateMachine::ForceSetState(State newState) {
@@ -104,7 +103,7 @@ Result<void> TASStateMachine::TransitionToState(State newState) {
 
     // 2. 更新状态
     if (newState == State::Paused) {
-        m_PreviousState = oldState;  // 保存暂停前的状态
+        m_PreviousState = oldState; // 保存暂停前的状态
     } else if (oldState == State::Paused && newState != State::Idle) {
         // 从暂停恢复，使用之前保存的状态
         newState = m_PreviousState;
@@ -140,12 +139,12 @@ TASStateMachine::State TASStateMachine::FindTransitionTarget(State currentState,
     if (it != m_TransitionTable.end()) {
         return it->second;
     }
-    return currentState;  // 无效转换，返回当前状态
+    return currentState; // 无效转换，返回当前状态
 }
 
 bool TASStateMachine::IsTransitionValid(State from, State to) const {
     // 检查是否存在能导致此转换的事件
-    for (const auto& [pair, targetState] : m_TransitionTable) {
+    for (const auto &[pair, targetState] : m_TransitionTable) {
         if (pair.state == from && targetState == to) {
             return true;
         }

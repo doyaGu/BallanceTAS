@@ -277,7 +277,7 @@ void LuaApi::RegisterContextCommunicationApi(sol::table &tas, ScriptContext *con
             return scheduler->YieldWaitForMessageResponse(correlationId, 5000);
         },
         [messageBus, context, contextName](const std::string &target, const std::string &type,
-                                          sol::object data, int timeout) -> sol::object {
+                                           sol::object data, int timeout) -> sol::object {
             if (!messageBus || !context) {
                 throw sol::error("message.request: MessageBus or Context not available");
             }
@@ -400,10 +400,10 @@ void LuaApi::RegisterContextCommunicationApi(sol::table &tas, ScriptContext *con
             return "unknown";
         }
         switch (context->GetType()) {
-            case ScriptContextType::Global: return "global";
-            case ScriptContextType::Level: return "level";
-            case ScriptContextType::Custom: return "custom";
-            default: return "unknown";
+        case ScriptContextType::Global: return "global";
+        case ScriptContextType::Level: return "level";
+        case ScriptContextType::Custom: return "custom";
+        default: return "unknown";
         }
     };
 
@@ -431,18 +431,18 @@ void LuaApi::RegisterContextCommunicationApi(sol::table &tas, ScriptContext *con
                 info["name"] = ctx->GetName();
                 info["priority"] = ctx->GetPriority();
                 switch (ctx->GetType()) {
-                    case ScriptContextType::Global:
-                        info["type"] = "global";
-                        break;
-                    case ScriptContextType::Level:
-                        info["type"] = "level";
-                        break;
-                    case ScriptContextType::Custom:
-                        info["type"] = "custom";
-                        break;
-                    default:
-                        info["type"] = "unknown";
-                        break;
+                case ScriptContextType::Global:
+                    info["type"] = "global";
+                    break;
+                case ScriptContextType::Level:
+                    info["type"] = "level";
+                    break;
+                case ScriptContextType::Custom:
+                    info["type"] = "custom";
+                    break;
+                default:
+                    info["type"] = "unknown";
+                    break;
                 }
                 info["is_executing"] = ctx->IsExecuting();
                 list[index++] = info;

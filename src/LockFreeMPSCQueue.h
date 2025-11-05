@@ -37,14 +37,11 @@ public:
      * @brief Constructs a bounded MPSC queue
      * @param maxSize Maximum number of elements (0 = unbounded, not recommended)
      */
-    explicit LockFreeMPSCQueue(size_t maxSize = 10000)
-        : m_MaxSize(maxSize)
-        , m_ApproxSize(0)
-    {
+    explicit LockFreeMPSCQueue(size_t maxSize = 10000) : m_MaxSize(maxSize), m_ApproxSize(0) {
         // Initialize per-priority queues
         for (int i = 0; i <= MaxPriority; ++i) {
             // Create dummy stub nodes
-            Node* stub = new Node();
+            Node *stub = new Node();
             m_PriorityQueues[i].head.store(stub, std::memory_order_relaxed);
             m_PriorityQueues[i].tail.store(stub, std::memory_order_relaxed);
         }
@@ -56,14 +53,14 @@ public:
 
         // Delete stub nodes
         for (int i = 0; i <= MaxPriority; ++i) {
-            Node* stub = m_PriorityQueues[i].head.load(std::memory_order_relaxed);
+            Node *stub = m_PriorityQueues[i].head.load(std::memory_order_relaxed);
             delete stub;
         }
     }
 
     // Non-copyable, non-movable
-    LockFreeMPSCQueue(const LockFreeMPSCQueue&) = delete;
-    LockFreeMPSCQueue& operator=(const LockFreeMPSCQueue&) = delete;
+    LockFreeMPSCQueue(const LockFreeMPSCQueue &) = delete;
+    LockFreeMPSCQueue &operator=(const LockFreeMPSCQueue &) = delete;
 
     /**
      * @brief Enqueues a message with given priority (wait-free for producers)
@@ -82,7 +79,7 @@ public:
         }
 
         // Allocate node (only allocation on hot path)
-        Node* node = new Node(std::move(value));
+        Node *node = new Node(std::move(value));
 
         // Enqueue into the appropriate priority queue
         EnqueueIntoPriorityQueue(node, priority);
@@ -136,38 +133,39 @@ public:
 
 private:
     struct Node {
-        std::atomic<Node*> next;
+        std::atomic<Node *> next;
         std::optional<T> value;
 
         Node() : next(nullptr), value(std::nullopt) {}
-        explicit Node(T&& val) : next(nullptr), value(std::move(val)) {}
+
+        explicit Node(T &&val) : next(nullptr), value(std::move(val)) {}
     };
 
     struct PriorityQueue {
         // Head: only accessed by consumer (single thread)
         // Tail: accessed by producers (multiple threads via atomic CAS)
-        std::atomic<Node*> head;  // Dequeue end
-        std::atomic<Node*> tail;  // Enqueue end
-        char padding[64 - sizeof(std::atomic<Node*>) * 2];  // Cache line padding
+        std::atomic<Node *> head;                           // Dequeue end
+        std::atomic<Node *> tail;                           // Enqueue end
+        char padding[64 - sizeof(std::atomic<Node *>) * 2]; // Cache line padding
     };
 
-    void EnqueueIntoPriorityQueue(Node* node, int priority) {
-        auto& queue = m_PriorityQueues[priority];
+    void EnqueueIntoPriorityQueue(Node *node, int priority) {
+        auto &queue = m_PriorityQueues[priority];
 
         // Initialize node
         node->next.store(nullptr, std::memory_order_relaxed);
 
         // Atomically swap tail pointer and link previous tail to new node
-        Node* prev = queue.tail.exchange(node, std::memory_order_acq_rel);
+        Node *prev = queue.tail.exchange(node, std::memory_order_acq_rel);
         prev->next.store(node, std::memory_order_release);
     }
 
     std::optional<T> DequeueFromPriorityQueue(int priority) {
-        auto& queue = m_PriorityQueues[priority];
+        auto &queue = m_PriorityQueues[priority];
 
         // Load head (only consumer accesses head, so relaxed is ok)
-        Node* head = queue.head.load(std::memory_order_relaxed);
-        Node* next = head->next.load(std::memory_order_acquire);
+        Node *head = queue.head.load(std::memory_order_relaxed);
+        Node *next = head->next.load(std::memory_order_acquire);
 
         // Queue is empty if next is null
         if (next == nullptr) {

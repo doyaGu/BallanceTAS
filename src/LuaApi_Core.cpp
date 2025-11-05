@@ -30,84 +30,84 @@ std::string FormatString(const std::string &fmt, sol::variadic_args va) {
     for (const auto &arg : va) {
         sol::type argType = arg.get_type();
         switch (argType) {
-            case sol::type::lua_nil: {
-                store.push_back("nil");
-                break;
-            }
-            case sol::type::boolean: {
-                bool value = arg.as<bool>();
-                store.push_back(value ? "true" : "false");
-                break;
-            }
-            case sol::type::number: {
-                store.push_back(arg.as<double>());
-                break;
-            }
-            case sol::type::string: {
-                sol::string_view sv = arg.as<sol::string_view>();
-                store.push_back(sv);
-                break;
-            }
-            case sol::type::table: {
-                sol::table table = arg.as<sol::table>();
-                sol::table metatable = table[sol::metatable_key];
+        case sol::type::lua_nil: {
+            store.push_back("nil");
+            break;
+        }
+        case sol::type::boolean: {
+            bool value = arg.as<bool>();
+            store.push_back(value ? "true" : "false");
+            break;
+        }
+        case sol::type::number: {
+            store.push_back(arg.as<double>());
+            break;
+        }
+        case sol::type::string: {
+            sol::string_view sv = arg.as<sol::string_view>();
+            store.push_back(sv);
+            break;
+        }
+        case sol::type::table: {
+            sol::table table = arg.as<sol::table>();
+            sol::table metatable = table[sol::metatable_key];
 
-                // Check if table has a __tostring metamethod
-                sol::optional<sol::function> tostring = metatable[sol::to_string(sol::meta_function::to_string)];
-                if (tostring) {
-                    try {
-                        sol::protected_function_result result = tostring.value()(table);
-                        if (result.valid()) {
-                            store.push_back(result.get<std::string>());
-                            break;
-                        }
-                    } catch (const std::exception &) {
-                        // Fall through to default table representation
+            // Check if table has a __tostring metamethod
+            sol::optional<sol::function> tostring = metatable[sol::to_string(sol::meta_function::to_string)];
+            if (tostring) {
+                try {
+                    sol::protected_function_result result = tostring.value()(table);
+                    if (result.valid()) {
+                        store.push_back(result.get<std::string>());
+                        break;
                     }
+                } catch (const std::exception &) {
+                    // Fall through to default table representation
                 }
-
-                store.push_back("<table>");
-                break;
             }
-            case sol::type::userdata: {
-                sol::userdata ud = arg.as<sol::userdata>();
-                sol::table metatable = ud[sol::metatable_key];
 
-                // Check if userdata has a __tostring metamethod
-                auto tostring = metatable[sol::to_string(sol::meta_function::to_string)];
-                if (tostring.valid() && tostring.get_type() == sol::type::function) {
-                    try {
-                        // CRITICAL FIX: Convert to protected_function before calling
-                        sol::protected_function tostringFunc = tostring;
-                        sol::protected_function_result res = tostringFunc(ud);
-                        if (res.valid() && res.get_type() == sol::type::string) {
-                            store.push_back(res.get<std::string>());
-                            break;
-                        }
-                    } catch (const std::exception &) {
-                        // Fall through to default userdata representation
+            store.push_back("<table>");
+            break;
+        }
+        case sol::type::userdata: {
+            sol::userdata ud = arg.as<sol::userdata>();
+            sol::table metatable = ud[sol::metatable_key];
+
+            // Check if userdata has a __tostring metamethod
+            auto tostring = metatable[sol::to_string(sol::meta_function::to_string)];
+            if (tostring.valid() && tostring.get_type() == sol::type::function) {
+                try {
+                    // CRITICAL FIX: Convert to protected_function before calling
+                    sol::protected_function tostringFunc = tostring;
+                    sol::protected_function_result res = tostringFunc(ud);
+                    if (res.valid() && res.get_type() == sol::type::string) {
+                        store.push_back(res.get<std::string>());
+                        break;
                     }
+                } catch (const std::exception &) {
+                    // Fall through to default userdata representation
                 }
+            }
 
-                store.push_back("<userdata>");
-                break;
-            }
-            case sol::type::function: {
-                store.push_back("<function>");
-                break;
-            }
-            case sol::type::thread: {
-                store.push_back("<thread>");
-                break;
-            }
-            case sol::type::lightuserdata: {
-                store.push_back("<lightuserdata>");
-                break;
-            }
-            default: {
-                store.push_back("<unknown>");
-                break;
-            }
+            store.push_back("<userdata>");
+            break;
+        }
+        case sol::type::function: {
+            store.push_back("<function>");
+            break;
+        }
+        case sol::type::thread: {
+            store.push_back("<thread>");
+            break;
+        }
+        case sol::type::lightuserdata: {
+            store.push_back("<lightuserdata>");
+            break;
+        }
+        default: {
+            store.push_back("<unknown>");
+            break;
+        }
         }
     }
 

@@ -22,17 +22,17 @@ class ScriptContextManager;
  * @brief Type of script context
  */
 enum class ScriptContextType {
-    Global,  // Global context that persists across levels
-    Level,   // Level-specific context
-    Custom   // User-created context
+    Global, // Global context that persists across levels
+    Level,  // Level-specific context
+    Custom  // User-created context
 };
 
 /**
  * @brief Lua GC mode (Lua 5.4+)
  */
 enum class LuaGCMode {
-    Generational,  // Generational GC (default for TAS, better for short-burst workloads)
-    Incremental    // Incremental GC (better for long-lived scripts with timely finalization)
+    Generational, // Generational GC (default for TAS, better for short-burst workloads)
+    Incremental   // Incremental GC (better for long-lived scripts with timely finalization)
 };
 
 /**
@@ -57,8 +57,8 @@ public:
      * @param priority The priority for input and event handling (higher = more priority).
      */
     explicit ScriptContext(TASEngine *engine, std::string name,
-                          ScriptContextType type = ScriptContextType::Custom,
-                          int priority = 0);
+                           ScriptContextType type = ScriptContextType::Custom,
+                           int priority = 0);
     ~ScriptContext();
 
     // ScriptContext is not copyable or movable
@@ -321,7 +321,7 @@ private:
     std::function<void(bool)> m_StatusCallback;
 
     // GC management
-    LuaGCMode m_GCMode = LuaGCMode::Generational;  // Default to generational for TAS workloads
+    LuaGCMode m_GCMode = LuaGCMode::Generational; // Default to generational for TAS workloads
 
     // Sleep/idle management
     bool m_Sleeping = false;

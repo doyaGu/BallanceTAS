@@ -23,11 +23,8 @@
  */
 class ThreadOwnershipValidator {
 public:
-    explicit ThreadOwnershipValidator(const char* componentName)
-        : m_ComponentName(componentName)
-        , m_OwnerThread()
-        , m_IsInitialized(false)
-    {}
+    explicit ThreadOwnershipValidator(const char *componentName)
+        : m_ComponentName(componentName), m_OwnerThread(), m_IsInitialized(false) {}
 
     /**
      * Validates that the current thread owns this component.
@@ -79,15 +76,15 @@ public:
         return std::this_thread::get_id() == owner;
     }
 
-    const char* GetComponentName() const { return m_ComponentName; }
+    const char *GetComponentName() const { return m_ComponentName; }
 
 private:
     void InitializeOwner(std::thread::id currentThread) const {
         // Try to claim ownership
         bool expected = false;
         if (m_IsInitialized.compare_exchange_strong(expected, true,
-                                                     std::memory_order_acq_rel,
-                                                     std::memory_order_acquire)) {
+                                                    std::memory_order_acq_rel,
+                                                    std::memory_order_acquire)) {
             // We won the race - set ourselves as owner
             m_OwnerThread.store(currentThread, std::memory_order_release);
         } else {
@@ -123,7 +120,7 @@ private:
 #endif
     }
 
-    const char* m_ComponentName;
+    const char *m_ComponentName;
     mutable std::atomic<std::thread::id> m_OwnerThread;
     mutable std::atomic<bool> m_IsInitialized;
 };
@@ -134,9 +131,7 @@ private:
  */
 class ThreadOwnershipTransfer {
 public:
-    explicit ThreadOwnershipTransfer(ThreadOwnershipValidator& validator)
-        : m_Validator(validator)
-    {
+    explicit ThreadOwnershipTransfer(ThreadOwnershipValidator &validator) : m_Validator(validator) {
         m_Validator.ResetOwnership();
     }
 
@@ -145,5 +140,5 @@ public:
     }
 
 private:
-    ThreadOwnershipValidator& m_Validator;
+    ThreadOwnershipValidator &m_Validator;
 };

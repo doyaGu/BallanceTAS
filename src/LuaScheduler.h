@@ -78,8 +78,7 @@ private:
  */
 class CoroutineWaitTask : public SchedulerTask {
 public:
-    explicit CoroutineWaitTask(std::vector<sol::coroutine> coroutines)
-        : m_Coroutines(std::move(coroutines)) {}
+    explicit CoroutineWaitTask(std::vector<sol::coroutine> coroutines) : m_Coroutines(std::move(coroutines)) {}
 
     bool IsComplete() override {
         for (const auto &co : m_Coroutines) {
@@ -149,8 +148,7 @@ protected:
  */
 class RepeatForTicksTask : public RepeatTask {
 public:
-    RepeatForTicksTask(sol::function task, int ticks)
-        : RepeatTask(std::move(task)), m_RemainingTicks(ticks) {}
+    RepeatForTicksTask(sol::function task, int ticks) : RepeatTask(std::move(task)), m_RemainingTicks(ticks) {}
 
     bool IsComplete() override {
         if (m_ShouldStop || m_RemainingTicks <= 0) {
@@ -419,6 +417,7 @@ private:
 
 // Forward declare MessageBus::Message::SerializedValue
 class MessageBus;
+
 namespace MessageBusInternal {
     struct SerializedValue;
 }
@@ -451,7 +450,8 @@ private:
     TASEngine *m_Engine;
     int m_TimeoutTicks;
     bool m_ResponseReceived;
-    std::any m_ResponseData;  // Stores MessageBus::Message::SerializedValue as std::any to avoid forward declaration issues
+    std::any m_ResponseData;
+    // Stores MessageBus::Message::SerializedValue as std::any to avoid forward declaration issues
 };
 
 /**
@@ -528,7 +528,7 @@ namespace detail {
             }
 
             // Get the coroutine's current thread state
-            lua_State* co_state = co.lua_state();
+            lua_State *co_state = co.lua_state();
 
             if (co_state && co_state != state.lua_state()) {
                 // Coroutine is on a different thread, wrap that thread
@@ -547,7 +547,6 @@ namespace detail {
         // Factory method for safer handling of existing coroutines
         static std::shared_ptr<SchedulerCothread> CreateFromExistingCoroutine(
             sol::state &state, sol::coroutine co) {
-
             if (!co.valid()) {
                 throw std::invalid_argument("Invalid coroutine provided");
             }

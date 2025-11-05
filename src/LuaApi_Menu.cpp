@@ -108,7 +108,7 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
     // tas.menu.send_key(key, duration) - Send a key press in menu
     menu["send_key"] = [](const std::string &key, sol::optional<int> duration) {
         Log::Warn("[STUB] menu.send_key('%s', %d) - Not yet implemented",
-                                   key.c_str(), duration.value_or(1));
+                  key.c_str(), duration.value_or(1));
         Log::Info("  Future implementation: This will send keyboard input to menu");
         throw sol::error("menu.send_key: Not yet implemented - stub function");
     };

@@ -17,10 +17,10 @@ public:
     ~ResourceManager();
 
     // 禁用拷贝，允许移动
-    ResourceManager(const ResourceManager&) = delete;
-    ResourceManager& operator=(const ResourceManager&) = delete;
-    ResourceManager(ResourceManager&&) noexcept = default;
-    ResourceManager& operator=(ResourceManager&&) noexcept = default;
+    ResourceManager(const ResourceManager &) = delete;
+    ResourceManager &operator=(const ResourceManager &) = delete;
+    ResourceManager(ResourceManager &&) noexcept = default;
+    ResourceManager &operator=(ResourceManager &&) noexcept = default;
 
     // ========================================================================
     // 临时文件管理
@@ -31,12 +31,12 @@ public:
         ~TemporaryFile();
 
         // 禁用拷贝，允许移动
-        TemporaryFile(const TemporaryFile&) = delete;
-        TemporaryFile& operator=(const TemporaryFile&) = delete;
-        TemporaryFile(TemporaryFile&& other) noexcept;
-        TemporaryFile& operator=(TemporaryFile&& other) noexcept;
+        TemporaryFile(const TemporaryFile &) = delete;
+        TemporaryFile &operator=(const TemporaryFile &) = delete;
+        TemporaryFile(TemporaryFile &&other) noexcept;
+        TemporaryFile &operator=(TemporaryFile &&other) noexcept;
 
-        const std::filesystem::path& GetPath() const { return m_Path; }
+        const std::filesystem::path &GetPath() const { return m_Path; }
         std::string GetPathString() const { return m_Path.string(); }
         bool Exists() const;
 
@@ -54,13 +54,13 @@ public:
 
     // 创建临时文件
     std::shared_ptr<TemporaryFile> CreateTempFile(
-        const std::string& prefix = "tas_",
-        const std::string& extension = ".tmp"
+        const std::string &prefix = "tas_",
+        const std::string &extension = ".tmp"
     );
 
     // 创建临时目录
     std::shared_ptr<TemporaryFile> CreateTempDirectory(
-        const std::string& prefix = "tas_dir_"
+        const std::string &prefix = "tas_dir_"
     );
 
     // ========================================================================
@@ -72,10 +72,10 @@ public:
     void RegisterCleanupHandler(CleanupHandler handler);
 
     // 注册命名的清理回调（可以取消）
-    void RegisterCleanupHandler(const std::string& name, CleanupHandler handler);
+    void RegisterCleanupHandler(const std::string &name, CleanupHandler handler);
 
     // 取消命名的清理回调
-    bool UnregisterCleanupHandler(const std::string& name);
+    bool UnregisterCleanupHandler(const std::string &name);
 
     // 立即执行所有清理
     void CleanupAll();
@@ -97,11 +97,9 @@ public:
     // ========================================================================
     class ScopedResource {
     public:
-        explicit ScopedResource(ResourceManager* manager, CleanupHandler cleanup)
-            : m_Manager(manager)
-            , m_Cleanup(std::move(cleanup))
-            , m_Active(true)
-        {}
+        explicit ScopedResource(ResourceManager *manager, CleanupHandler cleanup)
+            : m_Manager(manager), m_Cleanup(std::move(cleanup)), m_Active(true) {
+        }
 
         ~ScopedResource() {
             if (m_Active && m_Cleanup) {
@@ -114,18 +112,15 @@ public:
         }
 
         // 禁用拷贝，允许移动
-        ScopedResource(const ScopedResource&) = delete;
-        ScopedResource& operator=(const ScopedResource&) = delete;
+        ScopedResource(const ScopedResource &) = delete;
+        ScopedResource &operator=(const ScopedResource &) = delete;
 
-        ScopedResource(ScopedResource&& other) noexcept
-            : m_Manager(other.m_Manager)
-            , m_Cleanup(std::move(other.m_Cleanup))
-            , m_Active(other.m_Active)
-        {
+        ScopedResource(ScopedResource &&other) noexcept
+            : m_Manager(other.m_Manager), m_Cleanup(std::move(other.m_Cleanup)), m_Active(other.m_Active) {
             other.m_Active = false;
         }
 
-        ScopedResource& operator=(ScopedResource&& other) noexcept {
+        ScopedResource &operator=(ScopedResource &&other) noexcept {
             if (this != &other) {
                 if (m_Active && m_Cleanup) {
                     m_Cleanup();
@@ -150,14 +145,14 @@ public:
         }
 
     private:
-        ResourceManager* m_Manager;
+        ResourceManager *m_Manager;
         CleanupHandler m_Cleanup;
         bool m_Active;
     };
 
     // 创建作用域资源
     template <typename F>
-    ScopedResource CreateScopedResource(F&& cleanup) {
+    ScopedResource CreateScopedResource(F &&cleanup) {
         return ScopedResource(this, std::forward<F>(cleanup));
     }
 
@@ -173,7 +168,7 @@ private:
     static std::filesystem::path GetTempDirectory();
 
     // 生成唯一文件名
-    static std::string GenerateUniqueFilename(const std::string& prefix, const std::string& extension);
+    static std::string GenerateUniqueFilename(const std::string &prefix, const std::string &extension);
 };
 
 // ============================================================================
@@ -181,7 +176,7 @@ private:
 // ============================================================================
 class GlobalResourceManager {
 public:
-    static ResourceManager& Instance() {
+    static ResourceManager &Instance() {
         static ResourceManager instance;
         return instance;
     }

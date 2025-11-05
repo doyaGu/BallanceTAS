@@ -8,8 +8,7 @@
 #include "Logger.h"
 #include <BML/ILogger.h>
 
-StartupProjectManager::StartupProjectManager(TASEngine *engine)
-    : m_Engine(engine) {}
+StartupProjectManager::StartupProjectManager(TASEngine *engine) : m_Engine(engine) {}
 
 StartupProjectManager::~StartupProjectManager() {
     Shutdown();
@@ -139,7 +138,6 @@ bool StartupProjectManager::LoadStartupProject() {
     for (const auto &project : allProjects) {
         if (project && project->GetName() == m_StartupProjectName &&
             project->IsGlobalProject() && project->IsValid()) {
-
             // Create a copy of the project for startup use
             m_StartupProject = std::make_unique<TASProject>(*project);
             return true;
@@ -158,8 +156,9 @@ bool StartupProjectManager::ExecuteStartupProjectIfAppropriate(const std::string
 
     // Only script projects are supported for global context (record playback not supported in multi-context)
     if (!m_StartupProject->IsScriptProject()) {
-        Log::Warn("Startup project '%s' is not a script project. Only script projects are supported for global context.",
-                        m_StartupProjectName.c_str());
+        Log::Warn(
+            "Startup project '%s' is not a script project. Only script projects are supported for global context.",
+            m_StartupProjectName.c_str());
         return false;
     }
 
@@ -184,16 +183,16 @@ bool StartupProjectManager::ExecuteStartupProjectIfAppropriate(const std::string
         if (success) {
             m_HasExecutedStartup = true;
             Log::Info("Successfully loaded startup project '%s' into global context.",
-                           m_StartupProjectName.c_str());
+                      m_StartupProjectName.c_str());
             return true;
         } else {
             Log::Error("Failed to load startup project '%s' into global context.",
-                            m_StartupProjectName.c_str());
+                       m_StartupProjectName.c_str());
         }
     } catch (const std::exception &e) {
         // Log error but don't crash
         Log::Error("Exception while executing startup project '%s': %s",
-                         m_StartupProjectName.c_str(), e.what());
+                   m_StartupProjectName.c_str(), e.what());
     }
 
     return false;

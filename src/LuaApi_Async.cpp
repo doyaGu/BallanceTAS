@@ -209,7 +209,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
             sol::protected_function_result result = condition_fn();
             if (result.valid() && result.get_type() == sol::type::boolean) {
                 if (result.get<bool>()) {
-                    break;  // Condition met
+                    break; // Condition met
                 }
             }
             scheduler->YieldTicks(1);
@@ -274,7 +274,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
             }
 
             return results;
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             throw sol::error(std::string("async.all() failed: ") + e.what());
         }
     };
@@ -327,7 +327,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
                 }
                 scheduler->YieldTicks(1);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             throw sol::error(std::string("async.race() failed: ") + e.what());
         }
     };
@@ -394,7 +394,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
 
                 scheduler->YieldTicks(1);
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             throw sol::error(std::string("async.any() failed: ") + e.what());
         }
     };

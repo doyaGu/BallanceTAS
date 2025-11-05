@@ -50,7 +50,8 @@ public:
         ListenerId id = kInvalidListenerId;
 
         CallbackEntry(ListenerId listenerId, Callback cb, bool once = false)
-            : callback(std::move(cb)), oneTime(once), id(listenerId) {}
+            : callback(std::move(cb)), oneTime(once), id(listenerId) {
+        }
     };
 
     EventManager() = default;
@@ -82,11 +83,11 @@ public:
      */
     template <typename F>
     ListenerId RegisterListener(const std::string &eventName, F &&callback, bool oneTime = false,
-                          typename std::enable_if_t<
-                              std::is_invocable_v<F> &&
-                              !std::is_same_v<std::decay_t<F>, sol::function> &&
-                              !std::is_same_v<std::decay_t<F>, std::function<void()>>
-                          > * = nullptr);
+                                typename std::enable_if_t<
+                                    std::is_invocable_v<F> &&
+                                    !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                    !std::is_same_v<std::decay_t<F>, std::function<void()>>
+                                > * = nullptr);
 
     /**
      * @brief Register a one-time Lua function listener.
@@ -109,11 +110,11 @@ public:
      */
     template <typename F>
     ListenerId RegisterOnceListener(const std::string &eventName, F &&callback,
-                              typename std::enable_if_t<
-                                  std::is_invocable_v<F> &&
-                                  !std::is_same_v<std::decay_t<F>, sol::function> &&
-                                  !std::is_same_v<std::decay_t<F>, std::function<void()>>
-                              > * = nullptr);
+                                    typename std::enable_if_t<
+                                        std::is_invocable_v<F> &&
+                                        !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                        !std::is_same_v<std::decay_t<F>, std::function<void()>>
+                                    > * = nullptr);
 
     /**
      * @brief Fire an event with optional arguments to all registered listeners.
@@ -187,11 +188,11 @@ private:
 // Template implementation
 template <typename F>
 EventManager::ListenerId EventManager::RegisterListener(const std::string &eventName, F &&callback, bool oneTime,
-                                                       typename std::enable_if_t<
-                                                           std::is_invocable_v<F> &&
-                                                           !std::is_same_v<std::decay_t<F>, sol::function> &&
-                                                           !std::is_same_v<std::decay_t<F>, std::function<void()>>
-                                                       > *) {
+                                                        typename std::enable_if_t<
+                                                            std::is_invocable_v<F> &&
+                                                            !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                                            !std::is_same_v<std::decay_t<F>, std::function<void()>>
+                                                        > *) {
     if (eventName.empty()) {
         HandleError(eventName, "Event name cannot be empty");
         return kInvalidListenerId;
@@ -207,11 +208,11 @@ EventManager::ListenerId EventManager::RegisterListener(const std::string &event
 
 template <typename F>
 EventManager::ListenerId EventManager::RegisterOnceListener(const std::string &eventName, F &&callback,
-                                                           typename std::enable_if_t<
-                                                               std::is_invocable_v<F> &&
-                                                               !std::is_same_v<std::decay_t<F>, sol::function> &&
-                                                               !std::is_same_v<std::decay_t<F>, std::function<void()>>
-                                                           > *) {
+                                                            typename std::enable_if_t<
+                                                                std::is_invocable_v<F> &&
+                                                                !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                                                !std::is_same_v<std::decay_t<F>, std::function<void()>>
+                                                            > *) {
     return RegisterListener(eventName, std::forward<F>(callback), true);
 }
 

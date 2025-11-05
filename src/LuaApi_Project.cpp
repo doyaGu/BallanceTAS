@@ -143,8 +143,8 @@ void LuaApi::RegisterProjectApi(sol::table &tas, ScriptContext *context) {
             // Determine context type
             bool isGlobal = targetProject->IsGlobalProject();
             auto ctx = isGlobal
-                ? ctxMgr->GetOrCreateGlobalContext()
-                : ctxMgr->GetOrCreateLevelContext(std::to_string(context->GetGameInterface()->GetCurrentLevel()));
+                           ? ctxMgr->GetOrCreateGlobalContext()
+                           : ctxMgr->GetOrCreateLevelContext(std::to_string(context->GetGameInterface()->GetCurrentLevel()));
 
             if (!ctx) {
                 throw sol::error("project.load: Failed to create script context");
@@ -250,8 +250,8 @@ void LuaApi::RegisterProjectApi(sol::table &tas, ScriptContext *context) {
             // Determine context type and reload
             bool isGlobal = currentProj->IsGlobalProject();
             auto ctx = isGlobal
-                ? ctxMgr->GetOrCreateGlobalContext()
-                : ctxMgr->GetOrCreateLevelContext(std::to_string(context->GetGameInterface()->GetCurrentLevel()));
+                           ? ctxMgr->GetOrCreateGlobalContext()
+                           : ctxMgr->GetOrCreateLevelContext(std::to_string(context->GetGameInterface()->GetCurrentLevel()));
 
             if (!ctx) {
                 throw sol::error("project.reload: Failed to create script context");

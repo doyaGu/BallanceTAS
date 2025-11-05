@@ -63,6 +63,9 @@ set(TAS_SOURCES
 
 		LuaApi.cpp
 		LuaApi_Core.cpp
+		LuaApi_Debug.cpp
+		LuaApi_Global.cpp
+		LuaApi_GC.cpp
 		LuaApi_Input.cpp
 		LuaApi_World.cpp
 		LuaApi_Concurrency.cpp

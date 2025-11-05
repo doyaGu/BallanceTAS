@@ -155,6 +155,8 @@ private:
     std::string m_TASRootPath;
     std::string m_TempDir; // Base directory for temporary extractions
 
+    sol::state m_ManifestState; // Dedicated Lua state for manifest parsing
+
     std::vector<std::unique_ptr<TASProject>> m_Projects;
     TASProject *m_CurrentProject = nullptr; // Current project being worked on, if any.
 

@@ -57,10 +57,6 @@ public:
 
 private:
     TASEngine *m_Engine;
-
-    std::unique_ptr<class TASListPage> m_TASListPage;
-    std::unique_ptr<class TASDetailsPage> m_TASDetailsPage;
-    std::unique_ptr<class TASRecordingPage> m_TASRecordingPage;
 };
 
 class TASListPage : public TASMenuPage {
@@ -68,7 +64,7 @@ public:
     explicit TASListPage(TASMenu *menu);
     ~TASListPage() override;
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
 
 private:
@@ -85,7 +81,7 @@ public:
     explicit TASDetailsPage(TASMenu *menu);
     ~TASDetailsPage() override;
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
 
 private:
@@ -104,7 +100,7 @@ public:
     explicit TASRecordingPage(TASMenu *menu);
     ~TASRecordingPage() override = default;
 
-    void OnAfterBegin() override;
+    void OnPostBegin() override;
     void OnDraw() override;
 
 private:

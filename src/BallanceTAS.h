@@ -213,4 +213,9 @@ private:
 
     // --- Recording Configuration ---
     IProperty *m_RecordingMaxFrames = nullptr;
+
+    // --- Startup Script Configuration ---
+    IProperty *m_StartupScriptEnabled = nullptr;
+    IProperty *m_StartupScriptProject = nullptr;
+    IProperty *m_AutoLoadStartupScript = nullptr;
 };

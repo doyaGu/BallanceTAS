@@ -1,5 +1,6 @@
 #include "ScriptGenerator.h"
 
+#include "Logger.h"
 #include <set>
 #include <fstream>
 #include <filesystem>
@@ -22,8 +23,7 @@ const std::vector<std::string> ScriptGenerator::KEY_NAMES = {
 // LuaScriptBuilder Implementation
 // ===================================================================
 
-ScriptGenerator::LuaScriptBuilder::LuaScriptBuilder(const GenerationOptions &options)
-    : m_Options(options) {
+ScriptGenerator::LuaScriptBuilder::LuaScriptBuilder(const GenerationOptions &options) : m_Options(options) {
     m_CurrentIndent = std::string(m_IndentLevel * m_Options.indentSize, ' ');
 }
 
@@ -101,8 +101,7 @@ std::string ScriptGenerator::LuaScriptBuilder::GetScript() const {
 // ScriptGenerator Implementation
 // ===================================================================
 
-ScriptGenerator::ScriptGenerator(TASEngine *engine)
-    : m_Engine(engine) {
+ScriptGenerator::ScriptGenerator(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::runtime_error("ScriptGenerator requires valid TASEngine and BallanceTAS instances.");
     }
@@ -127,7 +126,7 @@ std::string ScriptGenerator::FindAvailableProjectName(const std::string &baseNam
 
         // Safety check to avoid infinite loop
         if (counter > 1000) {
-            m_Engine->GetLogger()->Error("Could not find available project name after 1000 attempts.");
+            Log::Error("Could not find available project name after 1000 attempts.");
             return baseName + "_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
         }
     } while (fs::exists(projectDir));
@@ -142,7 +141,7 @@ void ScriptGenerator::GenerateAsync(const std::vector<FrameData> &frames,
         bool success = Generate(frames, options);
 
         // When done, notify the main thread.
-        m_Engine->AddTimer(1ul, [this, success, onComplete]() {
+        m_Engine->AddTimer(1ul, [success, onComplete]() {
             if (onComplete) {
                 onComplete(success);
             }
@@ -152,7 +151,7 @@ void ScriptGenerator::GenerateAsync(const std::vector<FrameData> &frames,
 
 bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const GenerationOptions &options) {
     if (frames.empty()) {
-        m_Engine->GetLogger()->Error("Cannot generate script from empty frame data.");
+        Log::Error("Cannot generate script from empty frame data.");
         return false;
     }
 
@@ -166,33 +165,33 @@ bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const Gener
         // Handle duplicate project names by finding an available name
         std::string finalProjectName = FindAvailableProjectName(options.projectName);
         if (finalProjectName != options.projectName) {
-            m_Engine->GetLogger()->Info("Project name '%s' already exists, using '%s' instead.",
+            Log::Info("Project name '%s' already exists, using '%s' instead.",
                                         options.projectName.c_str(), finalProjectName.c_str());
         }
 
         GenerationOptions finalOptions = options;
         finalOptions.projectName = finalProjectName;
 
-        m_Engine->GetLogger()->Info("Generating TAS script '%s' from %zu frames...",
+        Log::Info("Generating TAS script '%s' from %zu frames...",
                                     finalOptions.projectName.c_str(), frames.size());
 
         // Create project directory
         std::string projectDir = m_Engine->GetPath() + finalOptions.projectName;
         if (!fs::create_directories(projectDir) && !fs::exists(projectDir)) {
-            m_Engine->GetLogger()->Error("Failed to create project directory: %s", projectDir.c_str());
+            Log::Error("Failed to create project directory: %s", projectDir.c_str());
             return false;
         }
         m_LastGeneratedPath = projectDir;
         UpdateProgress(0.1f);
 
         // Analyze timing
-        m_Engine->GetLogger()->Info("Analyzing frame data...");
+        Log::Info("Analyzing frame data...");
         auto blocks = AnalyzeTiming(frames, finalOptions);
         m_LastStats.totalBlocks = blocks.size();
         UpdateProgress(0.4f);
 
         // Generate script
-        m_Engine->GetLogger()->Info("Building script...");
+        Log::Info("Building script...");
         std::string scriptContent = BuildScript(frames, blocks, finalOptions);
         UpdateProgress(0.7f);
 
@@ -209,15 +208,15 @@ bool ScriptGenerator::Generate(const std::vector<FrameData> &frames, const Gener
         auto endTime = std::chrono::high_resolution_clock::now();
         m_LastStats.generationTime = std::chrono::duration<double>(endTime - startTime).count();
 
-        m_Engine->GetLogger()->Info("Script generation completed successfully!");
-        m_Engine->GetLogger()->Info("  Project: %s", projectDir.c_str());
-        m_Engine->GetLogger()->Info("  Blocks: %zu", m_LastStats.totalBlocks);
-        m_Engine->GetLogger()->Info("  Key events: %zu", m_LastStats.keyEvents);
-        m_Engine->GetLogger()->Info("  Generation time: %.2fs", m_LastStats.generationTime);
+        Log::Info("Script generation completed successfully!");
+        Log::Info("  Project: %s", projectDir.c_str());
+        Log::Info("  Blocks: %zu", m_LastStats.totalBlocks);
+        Log::Info("  Key events: %zu", m_LastStats.keyEvents);
+        Log::Info("  Generation time: %.2fs", m_LastStats.generationTime);
 
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception during script generation: %s", e.what());
+        Log::Error("Exception during script generation: %s", e.what());
         return false;
     }
 }
@@ -548,7 +547,7 @@ bool ScriptGenerator::CreateProjectFiles(const std::string &projectPath,
         std::string scriptPath = projectPath + "/main.lua";
         std::ofstream scriptFile(scriptPath);
         if (!scriptFile.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to create script file: %s", scriptPath.c_str());
+            Log::Error("Failed to create script file: %s", scriptPath.c_str());
             return false;
         }
         scriptFile << scriptContent;
@@ -558,7 +557,7 @@ bool ScriptGenerator::CreateProjectFiles(const std::string &projectPath,
         std::string manifestPath = projectPath + "/manifest.lua";
         std::ofstream manifestFile(manifestPath);
         if (!manifestFile.is_open()) {
-            m_Engine->GetLogger()->Error("Failed to create manifest file: %s", manifestPath.c_str());
+            Log::Error("Failed to create manifest file: %s", manifestPath.c_str());
             return false;
         }
         manifestFile << manifestContent;
@@ -566,7 +565,7 @@ bool ScriptGenerator::CreateProjectFiles(const std::string &projectPath,
 
         return true;
     } catch (const std::exception &e) {
-        m_Engine->GetLogger()->Error("Exception creating project files: %s", e.what());
+        Log::Error("Exception creating project files: %s", e.what());
         return false;
     }
 }
@@ -576,7 +575,7 @@ void ScriptGenerator::UpdateProgress(float progress) {
         try {
             m_ProgressCallback(std::max(0.0f, std::min(1.0f, progress)));
         } catch (const std::exception &e) {
-            m_Engine->GetLogger()->Error("Error in progress callback: %s", e.what());
+            Log::Error("Error in progress callback: %s", e.what());
         }
     }
 }

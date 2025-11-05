@@ -4,8 +4,12 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <map>
 
-#include <CKInputManager.h>
+#include "DX8InputManager.h"
+
+// Forward declarations
+class DX8InputManager;
 
 // Exact state representation
 struct KeyState {
@@ -35,6 +39,85 @@ struct KeyState {
         }
     }
 
+};
+
+// Mouse button state tracking
+struct MouseButtonState {
+    bool pressed = false;
+    size_t timestamp = 0;
+
+    void ApplyPressEvent(size_t ts) {
+        pressed = true;
+        timestamp = ts;
+    }
+
+    void ApplyReleaseEvent(size_t ts) {
+        pressed = false;
+        timestamp = ts;
+    }
+
+    void Reset() {
+        pressed = false;
+        timestamp = 0;
+    }
+};
+
+// Mouse state tracking
+struct MouseState {
+    std::array<MouseButtonState, 4> buttons; // Left, Right, Middle, X1, X2 (using 4 as per DX8)
+    Vx2DVector position;
+    int wheelDelta = 0;
+    int wheelPosition = 0;
+
+    void Reset() {
+        for (auto &btn : buttons) {
+            btn.Reset();
+        }
+        position.x = 0.0f;
+        position.y = 0.0f;
+        wheelDelta = 0;
+        wheelPosition = 0;
+    }
+};
+
+// Joystick button state tracking
+struct JoystickButtonState {
+    bool pressed = false;
+    size_t timestamp = 0;
+
+    void ApplyPressEvent(size_t ts) {
+        pressed = true;
+        timestamp = ts;
+    }
+
+    void ApplyReleaseEvent(size_t ts) {
+        pressed = false;
+        timestamp = ts;
+    }
+
+    void Reset() {
+        pressed = false;
+        timestamp = 0;
+    }
+};
+
+// Joystick state tracking
+struct JoystickState {
+    std::vector<JoystickButtonState> buttons; // Dynamic based on capabilities
+    VxVector position;
+    VxVector rotation;
+    Vx2DVector sliders;
+    float pov = -1.0f; // -1 means centered
+
+    void Reset() {
+        for (auto &btn : buttons) {
+            btn.Reset();
+        }
+        position.x = position.y = position.z = 0.0f;
+        rotation.x = rotation.y = rotation.z = 0.0f;
+        sliders.x = sliders.y = 0.0f;
+        pov = -1.0f;
+    }
 };
 
 /**
@@ -96,6 +179,198 @@ public:
      */
     void ReleaseAllKeys();
 
+    // --- Mouse Control API ---
+
+    /**
+     * @brief Immediately presses the specified mouse button(s).
+     * @param buttonIndex The mouse button index (0=left, 1=right, 2=middle, 3=X1).
+     */
+    void PressMouseButton(int buttonIndex);
+
+    /**
+     * @brief Presses mouse button for exactly one frame, then automatically releases it.
+     * @param buttonIndex The mouse button index.
+     */
+    void PressMouseButtonOneFrame(int buttonIndex);
+
+    /**
+     * @brief Holds mouse button for a specified number of frames, then automatically releases it.
+     * @param buttonIndex The mouse button index.
+     * @param durationTicks The number of frames to hold the button.
+     */
+    void HoldMouseButton(int buttonIndex, int durationTicks);
+
+    /**
+     * @brief Immediately releases the specified mouse button.
+     * @param buttonIndex The mouse button index.
+     */
+    void ReleaseMouseButton(int buttonIndex);
+
+    /**
+     * @brief Releases all mouse buttons currently pressed by the TAS system.
+     */
+    void ReleaseAllMouseButtons();
+
+    /**
+     * @brief Sets the absolute mouse position.
+     * @param x The X coordinate.
+     * @param y The Y coordinate.
+     */
+    void SetMousePosition(float x, float y);
+
+    /**
+     * @brief Moves the mouse relative to current position.
+     * @param dx The delta X movement.
+     * @param dy The delta Y movement.
+     */
+    void MoveMouseRelative(float dx, float dy);
+
+    /**
+     * @brief Sets the mouse wheel delta for this frame.
+     * @param delta The wheel scroll amount.
+     */
+    void SetMouseWheel(int delta);
+
+    /**
+     * @brief Checks if a mouse button is currently pressed by the TAS system.
+     * @param buttonIndex The mouse button index.
+     * @return True if the button is currently pressed.
+     */
+    bool IsMouseButtonDown(int buttonIndex) const;
+
+    /**
+     * @brief Checks if a mouse button is currently released by the TAS system.
+     * @param buttonIndex The mouse button index.
+     * @return True if the button is currently released.
+     */
+    bool IsMouseButtonUp(int buttonIndex) const;
+
+    /**
+     * @brief Gets the current mouse position.
+     * @return The mouse position as Vx2DVector.
+     */
+    Vx2DVector GetMousePosition() const;
+
+    /**
+     * @brief Gets the current mouse wheel delta.
+     * @return The wheel delta.
+     */
+    int GetMouseWheelDelta() const;
+
+    // --- Joystick Control API ---
+
+    /**
+     * @brief Immediately presses the specified joystick button.
+     * @param joystickIndex The joystick index (0-based).
+     * @param buttonIndex The button index.
+     */
+    void PressJoystickButton(int joystickIndex, int buttonIndex);
+
+    /**
+     * @brief Presses joystick button for exactly one frame, then automatically releases it.
+     * @param joystickIndex The joystick index (0-based).
+     * @param buttonIndex The button index.
+     */
+    void PressJoystickButtonOneFrame(int joystickIndex, int buttonIndex);
+
+    /**
+     * @brief Holds joystick button for a specified number of frames, then automatically releases it.
+     * @param joystickIndex The joystick index (0-based).
+     * @param buttonIndex The button index.
+     * @param durationTicks The number of frames to hold the button.
+     */
+    void HoldJoystickButton(int joystickIndex, int buttonIndex, int durationTicks);
+
+    /**
+     * @brief Immediately releases the specified joystick button.
+     * @param joystickIndex The joystick index (0-based).
+     * @param buttonIndex The button index.
+     */
+    void ReleaseJoystickButton(int joystickIndex, int buttonIndex);
+
+    /**
+     * @brief Releases all joystick buttons on a specific joystick.
+     * @param joystickIndex The joystick index (0-based). If -1, releases all buttons on all joysticks.
+     */
+    void ReleaseAllJoystickButtons(int joystickIndex = -1);
+
+    /**
+     * @brief Sets the joystick axis position.
+     * @param joystickIndex The joystick index (0-based).
+     * @param x The X axis position.
+     * @param y The Y axis position.
+     * @param z The Z axis position.
+     */
+    void SetJoystickPosition(int joystickIndex, float x, float y, float z);
+
+    /**
+     * @brief Sets the joystick rotation axes.
+     * @param joystickIndex The joystick index (0-based).
+     * @param rx The X rotation.
+     * @param ry The Y rotation.
+     * @param rz The Z rotation.
+     */
+    void SetJoystickRotation(int joystickIndex, float rx, float ry, float rz);
+
+    /**
+     * @brief Sets the joystick slider positions.
+     * @param joystickIndex The joystick index (0-based).
+     * @param slider0 The first slider position.
+     * @param slider1 The second slider position.
+     */
+    void SetJoystickSliders(int joystickIndex, float slider0, float slider1);
+
+    /**
+     * @brief Sets the joystick POV (point-of-view) angle.
+     * @param joystickIndex The joystick index (0-based).
+     * @param angle The POV angle in degrees, or -1 for centered.
+     */
+    void SetJoystickPOV(int joystickIndex, float angle);
+
+    /**
+     * @brief Checks if a joystick button is currently pressed by the TAS system.
+     * @param joystickIndex The joystick index (0-based).
+     * @param buttonIndex The button index.
+     * @return True if the button is currently pressed.
+     */
+    bool IsJoystickButtonDown(int joystickIndex, int buttonIndex) const;
+
+    /**
+     * @brief Checks if a joystick button is currently released by the TAS system.
+     * @param joystickIndex The joystick index (0-based).
+     * @param buttonIndex The button index.
+     * @return True if the button is currently released.
+     */
+    bool IsJoystickButtonUp(int joystickIndex, int buttonIndex) const;
+
+    /**
+     * @brief Gets the current joystick position.
+     * @param joystickIndex The joystick index (0-based).
+     * @return The joystick position as VxVector.
+     */
+    VxVector GetJoystickPosition(int joystickIndex) const;
+
+    /**
+     * @brief Gets the current joystick rotation.
+     * @param joystickIndex The joystick index (0-based).
+     * @return The joystick rotation as VxVector.
+     */
+    VxVector GetJoystickRotation(int joystickIndex) const;
+
+    /**
+     * @brief Gets the current joystick slider positions.
+     * @param joystickIndex The joystick index (0-based).
+     * @return The slider positions as Vx2DVector.
+     */
+    Vx2DVector GetJoystickSliders(int joystickIndex) const;
+
+    /**
+     * @brief Gets the current joystick POV angle.
+     * @param joystickIndex The joystick index (0-based).
+     * @return The POV angle, or -1 if centered.
+     */
+    float GetJoystickPOV(int joystickIndex) const;
+
     /**
      * @brief Resets the InputSystem state, clearing all key states.
      * This is called at the start of each frame to prepare for new input.
@@ -151,13 +426,62 @@ public:
      */
     std::vector<std::string> GetAvailableKeys() const;
 
+    // --- Diagnostic Methods (for multi-context merging and conflict detection) ---
+
+    /**
+     * @brief Gets the complete keyboard state for diagnostics/merging.
+     * @return Reference to the internal keyboard state array.
+     */
+    const std::array<KeyState, 256> &GetAllKeyStates() const { return m_KeyStates; }
+
+    /**
+     * @brief Gets the complete mouse state for diagnostics/merging.
+     * @return Reference to the internal mouse state.
+     */
+    const MouseState &GetAllMouseStates() const { return m_MouseState; }
+
+    /**
+     * @brief Gets all joystick states for diagnostics/merging.
+     * @return Reference to the internal joystick states map.
+     */
+    const std::map<int, JoystickState> &GetAllJoystickStates() const { return m_JoystickStates; }
+
+    /**
+     * @brief Gets a list of all currently pressed keys.
+     * @return Vector of CKKEYBOARD codes for all pressed keys.
+     */
+    std::vector<CKKEYBOARD> GetPressedKeys() const;
+
+    /**
+     * @brief Gets a list of all currently pressed mouse buttons.
+     * @return Vector of button indices for all pressed mouse buttons.
+     */
+    std::vector<int> GetPressedMouseButtons() const;
+
+    /**
+     * @brief Gets a list of all currently pressed joystick buttons.
+     * @return Map of joystick index -> vector of pressed button indices.
+     */
+    std::map<int, std::vector<int>> GetPressedJoystickButtons() const;
+
+    /**
+     * @brief Checks for input conflicts with another InputSystem (for diagnostics).
+     * @param other The other InputSystem to compare against.
+     * @param outConflicts Optional output parameter to receive conflict details.
+     * @return True if there are any conflicting inputs.
+     */
+    bool HasConflicts(const InputSystem &other,
+                     std::vector<std::string> *outConflicts = nullptr) const;
+
     // --- Core Method for Hooking ---
 
     /**
-     * @brief Applies TAS input by replicating state transitions
-     * This now properly handles state accumulation and frame lifecycle
+     * @brief Applies TAS input using DX8InputManager set methods
+     * This sets keyboard, mouse, and joystick states via the input manager
+     * @param currentTick The current game tick
+     * @param inputManager Pointer to the DX8InputManager instance
      */
-    void Apply(size_t currentTick, unsigned char *keyboardState);
+    void Apply(size_t currentTick, DX8InputManager *inputManager);
 
     /**
      * @brief Prepares for next frame
@@ -201,14 +525,26 @@ private:
     // A map from string key name to its corresponding BML key code.
     std::unordered_map<std::string, CKKEYBOARD> m_Keymap;
 
-    // State tracking
+    // Keyboard state tracking
     std::array<KeyState, 256> m_KeyStates;
+
+    // Mouse state tracking
+    MouseState m_MouseState;
+
+    // Joystick state tracking (indexed by joystick ID)
+    std::map<int, JoystickState> m_JoystickStates;
 
     // Current frame tracking
     size_t m_CurrentTick = 0;
 
     // Keys being held for a specific duration (key -> remaining ticks)
     std::unordered_map<CKKEYBOARD, int> m_HeldKeys;
+
+    // Mouse buttons being held for a specific duration (button -> remaining ticks)
+    std::unordered_map<int, int> m_HeldMouseButtons;
+
+    // Joystick buttons being held for a specific duration ((joystick_id << 16 | button) -> remaining ticks)
+    std::unordered_map<int, int> m_HeldJoystickButtons;
 
     // Whether the system should override ALL input
     bool m_Enabled = false;

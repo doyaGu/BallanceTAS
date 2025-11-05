@@ -9,6 +9,7 @@
 #include "Recorder.h"
 #include "GameInterface.h"
 #include "UIManager.h"
+#include "Logger.h"
 
 // Global instance pointer required by BML
 BallanceTAS *g_Mod;
@@ -34,10 +35,16 @@ BallanceTAS::~BallanceTAS() {
         Shutdown();
     }
 
+    // Shutdown global logger system (safe to call multiple times)
+    Log::Shutdown();
+
     m_Logger = nullptr;
 }
 
 void BallanceTAS::OnLoad() {
+    // Initialize global logger system
+    Log::Initialize(GetLogger());
+
     // --- 1. Initialize Configuration ---
     // This is the primary switch for the TAS framework.
     m_Enabled = GetConfig()->GetProperty("TAS", "Enable");
@@ -66,6 +73,19 @@ void BallanceTAS::OnLoad() {
     m_RecordingMaxFrames = GetConfig()->GetProperty("Recording", "MaxFrames");
     m_RecordingMaxFrames->SetComment("Maximum frames to record (prevents memory issues)");
     m_RecordingMaxFrames->SetDefaultInteger(1000000);
+
+    // --- Startup Script Configuration ---
+    m_StartupScriptEnabled = GetConfig()->GetProperty("Startup", "Enabled");
+    m_StartupScriptEnabled->SetComment("Enable startup script auto-loading");
+    m_StartupScriptEnabled->SetDefaultBoolean(false);
+
+    m_StartupScriptProject = GetConfig()->GetProperty("Startup", "Project");
+    m_StartupScriptProject->SetComment("Name of the TAS project to load on startup");
+    m_StartupScriptProject->SetDefaultString("");
+
+    m_AutoLoadStartupScript = GetConfig()->GetProperty("Startup", "AutoLoad");
+    m_AutoLoadStartupScript->SetComment("Automatically load startup script on game launch");
+    m_AutoLoadStartupScript->SetDefaultBoolean(false);
 
     // UI visibility control.
     m_ShowOSD = GetConfig()->GetProperty("OSD", "ShowOSD");
@@ -111,18 +131,18 @@ void BallanceTAS::OnLoad() {
 
     m_InputManager = m_BML->GetInputManager();
 
-    InitPhysicsMethodPointers();
+    InitPhysicsAddresses();
 
     // Initialize MinHook
     MH_STATUS status = MH_Initialize();
     if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
-        GetLogger()->Error("MinHook failed to initialize: %s", MH_StatusToString(status));
+        Log::Error("MinHook failed to initialize: %s", MH_StatusToString(status));
     }
 
     // --- 2. Initialize TAS Framework if enabled ---
     if (m_Enabled->GetBoolean()) {
         if (!Initialize()) {
-            GetLogger()->Error("Failed to initialize BallanceTAS framework.");
+            Log::Error("Failed to initialize BallanceTAS framework.");
             // Framework is disabled due to initialization failure
         }
     }
@@ -133,18 +153,21 @@ void BallanceTAS::OnUnload() {
     Shutdown();
 
     MH_Uninitialize();
+
+    // Shutdown global logger system
+    Log::Shutdown();
 }
 
 void BallanceTAS::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
     // Dynamically enable/disable the framework at runtime based on config changes.
     if (prop == m_Enabled) {
         if (m_Enabled->GetBoolean() && !m_Initialized) {
-            GetLogger()->Info("BallanceTAS framework enabled.");
+            Log::Info("BallanceTAS framework enabled.");
             if (!Initialize()) {
-                GetLogger()->Error("Failed to enable BallanceTAS framework.");
+                Log::Error("Failed to enable BallanceTAS framework.");
             }
         } else if (!m_Enabled->GetBoolean() && m_Initialized) {
-            GetLogger()->Info("BallanceTAS framework disabled.");
+            Log::Info("BallanceTAS framework disabled.");
             Shutdown();
         }
     } else if (prop == m_ShowOSDStatus || prop == m_ShowOSDVelocity ||
@@ -228,15 +251,15 @@ void BallanceTAS::OnLoadScript(const char *filename, CKBehavior *script) {
 
 bool BallanceTAS::InitializeGameHooks() {
     if (m_GameHooksEnabled) {
-        GetLogger()->Warn("Game hooks already enabled.");
+        Log::Warn("Game hooks already enabled.");
         return true;
     }
 
-    GetLogger()->Info("Enabling game hooks...");
+    Log::Info("Enabling game hooks...");
 
     CKContext *context = GetBML()->GetCKContext();
     if (!context) {
-        GetLogger()->Error("Could not get CKContext to find managers.");
+        Log::Error("Could not get CKContext to find managers.");
         return false;
     }
 
@@ -245,27 +268,27 @@ bool BallanceTAS::InitializeGameHooks() {
     try {
         auto *timeManager = (CKTimeManager *) context->GetManagerByGuid(TIME_MANAGER_GUID);
         if (!timeManager || !CKTimeManagerHook::Enable(timeManager)) {
-            GetLogger()->Error("Failed to enable TimeManager hook.");
+            Log::Error("Failed to enable TimeManager hook.");
             success = false;
         } else {
-            GetLogger()->Info("TimeManager hook enabled.");
+            Log::Info("TimeManager hook enabled.");
         }
 
         auto *inputManager = (CKInputManager *) context->GetManagerByGuid(INPUT_MANAGER_GUID);
         if (!inputManager || !CKInputManagerHook::Enable(inputManager)) {
-            GetLogger()->Error("Failed to enable InputManager hook.");
+            Log::Error("Failed to enable InputManager hook.");
             success = false;
         } else {
-            GetLogger()->Info("InputManager hook enabled.");
+            Log::Info("InputManager hook enabled.");
         }
     } catch (const std::exception &e) {
-        GetLogger()->Error("Exception enabling hooks: %s", e.what());
+        Log::Error("Exception enabling hooks: %s", e.what());
         success = false;
     }
 
     if (success) {
         m_GameHooksEnabled = true;
-        GetLogger()->Info("Game hooks enabled successfully.");
+        Log::Info("Game hooks enabled successfully.");
     } else {
         // Cleanup partial success
         DisableGameHooks();
@@ -277,7 +300,7 @@ bool BallanceTAS::InitializeGameHooks() {
 void BallanceTAS::DisableGameHooks() {
     if (!m_GameHooksEnabled) return;
 
-    GetLogger()->Info("Disabling game hooks...");
+    Log::Info("Disabling game hooks...");
 
     try {
         // Clear callbacks first
@@ -290,9 +313,9 @@ void BallanceTAS::DisableGameHooks() {
         CKTimeManagerHook::Disable();
         CKInputManagerHook::Disable();
 
-        GetLogger()->Info("Game hooks disabled.");
+        Log::Info("Game hooks disabled.");
     } catch (const std::exception &e) {
-        GetLogger()->Error("Exception disabling hooks: %s", e.what());
+        Log::Error("Exception disabling hooks: %s", e.what());
     }
 
     m_GameHooksEnabled = false;
@@ -300,11 +323,11 @@ void BallanceTAS::DisableGameHooks() {
 
 bool BallanceTAS::Initialize() {
     if (m_Initialized) {
-        GetLogger()->Warn("BallanceTAS framework already initialized.");
+        Log::Warn("BallanceTAS framework already initialized.");
         return true;
     }
 
-    GetLogger()->Info("Initializing BallanceTAS framework...");
+    Log::Info("Initializing BallanceTAS framework...");
 
     try {
         // Initialize game hooks first
@@ -331,7 +354,7 @@ bool BallanceTAS::Initialize() {
         m_UIManager->SetStopHotkey(m_StopKey->GetKey());
 
         m_Initialized = true;
-        GetLogger()->Info("BallanceTAS framework initialized successfully.");
+        Log::Info("BallanceTAS framework initialized successfully.");
 
         // Sync initial config states
         SetOSDVisible(m_ShowOSD->GetBoolean());
@@ -345,7 +368,7 @@ bool BallanceTAS::Initialize() {
 
         return true;
     } catch (const std::exception &e) {
-        GetLogger()->Error("Exception during initialization: %s", e.what());
+        Log::Error("Exception during initialization: %s", e.what());
 
         // Clean up partial initialization
         if (m_UIManager) {
@@ -367,7 +390,7 @@ bool BallanceTAS::Initialize() {
 void BallanceTAS::Shutdown() {
     if (!m_Initialized) return;
 
-    GetLogger()->Info("Shutting down BallanceTAS framework...");
+    Log::Info("Shutting down BallanceTAS framework...");
 
     try {
         // Disable game hooks
@@ -385,9 +408,9 @@ void BallanceTAS::Shutdown() {
             m_Engine.reset();
         }
 
-        GetLogger()->Info("BallanceTAS framework shutdown complete.");
+        Log::Info("BallanceTAS framework shutdown complete.");
     } catch (const std::exception &e) {
-        GetLogger()->Error("Exception during shutdown: %s", e.what());
+        Log::Error("Exception during shutdown: %s", e.what());
     }
 
     m_Initialized = false;
@@ -467,7 +490,7 @@ void BallanceTAS::UpdateOSDPanelConfig() {
     osd->SetOpacity(m_OSDOpacity->GetFloat());
     osd->SetScale(m_OSDScale->GetFloat());
 
-    GetLogger()->Info("OSD panel configuration updated.");
+    Log::Info("OSD panel configuration updated.");
 }
 
 void BallanceTAS::SkipRenderingForTicks(size_t ticks) {

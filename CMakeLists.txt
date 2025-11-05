@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.14)
 
 project(BallanceTAS
-        VERSION 1.6.0
+        VERSION 2.0.0
         LANGUAGES CXX
         DESCRIPTION "The TAS system for Ballance "
         HOMEPAGE_URL https://github.com/doyaGu/BallanceTAS)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED NO)
+set(CMAKE_CXX_STANDARD_REQUIRED YES)
 set(CMAKE_CXX_EXTENSIONS YES)
 
 # Add path for custom modules
@@ -62,3 +62,9 @@ find_package(BML REQUIRED)
 
 add_subdirectory(deps)
 add_subdirectory(src)
+
+# Enable tests
+option(BUILD_TESTS "Build unit tests" ON)
+if(BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

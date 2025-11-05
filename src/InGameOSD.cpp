@@ -59,7 +59,7 @@ InGameOSD::InGameOSD(const std::string &name, TASEngine *engine)
     m_FrameTimeHistory.resize(m_FrameTimeHistorySize, 0.0f);
 
     // OSD should be hidden by default
-    SetVisibility(false);
+    Hide();
 }
 
 ImGuiWindowFlags InGameOSD::GetFlags() {
@@ -82,11 +82,10 @@ void InGameOSD::OnDraw() {
     // Apply global opacity and scale
     ImGui::PushStyleVar(ImGuiStyleVar_Alpha, m_Opacity);
 
-    if (m_Scale != 1.0f) {
-        float oldScale = ImGui::GetFont()->Scale;
-        ImGui::GetFont()->Scale *= m_Scale;
-        ImGui::PushFont(ImGui::GetFont());
-    }
+    const bool doScale = (m_Scale != 1.0f);
+
+    if (doScale)
+        ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * m_Scale);
 
     bool hasContent = false;
 
@@ -121,10 +120,8 @@ void InGameOSD::OnDraw() {
     }
 
     // Restore scale
-    if (m_Scale != 1.0f) {
-        ImGui::GetFont()->Scale /= m_Scale;
+    if (doScale)
         ImGui::PopFont();
-    }
 
     ImGui::PopStyleVar(); // Alpha
 }

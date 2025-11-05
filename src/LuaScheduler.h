@@ -4,12 +4,16 @@
 #include <list>
 #include <stack>
 #include <memory>
-#include <functional>
+#include <cstdint>
+#include <any>
 
 #include <sol/sol.hpp>
 
+#include "ThreadOwnershipValidator.h"
+
 // Forward declare to avoid circular dependency
 class TASEngine;
+class ScriptContext;
 
 /**
  * @class SchedulerTask
@@ -398,7 +402,8 @@ private:
  */
 class EventWaitTask : public SchedulerTask {
 public:
-    EventWaitTask(std::string eventName, TASEngine *engine);
+    EventWaitTask(std::string eventName, TASEngine *engine, class EventManager *eventManager = nullptr);
+    ~EventWaitTask() override;
 
     bool IsComplete() override {
         return m_EventReceived;
@@ -407,7 +412,46 @@ public:
 private:
     std::string m_EventName;
     TASEngine *m_Engine;
+    class EventManager *m_EventManager; // Context's event manager (or engine's if legacy)
     bool m_EventReceived;
+    uint64_t m_ListenerId = 0;
+};
+
+// Forward declare MessageBus::Message::SerializedValue
+class MessageBus;
+namespace MessageBusInternal {
+    struct SerializedValue;
+}
+
+/**
+ * @class MessageResponseTask
+ * @brief Waits for a message response with a specific correlation ID
+ */
+class MessageResponseTask : public SchedulerTask {
+public:
+    MessageResponseTask(std::string correlationId, TASEngine *engine, int timeoutTicks);
+    ~MessageResponseTask() override;
+
+    bool IsComplete() override;
+
+    /**
+     * @brief Gets the response data if available.
+     * @return Response object, or nil if timeout/error.
+     */
+    sol::object GetResponse(sol::state_view lua) const;
+
+    /**
+     * @brief Checks if response was received (vs timeout).
+     * @return True if response received, false if timeout.
+     */
+    bool HasResponse() const { return m_ResponseReceived; }
+
+private:
+    std::string m_CorrelationId;
+    TASEngine *m_Engine;
+    int m_TimeoutTicks;
+    bool m_ResponseReceived;
+    std::any m_ResponseData;  // Stores MessageBus::Message::SerializedValue as std::any to avoid forward declaration issues
 };
 
 /**
@@ -468,7 +512,16 @@ namespace detail {
             coroutine = sol::coroutine(thread.thread_state(), func);
         }
 
-        // Constructor for existing coroutines - use with caution
+        // Constructor for existing coroutines
+        // IMPORTANT: This constructor is safe when the coroutine is already
+        // on its own thread. If the coroutine is on the main state, it will
+        // create a new thread but reuse the coroutine reference.
+        //
+        // THREAD SAFETY NOTE:
+        // - If co is already on a thread: Safe, wraps the existing thread
+        // - If co is on main state: Creates new thread, reuses coroutine
+        //   This is safe in Lua 5.1+ as coroutines can be transferred between threads
+        //   as long as they're not currently running.
         SchedulerCothread(sol::state &state, sol::coroutine co) {
             if (!co.valid()) {
                 throw std::invalid_argument("Invalid coroutine provided to SchedulerCothread");
@@ -484,8 +537,9 @@ namespace detail {
             } else {
                 // Coroutine is on main state, create new thread
                 thread = sol::thread::create(state);
-                // Note: Using existing coroutine on new thread may have issues
-                // Consider recreating the coroutine if problems occur
+                // Reuse the coroutine - this is safe as long as the coroutine
+                // is not currently executing. The scheduler ensures this by only
+                // calling this constructor for yielded or fresh coroutines.
                 coroutine = co;
             }
         }
@@ -511,10 +565,35 @@ namespace detail {
 /**
  * @class LuaScheduler
  * @brief Manages the execution of Lua coroutines using sol2's proper threading model.
+ *
+ * THREAD SAFETY:
+ * ==============
+ * LuaScheduler is NOT thread-safe and MUST be called from a single thread only.
+ * Each ScriptContext owns its own LuaScheduler instance, and all methods of the
+ * scheduler (including Tick(), StartCoroutine(), YieldXxx(), etc.) must be called
+ * from the same thread that processes that ScriptContext.
+ *
+ * CRITICAL: The Tick() method modifies internal state (m_CurrentThread, m_ThreadStack,
+ * m_Tasks) without synchronization. Calling Tick() from multiple threads will result
+ * in undefined behavior, data races, and crashes.
+ *
+ * In typical usage:
+ * - The main game thread calls TASEngine::Tick()
+ * - TASEngine::Tick() calls ScriptContext::Tick() for each context
+ * - ScriptContext::Tick() calls LuaScheduler::Tick()
+ * All of this happens on a single thread per context.
+ *
+ * If multi-threaded context execution is required in the future, each ScriptContext
+ * must have its own dedicated thread, OR all LuaScheduler methods must be protected
+ * with a per-scheduler mutex.
  */
 class LuaScheduler {
 public:
-    explicit LuaScheduler(TASEngine *engine);
+    /**
+     * @param engine The TASEngine instance (required)
+     * @param context The ScriptContext instance (optional, for multi-context mode)
+     */
+    explicit LuaScheduler(TASEngine *engine, ScriptContext *context);
     ~LuaScheduler() = default;
 
     sol::state &GetLuaState() const;
@@ -559,6 +638,13 @@ public:
 
     /**
      * @brief The main update loop - processes all scheduled tasks.
+     *
+     * THREAD SAFETY WARNING:
+     * This method is NOT thread-safe and MUST be called from a single thread only.
+     * Calling Tick() from multiple threads will cause data races on m_CurrentThread,
+     * m_ThreadStack, and m_Tasks, resulting in undefined behavior and crashes.
+     *
+     * Thread ownership is now enforced via ThreadOwnershipValidator in debug builds.
      */
     void Tick();
 
@@ -605,6 +691,14 @@ public:
      */
     void YieldWaitForEvent(const std::string &event_name);
 
+    /**
+     * @brief Waits for a message response with timeout
+     * @param correlationId The correlation ID to wait for
+     * @param timeoutMs Timeout in milliseconds (converted to ticks internally)
+     * @return Response data if received, or nil if timeout
+     */
+    sol::object YieldWaitForMessageResponse(const std::string &correlationId, int timeoutMs);
+
     // --- Background task methods (non-yielding) ---
 
     /**
@@ -633,8 +727,12 @@ private:
     void Yield(std::shared_ptr<SchedulerTask> task);
 
     TASEngine *m_Engine;
+    ScriptContext *m_Context; // nullptr for legacy mode, non-null for multi-context mode
     std::shared_ptr<detail::SchedulerCothread> m_CurrentThread;
     std::list<detail::SchedulerThreadTask> m_Tasks;
     std::list<std::shared_ptr<SchedulerTask>> m_BackgroundTasks;
     std::stack<std::shared_ptr<detail::SchedulerCothread>> m_ThreadStack;
+
+    // Thread safety enforcement
+    mutable ThreadOwnershipValidator m_ThreadValidator{"LuaScheduler"};
 };

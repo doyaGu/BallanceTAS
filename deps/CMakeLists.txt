@@ -12,3 +12,6 @@ add_subdirectory(zip EXCLUDE_FROM_ALL)
 
 # fmt
 add_subdirectory(fmt EXCLUDE_FROM_ALL)
+
+# yyjson
+add_subdirectory(yyjson EXCLUDE_FROM_ALL)

@@ -7,6 +7,7 @@
 #include <sol/sol.hpp>
 
 #include "ThreadOwnershipValidator.h"
+#include "ScriptContextTypes.h"
 
 // Forward declarations
 class TASEngine;
@@ -18,23 +19,6 @@ class InputSystem;
 class RecordPlayer;
 class GameInterface;
 class ScriptContextManager;
-
-/**
- * @brief Type of script context
- */
-enum class ScriptContextType {
-    Global, // Global context that persists across levels
-    Level,  // Level-specific context
-    Custom  // User-created context
-};
-
-/**
- * @brief Lua GC mode (Lua 5.4+)
- */
-enum class LuaGCMode {
-    Generational, // Generational GC (default for TAS, better for short-burst workloads)
-    Incremental   // Incremental GC (better for long-lived scripts with timely finalization)
-};
 
 /**
  * @class ScriptContext

@@ -12,6 +12,7 @@
 #include "InputSystem.h"
 #include "DX8InputManager.h"
 #include "GameInterface.h"
+#include "UIManager.h"
 #include "ScriptContextManager.h"
 #include "ProjectManager.h"
 #include "TASHook.h"

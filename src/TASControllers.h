@@ -27,6 +27,7 @@
 #include <memory>
 
 #include "Result.h"
+#include "PlaybackTypes.h"
 #include "TASProject.h"
 #include "TASStrategies.h"
 #include "ScriptGenerator.h"
@@ -40,13 +41,6 @@ class ScriptContextManager;
 class InputSystem;
 class GameInterface;
 class DX8InputManager;
-
-// Playback type enum (moved from TASEngine.h for independence)
-enum class PlaybackType {
-    None,   // No playback active
-    Script, // Lua script playback via ScriptContextManager
-    Record  // Binary record playback via RecordPlayer
-};
 
 // ============================================================================
 // RecordingController

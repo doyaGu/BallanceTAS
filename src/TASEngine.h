@@ -3,10 +3,12 @@
 #include <memory>
 #include <string>
 #include <atomic>
+#include <functional>
 
-#include <sol/sol.hpp>
+#include "PlaybackTypes.h" // Lightweight – no transitive sol2/Virtools pull
 
-#include "TASControllers.h" // For PlaybackType definition
+// Forward declare lua_State to avoid pulling in Lua/sol2 headers
+extern "C" { struct lua_State; }
 
 // Forward declare TASStateMachine to avoid circular dependency
 class TASStateMachine;
@@ -34,14 +36,17 @@ class RecordPlayer;
 
 // Startup script management
 class StartupProjectManager;
+class LuaREPLServer;
 
 // Recording subsystems
 class Recorder;
 class ScriptGenerator;
 struct GenerationOptions;
 
-// PlaybackType is now defined in TASControllers.h
-enum class PlaybackType;
+// Controllers (defined in TASControllers.h)
+class RecordingController;
+class PlaybackController;
+class TranslationController;
 
 /**
  * @enum PendingOperation
@@ -71,6 +76,10 @@ enum class PendingOperation {
  * all subsystems.
  */
 class TASEngine {
+    // EngineBootstrap is the composition root — it needs access to m_ServiceContainer
+    // and other members during initialisation.  Keeping TASEngine's interface clean
+    // while allowing the bootstrap to wire internals.
+    friend class EngineBootstrap;
 public:
     explicit TASEngine(GameInterface *gameInterface);
     ~TASEngine();
@@ -254,7 +263,12 @@ public:
     GameInterface *GetGameInterface() const { return m_GameInterface; }
     void AddTimer(size_t tick, const std::function<void()> &callback);
 
-    sol::state_view GetLuaState() const;
+    /**
+     * @brief Gets the raw Lua state pointer from the global script context.
+     * Callers that need sol::state_view can construct it: sol::state_view(engine->GetLuaState())
+     * @return Raw lua_State pointer, or nullptr if not available.
+     */
+    lua_State *GetLuaState() const;
     LuaScheduler *GetScheduler() const;
 
     ProjectManager *GetProjectManager() const;

@@ -5,7 +5,7 @@
 #include <map>
 #include <memory>
 
-#include <CKAll.h>
+#include "VxMath.h"
 
 #include "Result.h"
 

@@ -1,6 +1,7 @@
 #include "InGameOSD.h"
 
 #include <algorithm>
+#include <stdexcept>
 
 #include "TASEngine.h"
 #include "GameInterface.h"

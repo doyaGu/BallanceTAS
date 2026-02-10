@@ -7,6 +7,7 @@
 
 #include "Logger.h"
 #include "TASEngine.h"
+#include "UIManager.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
 #include "ScriptContextManager.h"

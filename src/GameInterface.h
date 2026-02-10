@@ -1,14 +1,17 @@
 #pragma once
 
 #include <CKAll.h>
+#include <string>
 #include <stack>
-
-#include <sol/sol.hpp>
+#include <functional>
 
 #include <BML/InputHook.h>
 
 #include "physics_RT.h"
-#include "UIManager.h"
+
+// Forward declarations — full headers deferred to GameInterface.cpp
+enum class UIMode;
+namespace sol { class state; }
 
 // Forward declarations
 class BallanceTAS;

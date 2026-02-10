@@ -1,5 +1,7 @@
 #include "UIManager.h"
 
+#include <stdexcept>
+
 #include "Logger.h"
 #include "GameInterface.h"
 #include "TASMenu.h"

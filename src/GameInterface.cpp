@@ -1,7 +1,10 @@
 #include "GameInterface.h"
 
+#include <sol/sol.hpp>
+
 #include "Logger.h"
 #include "BallanceTAS.h"
+#include "UIManager.h"
 
 // ========================================
 // Construction & Destruction

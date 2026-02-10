@@ -15,7 +15,7 @@ void LuaApi::RegisterSharedBufferApi(sol::table &tas, ScriptContext *context) {
     }
 
     std::string logPrefix = "[" + context->GetName() + "]";
-    sol::state &lua = context->GetLuaState();
+    sol::state_view lua = context->GetLuaState();
 
     // Register SharedBuffer userdata type
     sol::usertype<SharedBuffer> buffer_type = lua.new_usertype<SharedBuffer>(

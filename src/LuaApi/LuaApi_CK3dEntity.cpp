@@ -5,7 +5,7 @@
 #include <CKMesh.h>
 #include <VxMatrix.h>
 
-void LuaApi::RegisterCK3dEntity(sol::state &lua) {
+void LuaApi::RegisterCK3dEntity(sol::state_view lua) {
     // ===================================================================
     //  CK3dEntity - 3D objects with behaviors
     // ===================================================================

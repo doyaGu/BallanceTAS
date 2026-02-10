@@ -4,13 +4,14 @@
  */
 
 #include "TASStateHandlers.h"
+
+#include "Logger.h"
 #include "TASEngine.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
 #include "ScriptContextManager.h"
 #include "InputSystem.h"
 #include "GameInterface.h"
-#include "Logger.h"
 
 // ============================================================================
 // BaseTASStateHandler Implementation

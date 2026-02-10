@@ -238,7 +238,7 @@ void LuaApi::RegisterWorldQueryApi(sol::table &tas, ScriptContext *context) {
                 return sol::nil;
             }
             RNGState state = g->GetRNGState();
-            auto &lua = context->GetLuaState();
+            sol::state_view lua = context->GetLuaState();
             sol::table result = lua.create_table();
             result["id"] = state.id;
             result["next_movement_check"] = state.next_movement_check;

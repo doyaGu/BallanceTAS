@@ -2,8 +2,8 @@
 
 #include <atomic>
 #include <memory>
-#include <cstdint>
 #include <stdexcept>
+
 #include <sol/sol.hpp>
 #include <yyjson.h>
 

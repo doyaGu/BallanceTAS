@@ -39,6 +39,7 @@ set(TAS_PRIVATE_HEADERS
 		TASControllers.h
 		ServiceContainer.h
 		ResourceManager.h
+		SavestateManager.h
 )
 
 set(TAS_SOURCES
@@ -62,36 +63,37 @@ set(TAS_SOURCES
 		StartupProjectManager.cpp
 		AsyncTask.cpp
 
-		LuaApi.cpp
-		LuaApi_Core.cpp
-		LuaApi_Debug.cpp
-		LuaApi_Global.cpp
-		LuaApi_GC.cpp
-		LuaApi_Input.cpp
-		LuaApi_World.cpp
-		LuaApi_Concurrency.cpp
-		LuaApi_Context.cpp
-		LuaApi_Record.cpp
-		LuaApi_Project.cpp
-		LuaApi_Level.cpp
-		LuaApi_Menu.cpp
-		LuaApi_SharedBuffer.cpp
-		LuaApi_Result.cpp
-		LuaApi_Async.cpp
-		LuaApi_VxColor.cpp
-		LuaApi_VxMatrix.cpp
-		LuaApi_VxQuaternion.cpp
-		LuaApi_VxRect.cpp
-		LuaApi_VxVector.cpp
-		LuaApi_VxIntersectionDesc.cpp
-		LuaApi_CKEnums.cpp
-		LuaApi_CKObject.cpp
-		LuaApi_CKSceneObject.cpp
-		LuaApi_CKBeObject.cpp
-		LuaApi_CKRenderObject.cpp
-		LuaApi_CK3dEntity.cpp
-		LuaApi_CKCamera.cpp
-		LuaApi_PhysicsObject.cpp
+		LuaApi/LuaApi.cpp
+		LuaApi/LuaApi_Core.cpp
+		LuaApi/LuaApi_Debug.cpp
+		LuaApi/LuaApi_Global.cpp
+		LuaApi/LuaApi_GC.cpp
+		LuaApi/LuaApi_Input.cpp
+		LuaApi/LuaApi_World.cpp
+		LuaApi/LuaApi_Concurrency.cpp
+		LuaApi/LuaApi_Context.cpp
+		LuaApi/LuaApi_Record.cpp
+		LuaApi/LuaApi_Project.cpp
+		LuaApi/LuaApi_Level.cpp
+		LuaApi/LuaApi_Menu.cpp
+		LuaApi/LuaApi_SharedBuffer.cpp
+		LuaApi/LuaApi_Result.cpp
+		LuaApi/LuaApi_Async.cpp
+		LuaApi/LuaApi_VxColor.cpp
+		LuaApi/LuaApi_VxMatrix.cpp
+		LuaApi/LuaApi_VxQuaternion.cpp
+		LuaApi/LuaApi_VxRect.cpp
+		LuaApi/LuaApi_VxVector.cpp
+		LuaApi/LuaApi_VxIntersectionDesc.cpp
+		LuaApi/LuaApi_CKEnums.cpp
+		LuaApi/LuaApi_CKObject.cpp
+		LuaApi/LuaApi_CKSceneObject.cpp
+		LuaApi/LuaApi_CKBeObject.cpp
+		LuaApi/LuaApi_CKRenderObject.cpp
+		LuaApi/LuaApi_CK3dEntity.cpp
+		LuaApi/LuaApi_CKCamera.cpp
+		LuaApi/LuaApi_PhysicsObject.cpp
+		LuaApi/LuaApi_Savestate.cpp
 
         physics_RT.cpp
 
@@ -106,6 +108,7 @@ set(TAS_SOURCES
 		TASControllers.cpp
 		ServiceContainer.cpp
 		ResourceManager.cpp
+		SavestateManager.cpp
 )
 
 add_library(BallanceTAS SHARED

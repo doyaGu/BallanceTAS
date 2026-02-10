@@ -1,7 +1,7 @@
 #include "ResourceManager.h"
+
 #include <random>
 #include <sstream>
-#include <iomanip>
 #include <chrono>
 #include <fstream>
 
@@ -10,8 +10,7 @@
 // ============================================================================
 
 ResourceManager::TemporaryFile::TemporaryFile(std::filesystem::path path, bool autoDelete)
-    : m_Path(std::move(path)), m_AutoDelete(autoDelete) {
-}
+    : m_Path(std::move(path)), m_AutoDelete(autoDelete) {}
 
 ResourceManager::TemporaryFile::~TemporaryFile() {
     if (m_AutoDelete && !m_Deleted) {

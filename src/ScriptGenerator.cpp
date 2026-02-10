@@ -1,6 +1,5 @@
 #include "ScriptGenerator.h"
 
-#include "Logger.h"
 #include <set>
 #include <fstream>
 #include <filesystem>
@@ -9,6 +8,7 @@
 #include <iomanip>
 #include <thread>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "GameInterface.h"
 
@@ -103,7 +103,7 @@ std::string ScriptGenerator::LuaScriptBuilder::GetScript() const {
 
 ScriptGenerator::ScriptGenerator(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
-        throw std::runtime_error("ScriptGenerator requires valid TASEngine and BallanceTAS instances.");
+        throw std::runtime_error("ScriptGenerator requires valid TASEngine instances.");
     }
 }
 

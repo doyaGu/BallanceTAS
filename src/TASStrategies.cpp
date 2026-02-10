@@ -8,12 +8,13 @@
  */
 
 #include "TASStrategies.h"
+
+#include "Logger.h"
 #include "ServiceContainer.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
 #include "ScriptContextManager.h"
 #include "ScriptContext.h"
-#include "Logger.h"
 
 // ============================================================================
 // ScriptPlaybackStrategy Implementation (Wrapper for ScriptContextManager)

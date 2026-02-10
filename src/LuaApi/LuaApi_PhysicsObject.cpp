@@ -5,7 +5,7 @@
 #include <VxVector.h>
 #include <VxMatrix.h>
 
-void LuaApi::RegisterPhysicsObject(sol::state &lua) {
+void LuaApi::RegisterPhysicsObject(sol::state_view lua) {
     // ===================================================================
     //  PhysicsObject - Physics simulation object
     // ===================================================================

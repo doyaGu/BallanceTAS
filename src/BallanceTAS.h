@@ -37,7 +37,7 @@ public:
     const char *GetAuthor() override { return "Ballance TAS Community"; }
 
     const char *GetDescription() override {
-        return "A tool-assisted speedrun framework for Ballance with recording capabilities.";
+        return "A tool-assisted speedrun framework for Ballance.";
     }
 
     DECLARE_BML_VERSION;

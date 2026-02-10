@@ -1,8 +1,8 @@
 #include "LuaApi.h"
 
-#include "Logger.h"
 #include <stdexcept>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "ProjectManager.h"
 #include "TASProject.h"
@@ -31,7 +31,7 @@ void LuaApi::RegisterProjectApi(sol::table &tas, ScriptContext *context) {
         }
 
         const auto &projects = pm->GetProjects();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         int index = 1;
@@ -63,7 +63,7 @@ void LuaApi::RegisterProjectApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table projInfo = lua.create_table();
         projInfo["name"] = currentProj->GetName();
         projInfo["type"] = currentProj->IsScriptProject() ? "script" : "record";
@@ -88,7 +88,7 @@ void LuaApi::RegisterProjectApi(sol::table &tas, ScriptContext *context) {
         const auto &projects = pm->GetProjects();
         for (const auto &proj : projects) {
             if (proj && proj->IsValid() && proj->GetName() == projectName) {
-                auto &lua = context->GetLuaState();
+                sol::state_view lua = context->GetLuaState();
                 sol::table projInfo = lua.create_table();
                 projInfo["name"] = proj->GetName();
                 projInfo["type"] = proj->IsScriptProject() ? "script" : "record";

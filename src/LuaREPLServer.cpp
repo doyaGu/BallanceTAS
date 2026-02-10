@@ -1,17 +1,17 @@
 // REPL feature requires boost::asio - disable if not available
 #ifdef ENABLE_REPL
-#include "Logger.h"
-
-#include "LuaREPLServer.h"
-#include "TASEngine.h"
-#include "ScriptContextManager.h"
-#include "ScriptContext.h"
 
 #include <iostream>
 #include <sstream>
 #include <algorithm>
 #include <functional>
 #include <iomanip>
+
+#include "Logger.h"
+#include "TASEngine.h"
+#include "ScriptContextManager.h"
+#include "ScriptContext.h"
+#include "LuaREPLServer.h"
 
 using namespace boost::asio;
 using TcpSocket = ip::tcp::socket;
@@ -666,7 +666,7 @@ std::pair<bool, std::string> LuaREPLServer::ExecuteLuaCommand(const std::string 
             return {false, "Global script context unavailable"};
         }
 
-        auto &lua = globalContext->GetLuaState();
+        sol::state_view lua = globalContext->GetLuaState();
 
         // Add tick context
         lua["_repl_current_tick"] = executionTick;

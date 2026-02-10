@@ -2,7 +2,7 @@
 
 #include <CKObject.h>
 
-void LuaApi::RegisterCKObject(sol::state &lua) {
+void LuaApi::RegisterCKObject(sol::state_view lua) {
     // ===================================================================
     //  CKObject - Base class for most CK objects
     // ===================================================================

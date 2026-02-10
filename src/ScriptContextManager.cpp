@@ -6,7 +6,6 @@
 #include "SharedDataManager.h"
 #include "MessageBus.h"
 #include "GameInterface.h"
-#include <algorithm>
 
 namespace {
     constexpr const char *kGlobalCustomContextKey = "__global__";

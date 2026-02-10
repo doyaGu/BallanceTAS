@@ -10,7 +10,7 @@ void LuaApi::Register(ScriptContext *context) {
         throw std::runtime_error("LuaApi::Register(context): context cannot be null");
     }
 
-    sol::state &lua = context->GetLuaState();
+    sol::state_view lua = context->GetLuaState();
 
     // Create the main 'tas' table in the Lua global scope.
     sol::table tas_table = lua.create_table();
@@ -34,9 +34,10 @@ void LuaApi::Register(ScriptContext *context) {
     RegisterSharedBufferApi(tas_table, context);
     RegisterResultApi(tas_table, context);
     RegisterAsyncApi(tas_table, context);
+    RegisterSavestateApi(tas_table, context);
 }
 
-void LuaApi::AddLuaPath(sol::state &lua, const std::string &path) {
+void LuaApi::AddLuaPath(sol::state_view lua, const std::string &path) {
     if (path.empty()) {
         return;
     }
@@ -53,7 +54,7 @@ void LuaApi::AddLuaPath(sol::state &lua, const std::string &path) {
     lua["package"]["path"] = newPath;
 }
 
-void LuaApi::RegisterDataTypes(sol::state &lua) {
+void LuaApi::RegisterDataTypes(sol::state_view lua) {
     RegisterVxColor(lua);
     RegisterVxMatrix(lua);
     RegisterVxQuaternion(lua);

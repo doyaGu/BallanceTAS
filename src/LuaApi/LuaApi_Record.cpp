@@ -117,7 +117,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         // Return as a Lua table
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["delta_time"] = frameData.deltaTime;
 
@@ -305,7 +305,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto keys = recordPlayer->GetPressedKeys(static_cast<size_t>(frame));
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         for (size_t i = 0; i < keys.size(); i++) {
             result[i + 1] = keys[i]; // Lua arrays are 1-indexed
@@ -412,7 +412,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["name"] = section->name;
         result["description"] = section->description;
@@ -429,7 +429,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto sections = recordPlayer->GetAllSections();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < sections.size(); ++i) {
@@ -456,7 +456,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["name"] = section->name;
         result["description"] = section->description;
@@ -535,7 +535,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["name"] = marker->name;
         result["frame"] = marker->frame;
@@ -552,7 +552,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto markers = recordPlayer->GetAllMarkers();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < markers.size(); ++i) {
@@ -575,7 +575,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto markers = recordPlayer->GetMarkersAtFrame(static_cast<size_t>(frame));
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < markers.size(); ++i) {
@@ -598,7 +598,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto markers = recordPlayer->GetMarkersInRange(static_cast<size_t>(startFrame), static_cast<size_t>(endFrame));
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < markers.size(); ++i) {
@@ -650,7 +650,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["name"] = marker->name;
         result["frame"] = marker->frame;
@@ -672,7 +672,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["name"] = marker->name;
         result["frame"] = marker->frame;
@@ -728,7 +728,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["text"] = comment->text;
         result["start_frame"] = comment->startFrame;
@@ -746,7 +746,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto comments = recordPlayer->GetCommentsAtFrame(static_cast<size_t>(frame));
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < comments.size(); ++i) {
@@ -770,7 +770,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto comments = recordPlayer->GetAllComments();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < comments.size(); ++i) {
@@ -828,7 +828,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["name"] = macro->name;
         result["description"] = macro->description;
@@ -843,7 +843,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto macros = recordPlayer->GetAllMacros();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < macros.size(); ++i) {
@@ -910,7 +910,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto tags = recordPlayer->GetTags();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < tags.size(); ++i) {
@@ -1028,7 +1028,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
                                                        static_cast<size_t>(startFrame.value_or(0)),
                                                        static_cast<size_t>(endFrame.value_or(-1)));
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < frames.size(); ++i) {
@@ -1047,7 +1047,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
 
         auto frames = recordPlayer->FindFramesByDeltaTime(deltaTime, tolerance.value_or(0.01f));
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < frames.size(); ++i) {
@@ -1071,7 +1071,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         auto stats = recordPlayer->GetStatistics(static_cast<size_t>(startFrame.value_or(0)),
                                                  static_cast<size_t>(endFrame.value_or(-1)));
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (const auto &pair : stats) {
@@ -1125,7 +1125,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto branches = recordPlayer->GetAllBranches();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < branches.size(); ++i) {
@@ -1174,7 +1174,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
 
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["frame"] = link->frame;
         result["path"] = link->savestatePath;
@@ -1190,7 +1190,7 @@ void LuaApi::RegisterRecordApi(sol::table &tas, ScriptContext *context) {
         }
 
         auto links = recordPlayer->GetAllSavestateLinks();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
 
         for (size_t i = 0; i < links.size(); ++i) {

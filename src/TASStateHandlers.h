@@ -10,7 +10,6 @@
 
 #include "TASStateMachine.h"
 #include "Result.h"
-#include <memory>
 
 // Forward declarations
 class TASEngine;

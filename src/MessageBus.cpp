@@ -7,9 +7,9 @@
 #include <unordered_map>
 #include <algorithm>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "ScriptContext.h"
-#include "Logger.h"
 
 // Thread-local depth counter to detect circular references during serialization
 thread_local int g_SerializationDepth = 0;
@@ -325,8 +325,7 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
         try {
             // CRITICAL FIX: Get Lua state from the context, not from the captured handler
             // The captured luaHandler may hold stale references to a destroyed VM
-            sol::state &contextLua = context->GetLuaState();
-            sol::state_view lua(contextLua.lua_state());
+            sol::state_view lua = context->GetLuaState();
 
             // Verify the handler's VM matches the context's VM (safety check)
             if (luaHandler.lua_state() != lua.lua_state()) {

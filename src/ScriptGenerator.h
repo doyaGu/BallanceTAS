@@ -1,11 +1,10 @@
 #pragma once
 
-#include "Recorder.h"
-
 #include <string>
 #include <vector>
 #include <sstream>
-#include <memory>
+
+#include "Recorder.h"
 
 // Forward declarations
 class TASEngine;

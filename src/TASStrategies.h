@@ -1,11 +1,12 @@
 #pragma once
 
-#include "Result.h"
-#include "TASProject.h"
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <vector>
-#include <cstdint>
+
+#include "Result.h"
+#include "TASProject.h"
 
 // Forward declarations
 class ServiceProvider;

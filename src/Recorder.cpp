@@ -1,11 +1,13 @@
 #include "Recorder.h"
 
 #include "Logger.h"
-#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <cmath>
+
+#include <algorithm>
 
 #include "TASEngine.h"
 #include "GameInterface.h"
@@ -107,6 +109,11 @@ float Recorder::GetDeltaTime() const {
 }
 
 void Recorder::SetUpdateRate(float tickPerSecond) {
+    if (!std::isfinite(tickPerSecond) || tickPerSecond <= 0.0f) {
+        Log::Warn("Invalid update rate %.3f, falling back to %.1f Hz.",
+                  tickPerSecond, kDefaultUpdateRate);
+        tickPerSecond = kDefaultUpdateRate;
+    }
     m_DeltaTime = 1000.0f / tickPerSecond;
 }
 
@@ -535,14 +542,22 @@ RawInputState Recorder::CaptureRealInput(const unsigned char *keyboardState) con
 
     RawInputState state;
 
-    state.keyUp = keyboardState[m_KeyUp];
-    state.keyDown = keyboardState[m_KeyDown];
-    state.keyLeft = keyboardState[m_KeyLeft];
-    state.keyRight = keyboardState[m_KeyRight];
-    state.keyShift = keyboardState[m_KeyShift];
-    state.keySpace = keyboardState[m_KeySpace];
-    state.keyQ = keyboardState[CKKEY_Q];
-    state.keyEsc = keyboardState[CKKEY_ESCAPE];
+    auto readKey = [keyboardState](CKKEYBOARD key) -> uint8_t {
+        const auto index = static_cast<unsigned int>(key);
+        if (index >= 256u) {
+            return KS_IDLE;
+        }
+        return keyboardState[index];
+    };
+
+    state.keyUp = readKey(m_KeyUp);
+    state.keyDown = readKey(m_KeyDown);
+    state.keyLeft = readKey(m_KeyLeft);
+    state.keyRight = readKey(m_KeyRight);
+    state.keyShift = readKey(m_KeyShift);
+    state.keySpace = readKey(m_KeySpace);
+    state.keyQ = readKey(CKKEY_Q);
+    state.keyEsc = readKey(CKKEY_ESCAPE);
 
     return state;
 }

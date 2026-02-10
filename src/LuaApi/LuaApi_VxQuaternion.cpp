@@ -2,7 +2,7 @@
 
 #include <VxMath.h>
 
-void LuaApi::RegisterVxQuaternion(sol::state &lua) {
+void LuaApi::RegisterVxQuaternion(sol::state_view lua) {
     // ===================================================================
     //  VxQuaternion Registration
     // ===================================================================

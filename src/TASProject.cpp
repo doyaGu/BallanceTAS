@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <cmath>
 
 #include <CKGlobals.h>
 
@@ -33,7 +34,10 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     m_TargetLevel = manifest.get_or<std::string>("level", "");
     m_EntryScript = manifest.get_or<std::string>("entry_script", "main.lua");
     m_Description = manifest.get_or<std::string>("description", "No description.");
-    m_UpdateRate = manifest.get_or<float>("update_rate", 132);
+    m_UpdateRate = manifest.get_or<float>("update_rate", kDefaultUpdateRate);
+    if (!std::isfinite(m_UpdateRate) || m_UpdateRate <= 0.0f) {
+        m_UpdateRate = kDefaultUpdateRate;
+    }
 
     // Parse project scope (default to Level for backward compatibility)
     std::string scopeStr = manifest.get_or<std::string>("scope", "level");
@@ -80,7 +84,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     m_Author = "Unknown (Record)";
     m_Description = "TAS record file";
     m_TargetLevel = "";    // Will be determined during playback if possible
-    m_UpdateRate = 132.0f; // Standard Physics rate
+    m_UpdateRate = kDefaultUpdateRate; // Standard Physics rate
 
     // Try to parse timing and basic info from the file
     try {
@@ -154,6 +158,13 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
                     // If delta time varies from the first frame, we need to check consistency
                     hasConstantDeltaTime = false;
                 }
+            }
+
+            if (!std::isfinite(initialDeltaTime) || initialDeltaTime <= 0.0f) {
+                CKDeletePointer(uncompressedData);
+                m_IsValid = false;
+                m_HasConstantDeltaTime = false;
+                return;
             }
 
             m_UpdateRate = 1000.0f / initialDeltaTime; // Convert from ms to Hz

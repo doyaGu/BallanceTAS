@@ -1,12 +1,11 @@
 #include "StartupProjectManager.h"
+
+#include "Logger.h"
 #include "TASEngine.h"
 #include "TASProject.h"
 #include "ProjectManager.h"
 #include "ScriptContextManager.h"
 #include "ScriptContext.h"
-#include "GameInterface.h"
-#include "Logger.h"
-#include <BML/ILogger.h>
 
 StartupProjectManager::StartupProjectManager(TASEngine *engine) : m_Engine(engine) {}
 

@@ -298,6 +298,8 @@ public:
     void SetUpdateRate(float tickPerSecond);
 
 private:
+    static constexpr float kDefaultUpdateRate = 132.0f;
+
     /**
      * @brief Generates a TAS script from the current recorded frames.
      * @return True if generation was successful.
@@ -374,7 +376,7 @@ private:
 
     // Configuration
     bool m_AutoGenerateOnStop = true; // Auto-generate by default
-    float m_DeltaTime = 1000.0f / 132.0f; // Default to 132 FPS
+    float m_DeltaTime = 1000.0f / kDefaultUpdateRate; // Default to 132 FPS
     std::unique_ptr<GenerationOptions> m_GenerationOptions;
 
     // Recorded data

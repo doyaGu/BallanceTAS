@@ -1,9 +1,10 @@
 #include "SharedDataManager.h"
 
-#include "Logger.h"
-#include "TASEngine.h"
 #include <stdexcept>
 #include <chrono>
+
+#include "Logger.h"
+#include "TASEngine.h"
 
 SharedDataManager::SharedDataManager(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {

@@ -17,7 +17,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
     }
 
     std::string logPrefix = "[" + context->GetName() + "]";
-    sol::state &lua = context->GetLuaState();
+    sol::state_view lua = context->GetLuaState();
     LuaScheduler *scheduler = context->GetScheduler();
 
     // Register AsyncTask userdata type
@@ -69,7 +69,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
 
     // task:then(fn) - Chain operation (Promise-like)
     task_type["then"] = [scheduler, context](AsyncTask &self, sol::function fn) -> std::shared_ptr<AsyncTask> {
-        sol::state &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
 
         // Create wrapper function that creates a coroutine with bound arguments
         sol::protected_function_result loaded = lua.safe_script(R"(
@@ -109,7 +109,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
 
     // task:catch(fn) - Error handler (Promise-like)
     task_type["catch"] = [scheduler, context](AsyncTask &self, sol::function fn) -> std::shared_ptr<AsyncTask> {
-        sol::state &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
 
         // Create wrapper function that creates a coroutine with bound arguments
         sol::protected_function_result loaded = lua.safe_script(R"(
@@ -151,7 +151,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
 
     // tas.async(fn) - Create async task
     async_api["create"] = [scheduler, context, logPrefix](sol::function fn) -> std::shared_ptr<AsyncTask> {
-        sol::state &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
 
         // Create coroutine from the function
         sol::coroutine co(lua, fn);
@@ -163,7 +163,7 @@ void LuaApi::RegisterAsyncApi(sol::table &tas, ScriptContext *context) {
 
     // tas.spawn(fn) - Create and start task immediately
     async_api["spawn"] = [scheduler, context, logPrefix](sol::function fn) -> std::shared_ptr<AsyncTask> {
-        sol::state &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
 
         // Create coroutine from the function
         sol::coroutine co(lua, fn);

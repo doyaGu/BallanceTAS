@@ -111,8 +111,7 @@ public:
         std::string correlationId; // Correlation ID for request/response pattern
         bool isResponse;           // True if this is a response message
 
-        Message() : priority(Priority::Normal), isResponse(false) {
-        }
+        Message() : priority(Priority::Normal), isResponse(false) {}
 
         Message(std::string sender, std::string target, std::string type,
                 SerializedValue payload,

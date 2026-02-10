@@ -3,7 +3,7 @@
 #include <CKCamera.h>
 #include <VxMatrix.h>
 
-void LuaApi::RegisterCKCamera(sol::state &lua) {
+void LuaApi::RegisterCKCamera(sol::state_view lua) {
     // ===================================================================
     //  CKCamera - Camera object for 3D rendering
     // ===================================================================

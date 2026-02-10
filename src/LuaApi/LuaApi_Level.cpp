@@ -1,8 +1,8 @@
 #include "LuaApi.h"
 
-#include "Logger.h"
 #include <stdexcept>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "GameInterface.h"
 #include "LuaScheduler.h"

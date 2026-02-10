@@ -28,12 +28,12 @@ void LuaApi::RegisterGlobalApi(sol::table &tas, ScriptContext *context) {
         }
 
         // Use context's Lua state
-        auto &luaState = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         // Store in a special global registry table
-        sol::table registry = luaState["__tas_global_registry"];
+        sol::table registry = lua["__tas_global_registry"];
         if (!registry.valid()) {
-            registry = luaState.create_table();
-            luaState["__tas_global_registry"] = registry;
+            registry = lua.create_table();
+            lua["__tas_global_registry"] = registry;
         }
         registry[key] = value;
     };
@@ -45,8 +45,8 @@ void LuaApi::RegisterGlobalApi(sol::table &tas, ScriptContext *context) {
         }
 
         // Use context's Lua state
-        auto &luaState = context->GetLuaState();
-        sol::table registry = luaState["__tas_global_registry"];
+        sol::state_view lua = context->GetLuaState();
+        sol::table registry = lua["__tas_global_registry"];
         if (!registry.valid()) {
             return sol::nil;
         }
@@ -62,8 +62,8 @@ void LuaApi::RegisterGlobalApi(sol::table &tas, ScriptContext *context) {
         }
 
         // Use context's Lua state
-        auto &luaState = context->GetLuaState();
-        sol::table registry = luaState["__tas_global_registry"];
+        sol::state_view lua = context->GetLuaState();
+        sol::table registry = lua["__tas_global_registry"];
         if (!registry.valid()) {
             return false;
         }
@@ -79,8 +79,8 @@ void LuaApi::RegisterGlobalApi(sol::table &tas, ScriptContext *context) {
         }
 
         // Use context's Lua state
-        auto &luaState = context->GetLuaState();
-        sol::table registry = luaState["__tas_global_registry"];
+        sol::state_view lua = context->GetLuaState();
+        sol::table registry = lua["__tas_global_registry"];
         if (registry.valid()) {
             registry[key] = sol::nil;
         }
@@ -89,8 +89,8 @@ void LuaApi::RegisterGlobalApi(sol::table &tas, ScriptContext *context) {
     // tas.global.clear_all_data() - Clear all global data
     global["clear_all_data"] = [context]() {
         // Use context's Lua state
-        auto &luaState = context->GetLuaState();
-        luaState["__tas_global_registry"] = sol::nil;
+        sol::state_view lua = context->GetLuaState();
+        lua["__tas_global_registry"] = sol::nil;
     };
 
     // tas.global.get_all_keys() - Get all stored data keys
@@ -98,8 +98,8 @@ void LuaApi::RegisterGlobalApi(sol::table &tas, ScriptContext *context) {
         std::vector<std::string> keys;
 
         // Use context's Lua state
-        auto &luaState = context->GetLuaState();
-        sol::table registry = luaState["__tas_global_registry"];
+        sol::state_view lua = context->GetLuaState();
+        sol::table registry = lua["__tas_global_registry"];
         if (!registry.valid()) {
             return keys;
         }

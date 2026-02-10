@@ -2,7 +2,7 @@
 
 #include <CKRenderObject.h>
 
-void LuaApi::RegisterCKRenderObject(sol::state &lua) {
+void LuaApi::RegisterCKRenderObject(sol::state_view lua) {
     // ===================================================================
     //  CKRenderObject - Base class for objects that can be rendered
     // ===================================================================

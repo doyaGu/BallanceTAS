@@ -8,13 +8,12 @@
 
 #include <zip.h>
 
-#include "TASEngine.h"
 #include "Logger.h"
+#include "TASEngine.h"
 
 namespace fs = std::filesystem;
 
-ProjectManager::ProjectManager(TASEngine *engine)
-    : m_Engine(engine) {
+ProjectManager::ProjectManager(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::runtime_error("ProjectManager requires a valid TASEngine instance.");
     }

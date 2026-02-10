@@ -2,7 +2,7 @@
 
 #include <VxMath.h>
 
-void LuaApi::RegisterVxColor(sol::state &lua) {
+void LuaApi::RegisterVxColor(sol::state_view lua) {
     // ===================================================================
     //  VxColor Registration
     // ===================================================================

@@ -1,11 +1,9 @@
-//--- START OF FILE LuaApi_VxIntersectionDesc.cpp ---
-
 #include "LuaApi.h"
 
 #include <CKTypes.h>
 #include <CKRenderObject.h>
 
-void LuaApi::RegisterVxIntersectionDesc(sol::state &lua) {
+void LuaApi::RegisterVxIntersectionDesc(sol::state_view lua) {
     // ===================================================================
     //  VxIntersectionDesc - Description of a ray intersection
     // ===================================================================

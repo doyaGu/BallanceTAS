@@ -1,11 +1,11 @@
 #include "RecordPlayer.h"
 
-#include "Logger.h"
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
 #include <limits>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "TASProject.h"
 #include "GameInterface.h"

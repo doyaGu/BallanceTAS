@@ -504,7 +504,7 @@ namespace detail {
         sol::coroutine coroutine;
 
         // Constructor for creating coroutine from function
-        SchedulerCothread(sol::state &state, sol::function func) {
+        SchedulerCothread(sol::state_view state, sol::function func) {
             if (!func.valid()) {
                 throw std::invalid_argument("Invalid function provided to SchedulerCothread");
             }
@@ -595,7 +595,7 @@ public:
     explicit LuaScheduler(TASEngine *engine, ScriptContext *context);
     ~LuaScheduler() = default;
 
-    sol::state &GetLuaState() const;
+    sol::state_view GetLuaState() const;
 
     /**
      * @brief Starts a new coroutine.

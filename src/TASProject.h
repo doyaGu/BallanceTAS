@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+
 #include <sol/sol.hpp>
 
 /**
@@ -34,6 +35,8 @@ enum class ProjectScope {
  */
 class TASProject {
 public:
+    static constexpr float kDefaultUpdateRate = 132.0f;
+
     // Constructor for script-based projects
     explicit TASProject(std::string projectPath, sol::table manifest);
 
@@ -59,7 +62,7 @@ public:
     const std::string &GetTargetLevel() const { return m_TargetLevel; }
     const std::string &GetEntryScript() const { return m_EntryScript; }
     float GetUpdateRate() const { return m_UpdateRate; }
-    float GetDeltaTime() const { return 1000.0f / m_UpdateRate; }
+    float GetDeltaTime() const { return m_UpdateRate > 0.0f ? 1000.0f / m_UpdateRate : 1000.0f / kDefaultUpdateRate; }
 
     // --- Execution Trigger Information ---
     const std::string &GetExecutionTrigger() const { return m_ExecutionTrigger; }
@@ -172,7 +175,7 @@ private:
     std::string m_Description = "No description.";
     std::string m_EntryScript = "main.lua";
     std::string m_TargetLevel;
-    float m_UpdateRate = 132.0f; // Default to 132 = 66 * 2 (game's physics update rate)
+    float m_UpdateRate = kDefaultUpdateRate; // Default to 132 = 66 * 2 (game's physics update rate)
 
     // Project scope and execution
     ProjectScope m_ProjectScope = ProjectScope::Level;

@@ -16,12 +16,14 @@
 
 #pragma once
 
-#include "Result.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <functional>
 #include <typeindex>
+#include <vector>
+
+#include "Result.h"
 
 // ============================================================================
 // Service Lifetime Enum
@@ -54,15 +56,25 @@ public:
         : m_Factory(std::move(factory)), m_Lifetime(lifetime) {}
 
     void *Resolve() override {
-        if (m_Lifetime == ServiceLifetime::Singleton) {
-            if (!m_Instance) {
-                m_Instance = m_Factory();
+        try {
+            if (m_Lifetime == ServiceLifetime::Singleton) {
+                if (!m_Instance) {
+                    m_Instance = m_Factory();
+                }
+                return m_Instance.get();
             }
-            return m_Instance.get();
-        } else {
-            // For transient, create a new instance each time
+
+            // For transient, create a new instance each time and retain ownership in the
+            // descriptor. Resolve() returns raw pointers, so transient instances must stay
+            // alive for at least the container lifetime.
             auto instance = m_Factory();
-            return instance.get(); // Return raw pointer, caller manages lifetime via shared_ptr
+            if (!instance) {
+                return nullptr;
+            }
+            m_TransientInstances.emplace_back(std::move(instance));
+            return m_TransientInstances.back().get();
+        } catch (...) {
+            return nullptr;
         }
     }
 
@@ -74,6 +86,7 @@ private:
     Factory m_Factory;
     ServiceLifetime m_Lifetime;
     std::shared_ptr<T> m_Instance; // Use shared_ptr to type-erase deleter
+    std::vector<std::shared_ptr<T>> m_TransientInstances;
 };
 
 // ============================================================================
@@ -172,10 +185,23 @@ public:
      * @param factory Factory function to create the service
      */
     template <typename T>
-    void RegisterTransient(std::function<std::unique_ptr<T>()> factory) {
+    void RegisterTransient(std::function<std::shared_ptr<T>()> factory) {
         auto descriptor = std::make_unique<TypedServiceDescriptor<T>>(
             std::move(factory), ServiceLifetime::Transient);
         m_Services[std::type_index(typeid(T))] = std::move(descriptor);
+    }
+
+    /**
+     * @brief Register a service as transient (unique_ptr overload for convenience)
+     * @tparam T Service type
+     * @param factory Factory function returning unique_ptr
+     */
+    template <typename T>
+    void RegisterTransient(std::function<std::unique_ptr<T>()> factory) {
+        auto sharedFactory = [factory = std::move(factory)]() {
+            return std::shared_ptr<T>(factory());
+        };
+        RegisterTransient<T>(sharedFactory);
     }
 
     /**

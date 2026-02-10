@@ -7,6 +7,7 @@
 #include <variant>
 #include <atomic>
 #include <cstdint>
+#include <algorithm>
 
 #include <sol/sol.hpp>
 
@@ -223,33 +224,64 @@ void EventManager::FireEvent(const std::string &eventName, Args &&... args) {
         return; // No listeners
     }
 
-    // Process all listeners
-    for (auto listenerIt = it->second.begin(); listenerIt != it->second.end();) {
-        CallbackEntry &entry = *listenerIt;
+    // Build a stable snapshot of listener IDs first. This makes dispatch resilient to
+    // re-entrant listener mutation (callbacks can register/unregister/clear listeners).
+    std::vector<ListenerId> listenerIds;
+    listenerIds.reserve(it->second.size());
 
-        if (!IsCallbackValid(entry)) {
+    for (auto listenerIt = it->second.begin(); listenerIt != it->second.end();) {
+        if (!IsCallbackValid(*listenerIt)) {
             // Remove invalid callback
             listenerIt = it->second.erase(listenerIt);
             continue;
         }
+        listenerIds.push_back(listenerIt->id);
+        ++listenerIt;
+    }
 
-        bool success = CallCallback(entry, std::forward<Args>(args)...);
+    if (it->second.empty()) {
+        m_Listeners.erase(it);
+        return;
+    }
+
+    for (ListenerId id : listenerIds) {
+        auto eventIt = m_Listeners.find(eventName);
+        if (eventIt == m_Listeners.end()) {
+            break; // Event list was cleared during dispatch
+        }
+
+        auto &listeners = eventIt->second;
+        auto listenerIt = std::find_if(listeners.begin(), listeners.end(),
+                                       [id](const CallbackEntry &entry) {
+                                           return entry.id == id;
+                                       });
+        if (listenerIt == listeners.end()) {
+            continue; // Listener was removed during dispatch
+        }
+
+        CallbackEntry entryCopy(listenerIt->id, listenerIt->callback, listenerIt->oneTime);
+        if (!IsCallbackValid(entryCopy)) {
+            listeners.erase(listenerIt);
+            continue;
+        }
+
+        const bool oneTime = entryCopy.oneTime;
+        bool success = CallCallback(entryCopy, args...);
         if (!success) {
             HandleError(eventName, "Callback execution failed");
         }
 
-        // Remove one-time listeners after execution (whether successful or not)
-        // This prevents failed one-time listeners from being called repeatedly
-        if (entry.oneTime) {
-            listenerIt = it->second.erase(listenerIt);
-        } else {
-            ++listenerIt;
+        // Remove one-time listener after execution. It may have already been removed
+        // by re-entrant code, so ignore failure.
+        if (oneTime) {
+            UnregisterListener(eventName, id);
         }
     }
 
     // Clean up empty event lists
-    if (it->second.empty()) {
-        m_Listeners.erase(it);
+    auto cleanupIt = m_Listeners.find(eventName);
+    if (cleanupIt != m_Listeners.end() && cleanupIt->second.empty()) {
+        m_Listeners.erase(cleanupIt);
     }
 }
 

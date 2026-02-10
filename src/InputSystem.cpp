@@ -3,6 +3,9 @@
 #include <set>
 #include <algorithm>
 #include <sstream>
+#include <cctype>
+
+#include "Logger.h"
 
 // Helper function to convert a string to lowercase
 static std::string ToLower(std::string s) {
@@ -28,8 +31,8 @@ std::vector<std::string> InputSystem::ParseKeyString(const std::string &keyStrin
     std::vector<std::string> keys;
     std::string current;
 
-    for (char ch : keyString) {
-        if (isspace(ch)) {
+    for (unsigned char ch : keyString) {
+        if (std::isspace(ch) || ch == ',' || ch == ';') {
             if (!current.empty()) {
                 std::string trimmed = Trim(current);
                 if (!trimmed.empty()) {
@@ -38,7 +41,7 @@ std::vector<std::string> InputSystem::ParseKeyString(const std::string &keyStrin
                 current.clear();
             }
         } else {
-            current += ch;
+            current += static_cast<char>(ch);
         }
     }
 
@@ -227,6 +230,8 @@ void InputSystem::PressKeys(const std::string &keyString) {
         if (IsValidKeyCode(code) && code != 0) {
             // Generate a press event for this frame
             m_KeyStates[code].ApplyPressEvent(m_CurrentTick);
+        } else {
+            Log::Warn("InputSystem::PressKeys: unknown key '%s'.", key.c_str());
         }
     }
 }
@@ -241,6 +246,8 @@ void InputSystem::PressKeysOneFrame(const std::string &keyString) {
 
             // Schedule release for next frame by setting held duration to 1
             m_HeldKeys[code] = 1;
+        } else {
+            Log::Warn("InputSystem::PressKeysOneFrame: unknown key '%s'.", key.c_str());
         }
     }
 }
@@ -257,6 +264,8 @@ void InputSystem::HoldKeys(const std::string &keyString, int durationTicks) {
 
             // Schedule release after duration
             m_HeldKeys[code] = durationTicks;
+        } else {
+            Log::Warn("InputSystem::HoldKeys: unknown key '%s'.", key.c_str());
         }
     }
 }
@@ -271,6 +280,8 @@ void InputSystem::ReleaseKeys(const std::string &keyString) {
 
             // Remove from held keys if it was being held
             m_HeldKeys.erase(code);
+        } else {
+            Log::Warn("InputSystem::ReleaseKeys: unknown key '%s'.", key.c_str());
         }
     }
 }

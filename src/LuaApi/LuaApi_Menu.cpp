@@ -1,8 +1,8 @@
 #include "LuaApi.h"
 
-#include "Logger.h"
 #include <stdexcept>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "GameInterface.h"
 #include "LuaScheduler.h"
@@ -186,7 +186,7 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
         Log::Info("  Future implementation: This will return a list of available levels");
 
         // Return a stub list for now
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table levels = lua.create_table();
         for (int i = 1; i <= 13; i++) {
             levels[i] = "Level_" + std::to_string(i < 10 ? i : i);

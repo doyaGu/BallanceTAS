@@ -2,7 +2,7 @@
 
 #include <VxMath.h>
 
-void LuaApi::RegisterVxMatrix(sol::state &lua) {
+void LuaApi::RegisterVxMatrix(sol::state_view lua) {
     // ===================================================================
     //  VxMatrix Registration
     // ===================================================================

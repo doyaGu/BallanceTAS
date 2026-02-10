@@ -1,12 +1,13 @@
 #pragma once
 
-#include "Result.h"
 #include <memory>
 #include <vector>
 #include <functional>
 #include <filesystem>
 #include <string>
 #include <mutex>
+
+#include "Result.h"
 
 // ============================================================================
 // Resource Manager - RAII Resource Management

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <utility>
 
 /**
@@ -37,7 +38,8 @@ public:
      * @brief Constructs a bounded MPSC queue
      * @param maxSize Maximum number of elements (0 = unbounded, not recommended)
      */
-    explicit LockFreeMPSCQueue(size_t maxSize = 10000) : m_MaxSize(maxSize), m_ApproxSize(0) {
+    explicit LockFreeMPSCQueue(size_t maxSize = 10000)
+        : m_MaxSize(maxSize), m_ApproxSize(0), m_ShuttingDown(false), m_ActiveEnqueueCount(0) {
         // Initialize per-priority queues
         for (int i = 0; i <= MaxPriority; ++i) {
             // Create dummy stub nodes
@@ -48,6 +50,12 @@ public:
     }
 
     ~LockFreeMPSCQueue() {
+        // Block new producers and wait for in-flight enqueue operations to complete.
+        m_ShuttingDown.store(true, std::memory_order_release);
+        while (m_ActiveEnqueueCount.load(std::memory_order_acquire) != 0) {
+            std::this_thread::yield();
+        }
+
         // Drain all queues
         while (Dequeue().has_value()) {}
 
@@ -69,6 +77,18 @@ public:
      * @return true if enqueued, false if queue is full
      */
     bool Enqueue(T value, int priority = 0) {
+        // Fast reject once shutdown begins.
+        if (m_ShuttingDown.load(std::memory_order_acquire)) {
+            return false;
+        }
+
+        EnqueueGuard activeGuard(m_ActiveEnqueueCount);
+
+        // Handle race where shutdown starts right after the fast check.
+        if (m_ShuttingDown.load(std::memory_order_acquire)) {
+            return false;
+        }
+
         // Validate priority
         if (priority < 0) priority = 0;
         if (priority > MaxPriority) priority = MaxPriority;
@@ -132,6 +152,24 @@ public:
     }
 
 private:
+    class EnqueueGuard {
+    public:
+        explicit EnqueueGuard(std::atomic<size_t> &counter)
+            : m_Counter(counter) {
+            m_Counter.fetch_add(1, std::memory_order_acq_rel);
+        }
+
+        ~EnqueueGuard() {
+            m_Counter.fetch_sub(1, std::memory_order_acq_rel);
+        }
+
+        EnqueueGuard(const EnqueueGuard &) = delete;
+        EnqueueGuard &operator=(const EnqueueGuard &) = delete;
+
+    private:
+        std::atomic<size_t> &m_Counter;
+    };
+
     struct Node {
         std::atomic<Node *> next;
         std::optional<T> value;
@@ -192,4 +230,8 @@ private:
 
     // Approximate size counter (relaxed ordering, for size limits only)
     alignas(64) std::atomic<size_t> m_ApproxSize;
+
+    // Queue lifetime coordination
+    alignas(64) std::atomic<bool> m_ShuttingDown;
+    alignas(64) std::atomic<size_t> m_ActiveEnqueueCount;
 };

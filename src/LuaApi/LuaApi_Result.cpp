@@ -54,7 +54,7 @@ void LuaApi::RegisterResultApi(sol::table &tas, ScriptContext *context) {
     }
 
     std::string logPrefix = "[" + context->GetName() + "]";
-    sol::state &lua = context->GetLuaState();
+    sol::state_view lua = context->GetLuaState();
 
     // Register Result userdata type
     sol::usertype<LuaResult> result_type = lua.new_usertype<LuaResult>(

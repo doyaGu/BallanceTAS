@@ -1,10 +1,11 @@
 #pragma once
 
-#include <sol/sol.hpp>
 #include <string>
 #include <unordered_map>
 #include <mutex>
 #include <any>
+
+#include <sol/sol.hpp>
 
 // Forward declarations
 class TASEngine;

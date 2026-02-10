@@ -4,7 +4,6 @@
 #include "GameInterface.h"
 #include "ProjectManager.h"
 #include "InputSystem.h"
-#include "DX8InputManager.h"
 #include "EventManager.h"
 #include "TASHook.h"
 #include "TASProject.h"
@@ -18,11 +17,10 @@
 #include "RecordPlayer.h"
 #include "UIManager.h"
 #include "StartupProjectManager.h"
-
 #include "TASStateMachine.h"
 #include "TASStateHandlers.h"
 #include "TASControllers.h"
-
+#include "SavestateManager.h"
 #include "ServiceContainer.h"
 
 TASEngine::TASEngine(GameInterface *game) : m_GameInterface(game), m_ShuttingDown(false) {
@@ -121,6 +119,12 @@ bool TASEngine::Initialize() {
         if (translationCtrl) translationCtrl->Initialize();
 
         Log::Info("Controllers initialized.");
+
+        // Initialize SavestateManager
+        auto savestateManager = std::make_unique<SavestateManager>(provider);
+        m_ServiceContainer->RegisterSingletonInstance(std::move(savestateManager));
+
+        Log::Info("SavestateManager initialized.");
     } catch (const std::exception &e) {
         Log::Error("Failed to initialize core subsystems: %s", e.what());
         return false;
@@ -986,24 +990,7 @@ void TASEngine::AddTimer(size_t tick, const std::function<void()> &callback) {
     m_GameInterface->AddTimer(tick, callback);
 }
 
-// === Lua State Access ===
-// These methods delegate to the global context
-
-sol::state &TASEngine::GetLuaState() {
-    if (!m_ScriptContextManager) {
-        throw std::runtime_error("ScriptContextManager not initialized");
-    }
-
-    // Get or create the global context as the primary context
-    auto ctx = m_ScriptContextManager->GetOrCreateGlobalContext();
-    if (!ctx) {
-        throw std::runtime_error("Failed to get primary context");
-    }
-
-    return ctx->GetLuaState();
-}
-
-sol::state &TASEngine::GetLuaState() const {
+sol::state_view TASEngine::GetLuaState() const {
     if (!m_ScriptContextManager) {
         throw std::runtime_error("ScriptContextManager not initialized");
     }

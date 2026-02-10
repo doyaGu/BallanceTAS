@@ -1,6 +1,5 @@
 #include "LuaApi.h"
 
-#include "Logger.h"
 #include <stdexcept>
 
 #include "TASEngine.h"
@@ -226,7 +225,7 @@ void LuaApi::RegisterInputApi(sol::table &tas, ScriptContext *context) {
     // tas.mouse.get_position()
     mouse["get_position"] = [inputSystem, context]() -> sol::object {
         Vx2DVector pos = inputSystem->GetMousePosition();
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["x"] = pos.x;
         result["y"] = pos.y;
@@ -393,7 +392,7 @@ void LuaApi::RegisterInputApi(sol::table &tas, ScriptContext *context) {
             return sol::nil;
         }
         Vx2DVector sliders = inputSystem->GetJoystickSliders(joystickId);
-        auto &lua = context->GetLuaState();
+        sol::state_view lua = context->GetLuaState();
         sol::table result = lua.create_table();
         result["slider0"] = sliders.x;
         result["slider1"] = sliders.y;

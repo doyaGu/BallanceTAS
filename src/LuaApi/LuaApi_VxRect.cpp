@@ -2,7 +2,7 @@
 
 #include <VxMath.h>
 
-void LuaApi::RegisterVxRect(sol::state &lua) {
+void LuaApi::RegisterVxRect(sol::state_view lua) {
     // ===================================================================
     //  VxRect Registration
     // ===================================================================

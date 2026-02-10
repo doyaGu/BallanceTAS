@@ -29,25 +29,25 @@ public:
      */
     static void Register(ScriptContext *context);
 
-    static void AddLuaPath(sol::state &lua, const std::string &path);
+    static void AddLuaPath(sol::state_view lua, const std::string &path);
 
 private:
     // --- Private helper methods for organized registration ---
-    static void RegisterDataTypes(sol::state &lua);
-    static void RegisterVxColor(sol::state &lua);
-    static void RegisterVxMatrix(sol::state &lua);
-    static void RegisterVxQuaternion(sol::state &lua);
-    static void RegisterVxRect(sol::state &lua);
-    static void RegisterVxVector(sol::state &lua);
-    static void RegisterVxIntersectionDesc(sol::state &lua);
-    static void RegisterCKEnums(sol::state &lua);
-    static void RegisterCKObject(sol::state &lua);
-    static void RegisterCKSceneObject(sol::state &lua);
-    static void RegisterCKBeObject(sol::state &lua);
-    static void RegisterCKRenderObject(sol::state &lua);
-    static void RegisterCK3dEntity(sol::state &lua);
-    static void RegisterCKCamera(sol::state &lua);
-    static void RegisterPhysicsObject(sol::state &lua);
+    static void RegisterDataTypes(sol::state_view lua);
+    static void RegisterVxColor(sol::state_view lua);
+    static void RegisterVxMatrix(sol::state_view lua);
+    static void RegisterVxQuaternion(sol::state_view lua);
+    static void RegisterVxRect(sol::state_view lua);
+    static void RegisterVxVector(sol::state_view lua);
+    static void RegisterVxIntersectionDesc(sol::state_view lua);
+    static void RegisterCKEnums(sol::state_view lua);
+    static void RegisterCKObject(sol::state_view lua);
+    static void RegisterCKSceneObject(sol::state_view lua);
+    static void RegisterCKBeObject(sol::state_view lua);
+    static void RegisterCKRenderObject(sol::state_view lua);
+    static void RegisterCK3dEntity(sol::state_view lua);
+    static void RegisterCKCamera(sol::state_view lua);
+    static void RegisterPhysicsObject(sol::state_view lua);
 
     // Context-aware API registration methods
     // Uses context's local subsystems for proper isolation between contexts
@@ -67,4 +67,5 @@ private:
     static void RegisterSharedBufferApi(sol::table &tas, ScriptContext *context);
     static void RegisterResultApi(sol::table &tas, ScriptContext *context);
     static void RegisterAsyncApi(sol::table &tas, ScriptContext *context);
+    static void RegisterSavestateApi(sol::table &tas, ScriptContext *context);
 };

@@ -162,7 +162,7 @@ public:
      */
     size_t GetRecordingFrameCount() const;
 
-    // === Unified Replay Control ===
+    // === Replay Control ===
 
     /**
      * @brief Sets up replay to start when next level loads.
@@ -254,9 +254,7 @@ public:
     GameInterface *GetGameInterface() const { return m_GameInterface; }
     void AddTimer(size_t tick, const std::function<void()> &callback);
 
-    // For Lua API compatibility, delegate to current context
-    sol::state &GetLuaState();
-    sol::state &GetLuaState() const;
+    sol::state_view GetLuaState() const;
     LuaScheduler *GetScheduler() const;
 
     ProjectManager *GetProjectManager() const;

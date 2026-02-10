@@ -2,7 +2,7 @@
 
 #include <VxMath.h>
 
-void LuaApi::RegisterVxVector(sol::state &lua) {
+void LuaApi::RegisterVxVector(sol::state_view lua) {
     // ===================================================================
     //  VxVector (Vec3) Registration
     // ===================================================================

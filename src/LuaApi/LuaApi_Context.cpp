@@ -1,20 +1,18 @@
 #include "LuaApi.h"
 
-#include "Logger.h"
 #include <stdexcept>
+#include <atomic>
+#include <sstream>
+#include <iomanip>
+#include <algorithm>
 
+#include "Logger.h"
 #include "TASEngine.h"
 #include "ScriptContext.h"
 #include "ScriptContextManager.h"
 #include "SharedDataManager.h"
 #include "MessageBus.h"
 #include "LuaScheduler.h"
-
-#include <atomic>
-#include <sstream>
-#include <iomanip>
-#include <algorithm>
-#include <cctype>
 
 // ===================================================================
 //  Context Communication API Registration

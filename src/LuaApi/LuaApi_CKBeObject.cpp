@@ -5,7 +5,7 @@
 #include <CKParameterOut.h>
 #include <CKMessage.h>
 
-void LuaApi::RegisterCKBeObject(sol::state &lua) {
+void LuaApi::RegisterCKBeObject(sol::state_view lua) {
     // ===================================================================
     //  CKBeObject - Base class for objects with behaviors
     // ===================================================================

@@ -1,9 +1,9 @@
 #include "LuaScheduler.h"
 
-#include "Logger.h"
 #include <stdexcept>
 #include <utility>
 
+#include "Logger.h"
 #include "EventManager.h"
 #include "TASEngine.h"
 #include "ScriptContext.h"
@@ -111,7 +111,7 @@ LuaScheduler::LuaScheduler(TASEngine *engine, ScriptContext *context)
     }
 }
 
-sol::state &LuaScheduler::GetLuaState() const {
+sol::state_view LuaScheduler::GetLuaState() const {
     return m_Context->GetLuaState();
 }
 

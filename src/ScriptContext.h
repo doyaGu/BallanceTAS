@@ -1,9 +1,10 @@
 #pragma once
 
-#include <sol/sol.hpp>
 #include <string>
 #include <memory>
 #include <functional>
+
+#include <sol/sol.hpp>
 
 #include "ThreadOwnershipValidator.h"
 
@@ -155,7 +156,7 @@ public:
      * @brief Gets the Lua state for direct access (used by LuaApi).
      * @return Reference to the Lua state.
      */
-    sol::state &GetLuaState() { return m_LuaState; }
+    sol::state_view GetLuaState() { return sol::state_view(m_LuaState); }
 
     /**
      * @brief Gets the Lua scheduler for coroutine management.
@@ -168,6 +169,12 @@ public:
      * @return Pointer to the event manager, or nullptr if not initialized.
      */
     EventManager *GetEventManager() const { return m_EventManager.get(); }
+
+    /**
+     * @brief Gets the TASEngine instance.
+     * @return Pointer to the TASEngine.
+     */
+    TASEngine *GetEngine() const { return m_Engine; }
 
     /**
      * @brief Gets the project manager from the engine.

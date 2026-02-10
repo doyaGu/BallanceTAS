@@ -3,7 +3,7 @@
 #include <CKSceneObject.h>
 #include <CKScene.h>
 
-void LuaApi::RegisterCKSceneObject(sol::state &lua) {
+void LuaApi::RegisterCKSceneObject(sol::state_view lua) {
     // ===================================================================
     //  CKSceneObject - Base class for objects which can be referenced in a scene
     // ===================================================================

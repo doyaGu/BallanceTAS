@@ -3,7 +3,7 @@
 #include <CKDefines.h>
 #include <CKObject.h>
 
-void LuaApi::RegisterCKEnums(sol::state &lua) {
+void LuaApi::RegisterCKEnums(sol::state_view lua) {
     // ===================================================================
     //  CK_OBJECT_FLAGS - General object flags
     // ===================================================================

@@ -1,22 +1,20 @@
-/**
- * @file TASStateHandlers.cpp
- * @brief Implementation of state handlers for TASStateMachine
- */
-
 #include "TASStateHandlers.h"
 
+#include <stdexcept>
+
+#include "GameInterface.h"
+#include "InputSystem.h"
 #include "Logger.h"
-#include "TASEngine.h"
-#include "UIManager.h"
+#include "PlaybackService.h"
+#include "ProjectManager.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
+#include "RecordingService.h"
 #include "ScriptContextManager.h"
-#include "InputSystem.h"
-#include "GameInterface.h"
-
-// ============================================================================
-// BaseTASStateHandler Implementation
-// ============================================================================
+#include "TASEngine.h"
+#include "TranslationService.h"
+#include "UIManager.h"
+#include "ValidationService.h"
 
 BaseTASStateHandler::BaseTASStateHandler(TASEngine *engine)
     : m_Engine(engine) {
@@ -45,374 +43,538 @@ GameInterface *BaseTASStateHandler::GetGameInterface() const {
     return m_Engine ? m_Engine->GetGameInterface() : nullptr;
 }
 
-// ============================================================================
-// IdleHandler Implementation
-// ============================================================================
+ProjectManager *BaseTASStateHandler::GetProjectManager() const {
+    return m_Engine ? m_Engine->GetProjectManager() : nullptr;
+}
+
+RecordingService *BaseTASStateHandler::GetRecordingService() const {
+    return m_Engine ? m_Engine->GetRecordingService() : nullptr;
+}
+
+PlaybackService *BaseTASStateHandler::GetPlaybackService() const {
+    return m_Engine ? m_Engine->GetPlaybackService() : nullptr;
+}
+
+TranslationService *BaseTASStateHandler::GetTranslationService() const {
+    return m_Engine ? m_Engine->GetTranslationService() : nullptr;
+}
+
+ValidationService *BaseTASStateHandler::GetValidationService() const {
+    return m_Engine ? m_Engine->GetValidationService() : nullptr;
+}
+
+void BaseTASStateHandler::SetUIMode(UIMode mode) const {
+    if (auto *game = GetGameInterface()) {
+        game->SetUIMode(mode);
+    }
+}
+
+void BaseTASStateHandler::ResetInputSystem() const {
+    if (auto *input = GetInputSystem()) {
+        input->Reset();
+        input->SetEnabled(false);
+    }
+}
+
+void BaseTASStateHandler::StopValidationImmediate() const {
+    if (auto *validation = GetValidationService();
+        validation && validation->IsActive()) {
+        validation->StopImmediate();
+    }
+}
+
+void BaseTASStateHandler::StopValidationGraceful() const {
+    if (auto *validation = GetValidationService();
+        validation && validation->IsActive()) {
+        auto result = validation->Stop();
+        if (!result.IsOk()) {
+            Log::Error("Failed to stop validation recording: %s",
+                       result.GetError().message.c_str());
+        }
+    }
+}
 
 IdleHandler::IdleHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
-Result<void> IdleHandler::OnEnter() {
-    Log::Info("Entering Idle state");
+Result<void> IdleHandler::OnEnter(TASStateMachine::State previousState) {
+    Log::Info("Entering Idle state from %s",
+              TASStateMachine::StateToString(previousState));
 
-    // Ensure all subsystems are stopped and cleaned up
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
-    }
-
-    // Set UI to idle mode
-    auto gameInterface = GetGameInterface();
-    if (gameInterface) {
-        gameInterface->SetUIMode(UIMode::Idle);
-    }
-
+    ResetInputSystem();
+    SetUIMode(UIMode::Idle);
+    m_Engine->ClearControlRequests();
     return Result<void>::Ok();
 }
 
-Result<void> IdleHandler::OnExit() {
-    Log::Info("Exiting Idle state");
+Result<void> IdleHandler::OnExit(TASStateMachine::State nextState) {
+    Log::Info("Exiting Idle state to %s",
+              TASStateMachine::StateToString(nextState));
     return Result<void>::Ok();
 }
 
 void IdleHandler::OnTick() {
-    // Idle state does nothing on tick
 }
 
 bool IdleHandler::CanTransitionTo(TASStateMachine::State newState) const {
-    // From Idle, can transition to any active state
-    return newState == TASStateMachine::State::Recording ||
-        newState == TASStateMachine::State::PlayingScript ||
-        newState == TASStateMachine::State::PlayingRecord ||
-        newState == TASStateMachine::State::Translating;
+    return newState == TASStateMachine::State::PendingRecord ||
+           newState == TASStateMachine::State::PendingScriptPlayback ||
+           newState == TASStateMachine::State::PendingRecordPlayback ||
+           newState == TASStateMachine::State::PendingTranslation ||
+           newState == TASStateMachine::State::ShuttingDown;
 }
 
-// ============================================================================
-// RecordingHandler Implementation
-// ============================================================================
+PendingRecordHandler::PendingRecordHandler(TASEngine *engine)
+    : BaseTASStateHandler(engine) {
+}
+
+Result<void> PendingRecordHandler::OnEnter(TASStateMachine::State) {
+    auto *service = GetRecordingService();
+    if (!service) {
+        return Result<void>::Error("RecordingService not available", "state_handler");
+    }
+
+    auto result = service->PrepareRecording(m_Engine->ShouldUseValidationForRecording());
+    if (!result.IsOk()) {
+        return result;
+    }
+
+    SetUIMode(UIMode::Idle);
+    return Result<void>::Ok();
+}
+
+Result<void> PendingRecordHandler::OnExit(TASStateMachine::State nextState) {
+    if (nextState == TASStateMachine::State::Recording) {
+        return Result<void>::Ok();
+    }
+
+    auto *service = GetRecordingService();
+    if (!service || !service->IsPrepared()) {
+        return Result<void>::Ok();
+    }
+
+    auto result = service->StopRecordingGraceful();
+    return result.IsOk()
+        ? Result<void>::Ok()
+        : Result<void>::Error(result.GetError());
+}
+
+void PendingRecordHandler::OnTick() {
+}
+
+bool PendingRecordHandler::CanTransitionTo(TASStateMachine::State newState) const {
+    return newState == TASStateMachine::State::Recording ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
+}
 
 RecordingHandler::RecordingHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
-Result<void> RecordingHandler::OnEnter() {
-    Log::Info("Entering Recording state");
-
-    // Ensure InputSystem is DISABLED during recording
-    // We want to capture the user's actual input, not override it
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
+Result<void> RecordingHandler::OnEnter(TASStateMachine::State) {
+    auto *service = GetRecordingService();
+    if (!service) {
+        return Result<void>::Error("RecordingService not available", "state_handler");
     }
 
-    // Start the recorder
-    auto recorder = GetRecorder();
-    if (!recorder) {
-        return Result<void>::Error("Recorder subsystem not available", "subsystem");
+    auto result = service->ActivateRecording();
+    if (!result.IsOk()) {
+        return result;
     }
 
-    if (recorder->IsRecording()) {
-        return Result<void>::Error("Recorder already active", "state");
-    }
-
-    try {
-        recorder->Start();
-    } catch (const std::exception &e) {
-        return Result<void>::Error(
-            std::string("Failed to start recorder: ") + e.what(),
-            "recorder"
-        );
-    }
-
-    // Set UI to recording mode
-    auto gameInterface = GetGameInterface();
-    if (gameInterface) {
-        gameInterface->SetUIMode(UIMode::Recording);
-    }
-
+    SetUIMode(UIMode::Recording);
     return Result<void>::Ok();
 }
 
-Result<void> RecordingHandler::OnExit() {
-    Log::Info("Exiting Recording state");
-
-    // Stop the recorder
-    auto recorder = GetRecorder();
-    if (recorder && recorder->IsRecording()) {
-        try {
-            recorder->Stop();
-        } catch (const std::exception &e) {
-            Log::Error("Exception while stopping recorder: %s", e.what());
-            // Continue with cleanup even if stop fails
-        }
+Result<void> RecordingHandler::OnExit(TASStateMachine::State nextState) {
+    auto *service = GetRecordingService();
+    if (!service) {
+        return Result<void>::Ok();
     }
 
-    // Ensure InputSystem remains disabled after recording
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
+    if (nextState == TASStateMachine::State::ShuttingDown) {
+        service->StopRecordingImmediate();
+        return Result<void>::Ok();
     }
 
-    return Result<void>::Ok();
+    if (!service->IsRecording()) {
+        return Result<void>::Ok();
+    }
+
+    auto result = service->StopRecordingGraceful();
+    return result.IsOk()
+        ? Result<void>::Ok()
+        : Result<void>::Error(result.GetError());
 }
 
 void RecordingHandler::OnTick() {
-    // Recording tick is handled by callbacks
-    // (registered in RecordingController::SetupCallbacks)
 }
 
 bool RecordingHandler::CanTransitionTo(TASStateMachine::State newState) const {
-    // From Recording, can only transition to Idle or Paused
     return newState == TASStateMachine::State::Idle ||
-        newState == TASStateMachine::State::Paused;
+           newState == TASStateMachine::State::ShuttingDown;
 }
 
-// ============================================================================
-// PlayingScriptHandler Implementation
-// ============================================================================
+PendingScriptPlaybackHandler::PendingScriptPlaybackHandler(TASEngine *engine)
+    : BaseTASStateHandler(engine) {
+}
+
+Result<void> PendingScriptPlaybackHandler::OnEnter(TASStateMachine::State) {
+    auto *service = GetPlaybackService();
+    auto *project = m_Engine->GetRequestedProject();
+    if (!service) {
+        return Result<void>::Error("PlaybackService not available", "state_handler");
+    }
+
+    auto result = service->PreparePlayback(project, PlaybackType::Script);
+    if (!result.IsOk()) {
+        return result;
+    }
+
+    SetUIMode(UIMode::Idle);
+    return Result<void>::Ok();
+}
+
+Result<void> PendingScriptPlaybackHandler::OnExit(TASStateMachine::State nextState) {
+    if (nextState == TASStateMachine::State::PlayingScript) {
+        return Result<void>::Ok();
+    }
+
+    auto *service = GetPlaybackService();
+    if (!service || !service->IsPrepared()) {
+        return Result<void>::Ok();
+    }
+
+    return service->StopPlaybackGraceful(m_Engine->ShouldClearProjectOnStop());
+}
+
+void PendingScriptPlaybackHandler::OnTick() {
+}
+
+bool PendingScriptPlaybackHandler::CanTransitionTo(TASStateMachine::State newState) const {
+    return newState == TASStateMachine::State::PlayingScript ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
+}
+
+PendingRecordPlaybackHandler::PendingRecordPlaybackHandler(TASEngine *engine)
+    : BaseTASStateHandler(engine) {
+}
+
+Result<void> PendingRecordPlaybackHandler::OnEnter(TASStateMachine::State) {
+    auto *service = GetPlaybackService();
+    auto *project = m_Engine->GetRequestedProject();
+    if (!service) {
+        return Result<void>::Error("PlaybackService not available", "state_handler");
+    }
+
+    auto result = service->PreparePlayback(project, PlaybackType::Record);
+    if (!result.IsOk()) {
+        return result;
+    }
+
+    SetUIMode(UIMode::Idle);
+    return Result<void>::Ok();
+}
+
+Result<void> PendingRecordPlaybackHandler::OnExit(TASStateMachine::State nextState) {
+    if (nextState == TASStateMachine::State::PlayingRecord) {
+        return Result<void>::Ok();
+    }
+
+    auto *service = GetPlaybackService();
+    if (!service || !service->IsPrepared()) {
+        return Result<void>::Ok();
+    }
+
+    return service->StopPlaybackGraceful(m_Engine->ShouldClearProjectOnStop());
+}
+
+void PendingRecordPlaybackHandler::OnTick() {
+}
+
+bool PendingRecordPlaybackHandler::CanTransitionTo(TASStateMachine::State newState) const {
+    return newState == TASStateMachine::State::PlayingRecord ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
+}
 
 PlayingScriptHandler::PlayingScriptHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
-Result<void> PlayingScriptHandler::OnEnter() {
-    Log::Info("Entering PlayingScript state");
-
-    // Enable InputSystem for deterministic replay
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->SetEnabled(true);
-        inputSystem->Reset(); // Start with clean state
+Result<void> PlayingScriptHandler::OnEnter(TASStateMachine::State previousState) {
+    auto *service = GetPlaybackService();
+    if (!service) {
+        return Result<void>::Error("PlaybackService not available", "state_handler");
     }
 
-    // Note: Script loading and execution is handled by TASEngine::StartReplayInternal
-    // This handler focuses on state management, not execution setup
-
-    // Set UI to playing mode
-    auto gameInterface = GetGameInterface();
-    if (gameInterface) {
-        gameInterface->SetUIMode(UIMode::Playing);
-    }
-
-    return Result<void>::Ok();
-}
-
-Result<void> PlayingScriptHandler::OnExit() {
-    Log::Info("Exiting PlayingScript state");
-
-    // Stop all active script contexts
-    auto scriptManager = GetScriptContextManager();
-    if (scriptManager) {
-        auto contexts = scriptManager->GetContextsByPriority();
-        for (const auto &ctx : contexts) {
-            if (ctx && ctx->IsExecuting()) {
-                Log::Info("Stopping script execution in context: %s", ctx->GetName().c_str());
-                ctx->Stop();
-            }
+    if (previousState == TASStateMachine::State::Paused) {
+        service->Resume();
+    } else {
+        auto result = service->ActivatePlayback();
+        if (!result.IsOk()) {
+            return result;
         }
     }
 
-    // Clean up input state
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
-    }
-
+    SetUIMode(UIMode::Playing);
     return Result<void>::Ok();
 }
 
+Result<void> PlayingScriptHandler::OnExit(TASStateMachine::State nextState) {
+    auto *service = GetPlaybackService();
+    if (!service) {
+        return Result<void>::Ok();
+    }
+
+    if (nextState == TASStateMachine::State::Paused) {
+        service->Pause();
+        return Result<void>::Ok();
+    }
+
+    if (nextState == TASStateMachine::State::ShuttingDown) {
+        StopValidationImmediate();
+        service->StopPlaybackImmediate();
+        return Result<void>::Ok();
+    }
+
+    StopValidationGraceful();
+    if (!service->IsPlaying() && !service->IsPaused()) {
+        return Result<void>::Ok();
+    }
+
+    return service->StopPlaybackGraceful(m_Engine->ShouldClearProjectOnStop());
+}
+
 void PlayingScriptHandler::OnTick() {
-    // Script playback tick is handled by callbacks
-    // (registered in PlaybackController::SetupScriptPlaybackCallbacks)
 }
 
 bool PlayingScriptHandler::CanTransitionTo(TASStateMachine::State newState) const {
-    // From PlayingScript, can transition to Idle or Paused
-    return newState == TASStateMachine::State::Idle ||
-        newState == TASStateMachine::State::Paused;
+    return newState == TASStateMachine::State::Paused ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
 }
-
-// ============================================================================
-// PlayingRecordHandler Implementation
-// ============================================================================
 
 PlayingRecordHandler::PlayingRecordHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
-Result<void> PlayingRecordHandler::OnEnter() {
-    Log::Info("Entering PlayingRecord state");
-
-    // For record playback, DISABLE InputSystem completely
-    // Record playback applies input directly to keyboard state buffer
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->SetEnabled(false);
-        inputSystem->Reset(); // Ensure clean state
+Result<void> PlayingRecordHandler::OnEnter(TASStateMachine::State previousState) {
+    auto *service = GetPlaybackService();
+    if (!service) {
+        return Result<void>::Error("PlaybackService not available", "state_handler");
     }
 
-    // Note: Record loading and playback is handled by TASEngine::StartReplayInternal
-    // This handler focuses on state management
-
-    // Set UI to playing mode
-    auto gameInterface = GetGameInterface();
-    if (gameInterface) {
-        gameInterface->SetUIMode(UIMode::Playing);
-    }
-
-    return Result<void>::Ok();
-}
-
-Result<void> PlayingRecordHandler::OnExit() {
-    Log::Info("Exiting PlayingRecord state");
-
-    // Stop the record player
-    auto recordPlayer = GetRecordPlayer();
-    if (recordPlayer && recordPlayer->IsPlaying()) {
-        try {
-            recordPlayer->Stop();
-        } catch (const std::exception &e) {
-            Log::Error("Exception while stopping record player: %s", e.what());
+    if (previousState == TASStateMachine::State::Paused) {
+        service->Resume();
+    } else {
+        auto result = service->ActivatePlayback();
+        if (!result.IsOk()) {
+            return result;
         }
     }
 
-    // Clean up input state
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
-    }
-
+    SetUIMode(UIMode::Playing);
     return Result<void>::Ok();
 }
 
+Result<void> PlayingRecordHandler::OnExit(TASStateMachine::State nextState) {
+    auto *service = GetPlaybackService();
+    if (!service) {
+        return Result<void>::Ok();
+    }
+
+    if (nextState == TASStateMachine::State::Paused) {
+        service->Pause();
+        return Result<void>::Ok();
+    }
+
+    if (nextState == TASStateMachine::State::ShuttingDown) {
+        service->StopPlaybackImmediate();
+        return Result<void>::Ok();
+    }
+
+    if (!service->IsPlaying() && !service->IsPaused()) {
+        return Result<void>::Ok();
+    }
+
+    return service->StopPlaybackGraceful(m_Engine->ShouldClearProjectOnStop());
+}
+
 void PlayingRecordHandler::OnTick() {
-    // Record playback tick is handled by callbacks
-    // (registered in PlaybackController::SetupRecordPlaybackCallbacks)
 }
 
 bool PlayingRecordHandler::CanTransitionTo(TASStateMachine::State newState) const {
-    // From PlayingRecord, can transition to Idle or Paused
-    return newState == TASStateMachine::State::Idle ||
-        newState == TASStateMachine::State::Paused;
+    return newState == TASStateMachine::State::Paused ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
 }
 
-// ============================================================================
-// TranslatingHandler Implementation
-// ============================================================================
+PendingTranslationHandler::PendingTranslationHandler(TASEngine *engine)
+    : BaseTASStateHandler(engine) {
+}
+
+Result<void> PendingTranslationHandler::OnEnter(TASStateMachine::State) {
+    auto *service = GetTranslationService();
+    auto *project = m_Engine->GetRequestedProject();
+    if (!service) {
+        return Result<void>::Error("TranslationService not available", "state_handler");
+    }
+
+    auto result = service->PrepareTranslation(project);
+    if (!result.IsOk()) {
+        return result;
+    }
+
+    SetUIMode(UIMode::Idle);
+    return Result<void>::Ok();
+}
+
+Result<void> PendingTranslationHandler::OnExit(TASStateMachine::State nextState) {
+    if (nextState == TASStateMachine::State::Translating) {
+        return Result<void>::Ok();
+    }
+
+    auto *service = GetTranslationService();
+    if (!service || !service->IsPrepared()) {
+        return Result<void>::Ok();
+    }
+
+    return service->StopTranslationGraceful(m_Engine->ShouldClearProjectOnStop());
+}
+
+void PendingTranslationHandler::OnTick() {
+}
+
+bool PendingTranslationHandler::CanTransitionTo(TASStateMachine::State newState) const {
+    return newState == TASStateMachine::State::Translating ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
+}
 
 TranslatingHandler::TranslatingHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
-Result<void> TranslatingHandler::OnEnter() {
-    Log::Info("Entering Translating state");
-
-    // For translation, InputSystem should be DISABLED
-    // We want RecordPlayer to control input directly, and Recorder to capture it
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
+Result<void> TranslatingHandler::OnEnter(TASStateMachine::State) {
+    auto *service = GetTranslationService();
+    if (!service) {
+        return Result<void>::Error("TranslationService not available", "state_handler");
     }
 
-    // Note: Translation setup (starting both RecordPlayer and Recorder)
-    // is handled by TASEngine::StartTranslationInternal
-
-    // Set UI to recording mode (since we're generating a script)
-    auto gameInterface = GetGameInterface();
-    if (gameInterface) {
-        gameInterface->SetUIMode(UIMode::Recording);
+    auto result = service->ActivateTranslation();
+    if (!result.IsOk()) {
+        return result;
     }
 
+    SetUIMode(UIMode::Recording);
     return Result<void>::Ok();
 }
 
-Result<void> TranslatingHandler::OnExit() {
-    Log::Info("Exiting Translating state");
-
-    // Stop both record playback and recording
-    auto recordPlayer = GetRecordPlayer();
-    if (recordPlayer && recordPlayer->IsPlaying()) {
-        try {
-            recordPlayer->Stop();
-        } catch (const std::exception &e) {
-            Log::Error("Exception while stopping record player: %s", e.what());
-        }
+Result<void> TranslatingHandler::OnExit(TASStateMachine::State nextState) {
+    auto *service = GetTranslationService();
+    if (!service) {
+        return Result<void>::Ok();
     }
 
-    auto recorder = GetRecorder();
-    if (recorder && recorder->IsRecording()) {
-        try {
-            recorder->Stop();
-        } catch (const std::exception &e) {
-            Log::Error("Exception while stopping recorder: %s", e.what());
-        }
+    if (nextState == TASStateMachine::State::ShuttingDown) {
+        service->StopTranslationImmediate();
+        return Result<void>::Ok();
     }
 
-    // Clean up input state
-    auto inputSystem = GetInputSystem();
-    if (inputSystem) {
-        inputSystem->Reset();
-        inputSystem->SetEnabled(false);
+    if (!service->IsTranslating()) {
+        return Result<void>::Ok();
     }
 
-    return Result<void>::Ok();
+    return service->StopTranslationGraceful(m_Engine->ShouldClearProjectOnStop());
 }
 
 void TranslatingHandler::OnTick() {
-    // Translation tick is handled by callbacks
-    // (registered in TranslationController::SetupCallbacks)
 }
 
 bool TranslatingHandler::CanTransitionTo(TASStateMachine::State newState) const {
-    // From Translating, can only transition to Idle
-    // (Translation doesn't support pausing)
-    return newState == TASStateMachine::State::Idle;
+    return newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
 }
-
-// ============================================================================
-// PausedHandler Implementation
-// ============================================================================
 
 PausedHandler::PausedHandler(TASEngine *engine)
     : BaseTASStateHandler(engine) {
 }
 
-Result<void> PausedHandler::OnEnter() {
-    Log::Info("Entering Paused state");
-
-    // Pausing is primarily a state indicator
-    // The actual pausing logic (stopping callbacks, etc.) is handled elsewhere
-    // This handler just manages the state transition
-
-    // Keep UI in current mode (don't change to idle)
-    // The UI will show "Paused" overlay
-
+Result<void> PausedHandler::OnEnter(TASStateMachine::State previousState) {
+    Log::Info("Entering Paused state from %s",
+              TASStateMachine::StateToString(previousState));
+    SetUIMode(UIMode::Paused);
     return Result<void>::Ok();
 }
 
-Result<void> PausedHandler::OnExit() {
-    Log::Info("Exiting Paused state");
+Result<void> PausedHandler::OnExit(TASStateMachine::State nextState) {
+    auto *service = GetPlaybackService();
+    if (!service) {
+        return Result<void>::Ok();
+    }
 
-    // Resuming from pause
-    // The previous state's handler will be re-entered
+    if (nextState == TASStateMachine::State::PlayingScript ||
+        nextState == TASStateMachine::State::PlayingRecord) {
+        return Result<void>::Ok();
+    }
 
-    return Result<void>::Ok();
+    if (nextState == TASStateMachine::State::ShuttingDown) {
+        StopValidationImmediate();
+        service->StopPlaybackImmediate();
+        return Result<void>::Ok();
+    }
+
+    StopValidationGraceful();
+    return service->StopPlaybackGraceful(m_Engine->ShouldClearProjectOnStop());
 }
 
 void PausedHandler::OnTick() {
-    // Paused state does nothing on tick
 }
 
 bool PausedHandler::CanTransitionTo(TASStateMachine::State newState) const {
-    // From Paused, can resume to playing states or go to Idle
-    return newState == TASStateMachine::State::Idle ||
-        newState == TASStateMachine::State::PlayingScript ||
-        newState == TASStateMachine::State::PlayingRecord;
+    return newState == TASStateMachine::State::PlayingScript ||
+           newState == TASStateMachine::State::PlayingRecord ||
+           newState == TASStateMachine::State::Idle ||
+           newState == TASStateMachine::State::ShuttingDown;
+}
+
+ShuttingDownHandler::ShuttingDownHandler(TASEngine *engine)
+    : BaseTASStateHandler(engine) {
+}
+
+Result<void> ShuttingDownHandler::OnEnter(TASStateMachine::State previousState) {
+    Log::Info("Entering ShuttingDown state from %s",
+              TASStateMachine::StateToString(previousState));
+
+    StopValidationImmediate();
+
+    if (auto *playback = GetPlaybackService()) {
+        playback->StopPlaybackImmediate();
+    }
+    if (auto *recording = GetRecordingService()) {
+        recording->StopRecordingImmediate();
+    }
+    if (auto *translation = GetTranslationService()) {
+        translation->StopTranslationImmediate();
+    }
+
+    ResetInputSystem();
+    SetUIMode(UIMode::Idle);
+    m_Engine->ClearControlRequests();
+    return Result<void>::Ok();
+}
+
+Result<void> ShuttingDownHandler::OnExit(TASStateMachine::State) {
+    return Result<void>::Error("Cannot leave shutting down state", "state_handler");
+}
+
+void ShuttingDownHandler::OnTick() {
+}
+
+bool ShuttingDownHandler::CanTransitionTo(TASStateMachine::State) const {
+    return false;
 }

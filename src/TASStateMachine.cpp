@@ -2,38 +2,63 @@
 
 #include <chrono>
 
+#include "GameEvents.h"
+#include "TASEngine.h"
+
 TASStateMachine::TASStateMachine(TASEngine *engine)
     : m_Engine(engine), m_CurrentState(State::Idle), m_PreviousState(State::Idle) {
     InitializeTransitionTable();
 }
 
 void TASStateMachine::InitializeTransitionTable() {
-    // From Idle can transition to any active state
-    m_TransitionTable[{State::Idle, Event::StartRecording}] = State::Recording;
-    m_TransitionTable[{State::Idle, Event::StartScriptPlayback}] = State::PlayingScript;
-    m_TransitionTable[{State::Idle, Event::StartRecordPlayback}] = State::PlayingRecord;
-    m_TransitionTable[{State::Idle, Event::StartTranslation}] = State::Translating;
+    m_TransitionTable[{State::Idle, Event::StartRecording}] = State::PendingRecord;
+    m_TransitionTable[{State::Idle, Event::StartScriptPlayback}] = State::PendingScriptPlayback;
+    m_TransitionTable[{State::Idle, Event::StartRecordPlayback}] = State::PendingRecordPlayback;
+    m_TransitionTable[{State::Idle, Event::StartTranslation}] = State::PendingTranslation;
 
-    // From any active state can stop to Idle
+    m_TransitionTable[{State::PendingRecord, Event::LevelStart}] = State::Recording;
+    m_TransitionTable[{State::PendingScriptPlayback, Event::LevelStart}] = State::PlayingScript;
+    m_TransitionTable[{State::PendingRecordPlayback, Event::LevelStart}] = State::PlayingRecord;
+    m_TransitionTable[{State::PendingTranslation, Event::LevelStart}] = State::Translating;
+
+    m_TransitionTable[{State::PendingRecord, Event::Stop}] = State::Idle;
+    m_TransitionTable[{State::PendingScriptPlayback, Event::Stop}] = State::Idle;
+    m_TransitionTable[{State::PendingRecordPlayback, Event::Stop}] = State::Idle;
+    m_TransitionTable[{State::PendingTranslation, Event::Stop}] = State::Idle;
+
     m_TransitionTable[{State::Recording, Event::Stop}] = State::Idle;
     m_TransitionTable[{State::PlayingScript, Event::Stop}] = State::Idle;
     m_TransitionTable[{State::PlayingRecord, Event::Stop}] = State::Idle;
     m_TransitionTable[{State::Translating, Event::Stop}] = State::Idle;
     m_TransitionTable[{State::Paused, Event::Stop}] = State::Idle;
 
-    // Pause and resume
     m_TransitionTable[{State::PlayingScript, Event::Pause}] = State::Paused;
     m_TransitionTable[{State::PlayingRecord, Event::Pause}] = State::Paused;
-    m_TransitionTable[{State::Paused, Event::Resume}] = State::PlayingScript; // Default resume to script playback
+    m_TransitionTable[{State::Paused, Event::Resume}] = State::PlayingScript;
 
-    // Level change will stop current operation
-    m_TransitionTable[{State::Recording, Event::LevelChange}] = State::Idle;
-    m_TransitionTable[{State::PlayingScript, Event::LevelChange}] = State::Idle;
-    m_TransitionTable[{State::PlayingRecord, Event::LevelChange}] = State::Idle;
-    m_TransitionTable[{State::Translating, Event::LevelChange}] = State::Idle;
+    m_TransitionTable[{State::PendingRecord, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::PendingScriptPlayback, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::PendingRecordPlayback, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::PendingTranslation, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::Recording, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::PlayingScript, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::PlayingRecord, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::Translating, Event::LevelEnd}] = State::Idle;
+    m_TransitionTable[{State::Paused, Event::LevelEnd}] = State::Idle;
 
-    // Error handling - any state encountering error returns to Idle
     for (auto state : {
+             State::Idle,
+             State::PendingRecord, State::PendingScriptPlayback,
+             State::PendingRecordPlayback, State::PendingTranslation,
+             State::Recording, State::PlayingScript, State::PlayingRecord,
+             State::Translating, State::Paused
+         }) {
+        m_TransitionTable[{state, Event::Shutdown}] = State::ShuttingDown;
+    }
+
+    for (auto state : {
+             State::PendingRecord, State::PendingScriptPlayback,
+             State::PendingRecordPlayback, State::PendingTranslation,
              State::Recording, State::PlayingScript, State::PlayingRecord,
              State::Translating, State::Paused
          }) {
@@ -42,38 +67,33 @@ void TASStateMachine::InitializeTransitionTable() {
 }
 
 Result<void> TASStateMachine::Transition(Event event) {
-    State targetState = FindTransitionTarget(m_CurrentState, event);
+    const State requestedTargetState = FindTransitionTarget(m_CurrentState, event);
 
-    // Check if transition is defined in transition table
-    if (targetState == m_CurrentState) {
+    if (requestedTargetState == m_CurrentState) {
         std::string errorMsg = std::string("Invalid state transition: ") +
-            StateToString(m_CurrentState) + " -> " +
-            EventToString(event);
+            StateToString(m_CurrentState) + " -> " + EventToString(event);
         RecordTransition(m_CurrentState, event, m_CurrentState, false);
         return Result<void>::Error(errorMsg, "state_machine", ErrorSeverity::Warning);
     }
 
-    // Check if current state handler allows transition
     if (auto handler = m_Handlers.find(m_CurrentState);
         handler != m_Handlers.end()) {
-        if (!handler->second->CanTransitionTo(targetState)) {
+        if (!handler->second->CanTransitionTo(requestedTargetState)) {
             std::string errorMsg = std::string("Transition blocked by handler: ") +
-                StateToString(m_CurrentState) + " -> " +
-                StateToString(targetState);
-            RecordTransition(m_CurrentState, event, targetState, false);
+                StateToString(m_CurrentState) + " -> " + StateToString(requestedTargetState);
+            RecordTransition(m_CurrentState, event, requestedTargetState, false);
             return Result<void>::Error(errorMsg, "state_machine", ErrorSeverity::Warning);
         }
     }
 
-    // Execute transition
-    State oldState = m_CurrentState; // Capture state before transition
-    return TransitionToState(targetState)
-           .AndThen([this, event, oldState, targetState]() {
-               RecordTransition(oldState, event, targetState, true);
+    State oldState = m_CurrentState;
+    return TransitionToState(requestedTargetState)
+           .AndThen([this, event, oldState]() {
+               RecordTransition(oldState, event, m_CurrentState, true);
                return Result<void>::Ok();
            })
-           .OrElse([this, event, oldState, targetState](const ErrorInfo &error) {
-               RecordTransition(oldState, event, targetState, false);
+           .OrElse([this, event, oldState, requestedTargetState](const ErrorInfo &error) {
+               RecordTransition(oldState, event, requestedTargetState, false);
                return Result<void>::Error(error);
            });
 }
@@ -83,45 +103,32 @@ Result<void> TASStateMachine::ForceSetState(State newState) {
         return Result<void>::Ok();
     }
 
-    // Force transition, skip validation
     return TransitionToState(newState);
 }
 
 Result<void> TASStateMachine::TransitionToState(State newState) {
     State oldState = m_CurrentState;
 
-    // 1. Exit old state
     if (auto oldHandler = m_Handlers.find(oldState);
         oldHandler != m_Handlers.end()) {
-        auto exitResult = oldHandler->second->OnExit();
+        auto exitResult = oldHandler->second->OnExit(newState);
         if (!exitResult.IsOk()) {
-            // Exit failed, log error but continue
-            // Log::Warn("Failed to exit state %s: %s",
-            //          StateToString(oldState),
-            //          exitResult.GetError().Format().c_str());
+            return exitResult;
         }
     }
 
-    // 2. Update state
     if (newState == State::Paused) {
-        m_PreviousState = oldState; // Save state before pause
-    } else if (oldState == State::Paused && newState != State::Idle) {
-        // Resume from pause, use previously saved state
+        m_PreviousState = oldState;
+    } else if (oldState == State::Paused && newState != State::Idle && newState != State::ShuttingDown) {
         newState = m_PreviousState;
     }
 
     m_CurrentState = newState;
 
-    // Log::Info("State transition: %s -> %s",
-    //          StateToString(oldState),
-    //          StateToString(newState));
-
-    // 3. Enter new state
     if (auto newHandler = m_Handlers.find(newState);
         newHandler != m_Handlers.end()) {
-        auto enterResult = newHandler->second->OnEnter();
+        auto enterResult = newHandler->second->OnEnter(oldState);
         if (!enterResult.IsOk()) {
-            // Entry failed, try to rollback to Idle
             m_CurrentState = State::Idle;
             return Result<void>::Error(
                 "Failed to enter state " + std::string(StateToString(newState)) +
@@ -132,6 +139,13 @@ Result<void> TASStateMachine::TransitionToState(State newState) {
         }
     }
 
+    if (m_Engine && m_Engine->GetEventBus()) {
+        m_Engine->GetEventBus()->Publish(TASStateChangedEvent{
+            static_cast<int>(oldState),
+            static_cast<int>(m_CurrentState)
+        });
+    }
+
     return Result<void>::Ok();
 }
 
@@ -140,11 +154,10 @@ TASStateMachine::State TASStateMachine::FindTransitionTarget(State currentState,
     if (it != m_TransitionTable.end()) {
         return it->second;
     }
-    return currentState; // Invalid transition, return current state
+    return currentState;
 }
 
 bool TASStateMachine::IsTransitionValid(State from, State to) const {
-    // Check if there exists an event that can cause this transition
     for (const auto &[pair, targetState] : m_TransitionTable) {
         if (pair.state == from && targetState == to) {
             return true;
@@ -158,7 +171,6 @@ void TASStateMachine::RegisterHandler(State state, std::unique_ptr<IStateHandler
 }
 
 void TASStateMachine::Tick() {
-    // Call Tick handler of current state
     if (auto handler = m_Handlers.find(m_CurrentState);
         handler != m_Handlers.end()) {
         handler->second->OnTick();
@@ -178,7 +190,6 @@ void TASStateMachine::RecordTransition(State fromState, Event event, State toSta
         succeeded
     });
 
-    // Limit history size
     if (m_TransitionHistory.size() > MAX_HISTORY_SIZE) {
         m_TransitionHistory.erase(m_TransitionHistory.begin());
     }

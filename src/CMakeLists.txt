@@ -20,6 +20,8 @@ set(TAS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(tas_core STATIC
         Result.h
         PlaybackTypes.h
+        EventBus.h
+        GameEvents.h
         ILogSink.h
         ServiceContainer.h          ServiceContainer.cpp
         TASStateMachine.h           TASStateMachine.cpp
@@ -40,6 +42,11 @@ set_target_properties(tas_core PROPERTIES FOLDER "TAS/Modules")
 if(BUILD_MOD)
 add_library(tas_game STATIC
         GameInterface.h             GameInterface.cpp
+        IPhysicsProvider.h
+        IObjectProvider.h
+        IRNGProvider.h
+        IGameStateProvider.h
+        ITimeProvider.h
         physics_RT.h                physics_RT.cpp
         DX8InputManager.h
         InputSystem.h               InputSystem.cpp
@@ -73,19 +80,23 @@ target_link_libraries(tas_scripting
 set_target_properties(tas_scripting PROPERTIES FOLDER "TAS/Modules")
 
 # ── Module: features ─────────────────────────────────────────────────────────
-#    TAS operation layer – engine coordinator, controllers, strategies,
-#    recording, playback, savestate, project management.
+#    TAS operation layer – engine coordinator, services, recording, playback,
+#    savestate, project management.
 # ─────────────────────────────────────────────────────────────────────────────
 add_library(tas_features STATIC
         TASEngine.h                 TASEngine.cpp
         EngineBootstrap.h           EngineBootstrap.cpp
-        TASControllers.h            TASControllers.cpp
-        TASStrategies.h             TASStrategies.cpp
+        HookManager.h               HookManager.cpp
+        ConfigService.h             ConfigService.cpp
         TASStateHandlers.h          TASStateHandlers.cpp
         TASProject.h                TASProject.cpp
         ProjectManager.h            ProjectManager.cpp
         Recorder.h                  Recorder.cpp
         RecordPlayer.h              RecordPlayer.cpp
+        RecordingService.h          RecordingService.cpp
+        PlaybackService.h           PlaybackService.cpp
+        TranslationService.h        TranslationService.cpp
+        ValidationService.h         ValidationService.cpp
         ScriptGenerator.h           ScriptGenerator.cpp
         StartupProjectManager.h     StartupProjectManager.cpp
         SavestateManager.h          SavestateManager.cpp

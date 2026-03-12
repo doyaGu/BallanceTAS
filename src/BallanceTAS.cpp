@@ -11,6 +11,26 @@
 #include "UIManager.h"
 #include "Logger.h"
 #include "BMLLogSink.h"
+#include "EventBus.h"
+#include "GameEvents.h"
+#include "HookManager.h"
+
+namespace {
+
+template <typename Event>
+void PublishEngineEvent(BallanceTAS *mod, const Event &event) {
+    if (!mod) {
+        return;
+    }
+
+    auto *engine = mod->GetEngine();
+    auto *eventBus = mod->GetEventBus();
+    if (engine && eventBus && !engine->IsShuttingDown()) {
+        eventBus->Publish(event);
+    }
+}
+
+} // namespace
 
 // Global instance pointer required by BML
 BallanceTAS *g_Mod;
@@ -48,88 +68,7 @@ void BallanceTAS::OnLoad() {
     Log::Initialize(m_LogSink.get());
 
     // --- 1. Initialize Configuration ---
-    // This is the primary switch for the TAS framework.
-    m_Enabled = GetConfig()->GetProperty("TAS", "Enable");
-    m_Enabled->SetComment("Enables TAS features.");
-    m_Enabled->SetDefaultBoolean(true);
-
-    m_Validation = GetConfig()->GetProperty("TAS", "Validation");
-    m_Validation->SetComment("Enables validation recording for script playback. "
-        "This will record physics data to validate TAS scripts.");
-    m_Validation->SetDefaultBoolean(false);
-
-    m_AutoRestart = GetConfig()->GetProperty("TAS", "AutoRestart");
-    m_AutoRestart->SetComment("Automatically restarts the current project when the same level is loaded again.");
-    m_AutoRestart->SetDefaultBoolean(false);
-
-    m_StopOnFinish = GetConfig()->GetProperty("TAS", "StopOnFinish");
-    m_StopOnFinish->SetComment("Automatically stops TAS playback/recording when the level ends.");
-    m_StopOnFinish->SetDefaultBoolean(true);
-
-    // Hotkey configuration
-    m_StopKey = GetConfig()->GetProperty("Hotkeys", "StopKey");
-    m_StopKey->SetComment("Key for stopping TAS playback or recording");
-    m_StopKey->SetDefaultKey(CKKEY_F3);
-
-    // --- Recording Configuration ---
-    m_RecordingMaxFrames = GetConfig()->GetProperty("Recording", "MaxFrames");
-    m_RecordingMaxFrames->SetComment("Maximum frames to record (prevents memory issues)");
-    m_RecordingMaxFrames->SetDefaultInteger(1000000);
-
-    // --- Startup Script Configuration ---
-    m_StartupScriptEnabled = GetConfig()->GetProperty("Startup", "Enabled");
-    m_StartupScriptEnabled->SetComment("Enable startup script auto-loading");
-    m_StartupScriptEnabled->SetDefaultBoolean(false);
-
-    m_StartupScriptProject = GetConfig()->GetProperty("Startup", "Project");
-    m_StartupScriptProject->SetComment("Name of the TAS project to load on startup");
-    m_StartupScriptProject->SetDefaultString("");
-
-    m_AutoLoadStartupScript = GetConfig()->GetProperty("Startup", "AutoLoad");
-    m_AutoLoadStartupScript->SetComment("Automatically load startup script on game launch");
-    m_AutoLoadStartupScript->SetDefaultBoolean(false);
-
-    // UI visibility control.
-    m_ShowOSD = GetConfig()->GetProperty("OSD", "ShowOSD");
-    m_ShowOSD->SetComment("Controls the visibility of the in-game On-Screen Display.");
-    m_ShowOSD->SetDefaultBoolean(true);
-
-    // --- OSD Panel Configuration ---
-    m_ShowOSDStatus = GetConfig()->GetProperty("OSD", "ShowStatusPanel");
-    m_ShowOSDStatus->SetComment("Show the status panel (TAS mode, frame count, ground contact)");
-    m_ShowOSDStatus->SetDefaultBoolean(true);
-
-    m_ShowOSDVelocity = GetConfig()->GetProperty("OSD", "ShowVelocityPanel");
-    m_ShowOSDVelocity->SetComment("Show the velocity panel (speed, velocity components, graphs)");
-    m_ShowOSDVelocity->SetDefaultBoolean(true);
-
-    m_ShowOSDPosition = GetConfig()->GetProperty("OSD", "ShowPositionPanel");
-    m_ShowOSDPosition->SetComment("Show the position panel (coordinates, trajectory graph)");
-    m_ShowOSDPosition->SetDefaultBoolean(true);
-
-    m_ShowOSDPhysics = GetConfig()->GetProperty("OSD", "ShowPhysicsPanel");
-    m_ShowOSDPhysics->SetComment("Show the physics panel (angular velocity, mass, physics state)");
-    m_ShowOSDPhysics->SetDefaultBoolean(false);
-
-    m_ShowOSDKeys = GetConfig()->GetProperty("OSD", "ShowKeysPanel");
-    m_ShowOSDKeys->SetComment("Show the input keys panel (real-time key state display)");
-    m_ShowOSDKeys->SetDefaultBoolean(true);
-
-    m_OSDPositionX = GetConfig()->GetProperty("OSD", "PositionX");
-    m_OSDPositionX->SetComment("OSD horizontal position (0.0 = left, 1.0 = right)");
-    m_OSDPositionX->SetDefaultFloat(0.02f);
-
-    m_OSDPositionY = GetConfig()->GetProperty("OSD", "PositionY");
-    m_OSDPositionY->SetComment("OSD vertical position (0.0 = top, 1.0 = bottom)");
-    m_OSDPositionY->SetDefaultFloat(0.02f);
-
-    m_OSDOpacity = GetConfig()->GetProperty("OSD", "Opacity");
-    m_OSDOpacity->SetComment("OSD transparency (0.0 = transparent, 1.0 = opaque)");
-    m_OSDOpacity->SetDefaultFloat(0.9f);
-
-    m_OSDScale = GetConfig()->GetProperty("OSD", "Scale");
-    m_OSDScale->SetComment("OSD scale factor (1.0 = normal size)");
-    m_OSDScale->SetDefaultFloat(1.0f);
+    m_ConfigService.RegisterProperties(GetConfig());
 
     m_InputManager = m_BML->GetInputManager();
 
@@ -141,8 +80,15 @@ void BallanceTAS::OnLoad() {
         Log::Error("MinHook failed to initialize: %s", MH_StatusToString(status));
     }
 
+    m_EventBus = std::make_unique<EventBus>();
+    m_HookManager = std::make_unique<HookManager>();
+
+    if (!InitializeGameHooks()) {
+        Log::Error("Failed to initialize shared game hooks.");
+    }
+
     // --- 2. Initialize TAS Framework if enabled ---
-    if (m_Enabled->GetBoolean()) {
+    if (m_ConfigService.IsEnabled()) {
         if (!Initialize()) {
             Log::Error("Failed to initialize BallanceTAS framework.");
             // Framework is disabled due to initialization failure
@@ -154,6 +100,10 @@ void BallanceTAS::OnUnload() {
     // Shutdown framework
     Shutdown();
 
+    DisableGameHooks();
+    m_HookManager.reset();
+    m_EventBus.reset();
+
     MH_Uninitialize();
 
     // Shutdown global logger system
@@ -161,47 +111,42 @@ void BallanceTAS::OnUnload() {
 }
 
 void BallanceTAS::OnModifyConfig(const char *category, const char *key, IProperty *prop) {
-    // Dynamically enable/disable the framework at runtime based on config changes.
-    if (prop == m_Enabled) {
-        if (m_Enabled->GetBoolean() && !m_Initialized) {
+    // Notify ConfigService (publishes ConfigChangedEvent on the EventBus).
+    m_ConfigService.OnPropertyChanged(category, key, prop);
+
+    // Handle enable/disable toggle directly since it controls initialization lifecycle.
+    if (std::string_view(category) == "TAS" && std::string_view(key) == "Enable") {
+        if (m_ConfigService.IsEnabled() && !m_Initialized) {
             Log::Info("BallanceTAS framework enabled.");
             if (!Initialize()) {
                 Log::Error("Failed to enable BallanceTAS framework.");
             }
-        } else if (!m_Enabled->GetBoolean() && m_Initialized) {
+        } else if (!m_ConfigService.IsEnabled() && m_Initialized) {
             Log::Info("BallanceTAS framework disabled.");
             Shutdown();
         }
-    } else if (prop == m_ShowOSDStatus || prop == m_ShowOSDVelocity ||
-               prop == m_ShowOSDPosition || prop == m_ShowOSDPhysics ||
-               prop == m_ShowOSDKeys ||
-               prop == m_OSDPositionX || prop == m_OSDPositionY ||
-               prop == m_OSDOpacity || prop == m_OSDScale) {
-        UpdateOSDPanelConfig();
-    } else if (prop == m_Validation) {
-        if (m_Engine) {
-            m_Engine->SetValidationEnabled(m_Validation->GetBoolean());
-        }
-    } else if (prop == m_AutoRestart) {
-        if (m_Engine) {
-            m_Engine->SetAutoRestartEnabled(m_AutoRestart->GetBoolean());
-        }
-    } else if (prop == m_RecordingMaxFrames && m_Initialized) {
-        if (m_Engine && m_Engine->GetRecorder()) {
-            m_Engine->GetRecorder()->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
-        }
-    } else if (prop == m_StopKey) {
-        // Update the stop key for the UI manager
-        if (m_UIManager) {
-            m_UIManager->SetStopHotkey(m_StopKey->GetKey());
-        }
+        return;
     }
 
-    // Forward relevant config changes to the engine and UI if they're running.
-    if (m_Initialized) {
-        if (prop == m_ShowOSD) {
-            SetOSDVisible(m_ShowOSD->GetBoolean());
+    if (!m_Initialized) return;
+
+    // Sync settings that need direct forwarding to subsystems.
+    if (std::string_view(category) == "TAS") {
+        if (m_Engine) {
+            m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
+            m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
         }
+    } else if (std::string_view(category) == "Recording") {
+        if (m_Engine && m_Engine->GetRecorder()) {
+            m_Engine->GetRecorder()->SetMaxFrames(m_ConfigService.GetMaxFrames());
+        }
+    } else if (std::string_view(category) == "Hotkeys") {
+        if (m_UIManager) {
+            m_UIManager->SetStopHotkey(m_ConfigService.GetStopKey());
+        }
+    } else if (std::string_view(category) == "OSD") {
+        SetOSDVisible(m_ConfigService.IsOSDVisible());
+        UpdateOSDPanelConfig();
     }
 }
 
@@ -265,11 +210,16 @@ bool BallanceTAS::InitializeGameHooks() {
         return false;
     }
 
+    if (!m_HookManager) {
+        Log::Error("HookManager is not available.");
+        return false;
+    }
+
     bool success = true;
 
     try {
         auto *timeManager = (CKTimeManager *) context->GetManagerByGuid(TIME_MANAGER_GUID);
-        if (!timeManager || !CKTimeManagerHook::Enable(timeManager)) {
+        if (!timeManager || !m_HookManager->EnableTimeManagerHook(timeManager)) {
             Log::Error("Failed to enable TimeManager hook.");
             success = false;
         } else {
@@ -277,7 +227,7 @@ bool BallanceTAS::InitializeGameHooks() {
         }
 
         auto *inputManager = (CKInputManager *) context->GetManagerByGuid(INPUT_MANAGER_GUID);
-        if (!inputManager || !CKInputManagerHook::Enable(inputManager)) {
+        if (!inputManager || !m_HookManager->EnableInputManagerHook(inputManager)) {
             Log::Error("Failed to enable InputManager hook.");
             success = false;
         } else {
@@ -305,15 +255,9 @@ void BallanceTAS::DisableGameHooks() {
     Log::Info("Disabling game hooks...");
 
     try {
-        // Clear callbacks first
-        CKTimeManagerHook::ClearPreCallbacks();
-        CKTimeManagerHook::ClearPostCallbacks();
-        CKInputManagerHook::ClearPreCallbacks();
-        CKInputManagerHook::ClearPostCallbacks();
-
-        // Then disable hooks
-        CKTimeManagerHook::Disable();
-        CKInputManagerHook::Disable();
+        if (m_HookManager) {
+            m_HookManager->DisableAll();
+        }
 
         Log::Info("Game hooks disabled.");
     } catch (const std::exception &e) {
@@ -332,39 +276,39 @@ bool BallanceTAS::Initialize() {
     Log::Info("Initializing BallanceTAS framework...");
 
     try {
-        // Initialize game hooks first
-        if (!InitializeGameHooks()) {
-            throw std::runtime_error("Failed to initialize game hooks.");
+        if (!m_GameHooksEnabled || !m_EventBus || !m_HookManager) {
+            throw std::runtime_error("Shared runtime infrastructure is not available.");
         }
 
         m_GameInterface = std::make_unique<GameInterface>(this);
 
         // Initialize TAS Engine
-        m_Engine = std::make_unique<TASEngine>(m_GameInterface.get());
+        m_Engine = std::make_unique<TASEngine>(m_GameInterface.get(), m_EventBus.get(), m_HookManager.get());
         if (!m_Engine->Initialize()) {
             throw std::runtime_error("Engine failed to initialize.");
         }
 
-        m_Engine->SetValidationEnabled(m_Validation->GetBoolean());
-        m_Engine->SetAutoRestartEnabled(m_AutoRestart->GetBoolean());
+        m_ConfigService.SetEventBus(m_Engine->GetEventBus());
+        m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
+        m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
 
         // Initialize UI Manager
         m_UIManager = std::make_unique<UIManager>(m_Engine.get());
         if (!m_UIManager->Initialize()) {
             throw std::runtime_error("UIManager failed to initialize.");
         }
-        m_UIManager->SetStopHotkey(m_StopKey->GetKey());
+        m_UIManager->SetStopHotkey(m_ConfigService.GetStopKey());
 
         m_Initialized = true;
         Log::Info("BallanceTAS framework initialized successfully.");
 
         // Sync initial config states
-        SetOSDVisible(m_ShowOSD->GetBoolean());
+        SetOSDVisible(m_ConfigService.IsOSDVisible());
         UpdateOSDPanelConfig();
 
         // Configure recording settings
         if (auto *recorder = m_Engine->GetRecorder()) {
-            recorder->SetMaxFrames(m_RecordingMaxFrames->GetInteger());
+            recorder->SetMaxFrames(m_ConfigService.GetMaxFrames());
             recorder->SetAutoGenerate(true); // Always auto-generate
         }
 
@@ -384,7 +328,7 @@ bool BallanceTAS::Initialize() {
         if (m_GameInterface) {
             m_GameInterface.reset();
         }
-        DisableGameHooks();
+        m_ConfigService.SetEventBus(nullptr);
         return false;
     }
 }
@@ -395,8 +339,7 @@ void BallanceTAS::Shutdown() {
     Log::Info("Shutting down BallanceTAS framework...");
 
     try {
-        // Disable game hooks
-        DisableGameHooks();
+        m_ConfigService.SetEventBus(nullptr);
 
         // Shutdown UI first
         if (m_UIManager) {
@@ -478,19 +421,18 @@ void BallanceTAS::UpdateOSDPanelConfig() {
     auto *osd = m_UIManager->GetOSD();
     if (!osd) return;
 
-    // Update panel visibility
-    osd->SetPanelVisible(OSDPanel::Status, m_ShowOSDStatus->GetBoolean());
-    osd->SetPanelVisible(OSDPanel::Velocity, m_ShowOSDVelocity->GetBoolean());
-    osd->SetPanelVisible(OSDPanel::Position, m_ShowOSDPosition->GetBoolean());
-    osd->SetPanelVisible(OSDPanel::Physics, m_ShowOSDPhysics->GetBoolean());
-    osd->SetPanelVisible(OSDPanel::Keys, m_ShowOSDKeys->GetBoolean());
+    OSDConfig cfg = m_ConfigService.GetOSDConfig();
 
-    // Update position
-    osd->SetPosition(m_OSDPositionX->GetFloat(), m_OSDPositionY->GetFloat());
+    osd->SetPanelVisible(OSDPanel::Status, cfg.showStatus);
+    osd->SetPanelVisible(OSDPanel::Velocity, cfg.showVelocity);
+    osd->SetPanelVisible(OSDPanel::Position, cfg.showPosition);
+    osd->SetPanelVisible(OSDPanel::Physics, cfg.showPhysics);
+    osd->SetPanelVisible(OSDPanel::Keys, cfg.showKeys);
 
-    // Update appearance
-    osd->SetOpacity(m_OSDOpacity->GetFloat());
-    osd->SetScale(m_OSDScale->GetFloat());
+    osd->SetPosition(cfg.positionX, cfg.positionY);
+
+    osd->SetOpacity(cfg.opacity);
+    osd->SetScale(cfg.scale);
 
     Log::Info("OSD panel configuration updated.");
 }
@@ -502,148 +444,111 @@ void BallanceTAS::SkipRenderingForTicks(size_t ticks) {
 // --- Event Forwarding Implementations ---
 
 void BallanceTAS::OnPreStartMenu() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_start_menu");
-    }
+    PublishEngineEvent(this, PreStartMenuEvent{});
 }
 
 void BallanceTAS::OnPostStartMenu() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_start_menu");
-    }
+    PublishEngineEvent(this, PostStartMenuEvent{});
 }
 
 void BallanceTAS::OnExitGame() {
     m_Level01 = nullptr;
+    if (m_EventBus) {
+        m_EventBus->Publish(ExitGameEvent{});
+    }
 }
 
 void BallanceTAS::OnPreLoadLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->Start();
-        m_Engine->OnGameEvent("pre_load_level");
     }
+    PublishEngineEvent(this, PreLoadLevelEvent{});
 }
 
 void BallanceTAS::OnPostLoadLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_load_level");
-    }
+    PublishEngineEvent(this, PostLoadLevelEvent{});
 }
 
 void BallanceTAS::OnStartLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("start_level");
-    }
+    PublishEngineEvent(this, StartLevelEvent{});
 }
 
 void BallanceTAS::OnPreResetLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_reset_level");
+        PublishEngineEvent(this, PreResetLevelEvent{});
         m_Engine->Stop();
     }
 }
 
 void BallanceTAS::OnPostResetLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_reset_level");
-    }
+    PublishEngineEvent(this, PostResetLevelEvent{});
 }
 
 void BallanceTAS::OnPauseLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pause_level");
-    }
+    PublishEngineEvent(this, PauseLevelEvent{});
 }
 
 void BallanceTAS::OnUnpauseLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("unpause_level");
-    }
+    PublishEngineEvent(this, UnpauseLevelEvent{});
 }
 
 void BallanceTAS::OnPreExitLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_exit_level");
+        PublishEngineEvent(this, PreExitLevelEvent{});
         m_Engine->Stop();
     }
 }
 
 void BallanceTAS::OnPostExitLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_exit_level");
-    }
+    PublishEngineEvent(this, PostExitLevelEvent{});
 }
 
 void BallanceTAS::OnPreNextLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_next_level");
-    }
+    PublishEngineEvent(this, PreNextLevelEvent{});
 }
 
 void BallanceTAS::OnPostNextLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_next_level");
-    }
+    PublishEngineEvent(this, PostNextLevelEvent{});
 }
 
 void BallanceTAS::OnDead() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("ball_off");
-    }
+    PublishEngineEvent(this, BallOffEvent{});
 }
 
 void BallanceTAS::OnPreEndLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("pre_level_end");
-    }
+    PublishEngineEvent(this, PreEndLevelEvent{});
 }
 
 void BallanceTAS::OnPostEndLevel() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("post_level_end");
-    }
+    PublishEngineEvent(this, PostEndLevelEvent{});
 }
 
 void BallanceTAS::OnCounterActive() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("counter_active");
-    }
+    PublishEngineEvent(this, CounterActiveEvent{});
 }
 
 void BallanceTAS::OnCounterInactive() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("counter_inactive");
-    }
+    PublishEngineEvent(this, CounterInactiveEvent{});
 }
 
 void BallanceTAS::OnBallNavActive() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("ball_nav_active");
-    }
+    PublishEngineEvent(this, BallNavActiveEvent{});
 }
 
 void BallanceTAS::OnBallNavInactive() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("ball_nav_inactive");
-    }
+    PublishEngineEvent(this, BallNavInactiveEvent{});
 }
 
 void BallanceTAS::OnCamNavActive() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("cam_nav_active");
-    }
+    PublishEngineEvent(this, CamNavActiveEvent{});
 }
 
 void BallanceTAS::OnCamNavInactive() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("cam_nav_inactive");
-    }
+    PublishEngineEvent(this, CamNavInactiveEvent{});
 }
 
 void BallanceTAS::OnBallOff() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("ball_off");
-    }
+    PublishEngineEvent(this, BallOffEvent{});
 }
 
 void BallanceTAS::OnPreCheckpointReached() {
@@ -652,7 +557,7 @@ void BallanceTAS::OnPreCheckpointReached() {
         if (m_Engine->GetGameInterface()) {
             sector = m_Engine->GetGameInterface()->GetCurrentSector();
         }
-        m_Engine->OnGameEvent("pre_checkpoint_reached", sector);
+        PublishEngineEvent(this, PreCheckpointReachedEvent{sector});
     }
 }
 
@@ -662,23 +567,21 @@ void BallanceTAS::OnPostCheckpointReached() {
         if (m_Engine->GetGameInterface()) {
             sector = m_Engine->GetGameInterface()->GetCurrentSector();
         }
-        m_Engine->OnGameEvent("post_checkpoint_reached", sector);
+        PublishEngineEvent(this, PostCheckpointReachedEvent{sector});
     }
 }
 
 void BallanceTAS::OnLevelFinish() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("level_finish");
-        if (m_StopOnFinish->GetBoolean()) {
+        PublishEngineEvent(this, LevelFinishEvent{});
+        if (m_ConfigService.IsStopOnFinish()) {
             m_Engine->Stop();
         }
     }
 }
 
 void BallanceTAS::OnGameOver() {
-    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
-        m_Engine->OnGameEvent("game_over");
-    }
+    PublishEngineEvent(this, GameOverEvent{});
 }
 
 void BallanceTAS::OnExtraPoint() {
@@ -687,7 +590,7 @@ void BallanceTAS::OnExtraPoint() {
         if (m_Engine->GetGameInterface()) {
             points = m_Engine->GetGameInterface()->GetPoints();
         }
-        m_Engine->OnGameEvent("extra_point", points);
+        PublishEngineEvent(this, ExtraPointEvent{points});
     }
 }
 
@@ -697,7 +600,7 @@ void BallanceTAS::OnPreSubLife() {
         if (m_Engine->GetGameInterface()) {
             lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
         }
-        m_Engine->OnGameEvent("pre_sub_life", lifeCount);
+        PublishEngineEvent(this, PreSubLifeEvent{lifeCount});
     }
 }
 
@@ -707,7 +610,7 @@ void BallanceTAS::OnPostSubLife() {
         if (m_Engine->GetGameInterface()) {
             lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
         }
-        m_Engine->OnGameEvent("post_sub_life", lifeCount);
+        PublishEngineEvent(this, PostSubLifeEvent{lifeCount});
     }
 }
 
@@ -717,7 +620,7 @@ void BallanceTAS::OnPreLifeUp() {
         if (m_Engine->GetGameInterface()) {
             lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
         }
-        m_Engine->OnGameEvent("pre_life_up", lifeCount);
+        PublishEngineEvent(this, PreLifeUpEvent{lifeCount});
     }
 }
 
@@ -727,6 +630,6 @@ void BallanceTAS::OnPostLifeUp() {
         if (m_Engine->GetGameInterface()) {
             lifeCount = m_Engine->GetGameInterface()->GetLifeCount();
         }
-        m_Engine->OnGameEvent("post_life_up", lifeCount);
+        PublishEngineEvent(this, PostLifeUpEvent{lifeCount});
     }
 }

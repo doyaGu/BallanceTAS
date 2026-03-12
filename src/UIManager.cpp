@@ -331,11 +331,11 @@ void UIManager::UpdateHotkeys() {
 
     // Handle stop key for playback, recording, and translation
     if (ImGui::IsKeyPressed(m_StopHotkey, false)) {
-        if (m_Engine->IsTranslating()) {
+        if (m_Engine->IsTranslating() || m_Engine->IsPendingTranslate()) {
             StopTranslation();
-        } else if (m_Engine->IsPlaying()) {
+        } else if (m_Engine->IsPlaying() || m_Engine->IsPendingPlay()) {
             StopReplay();
-        } else if (m_Engine->IsRecording()) {
+        } else if (m_Engine->IsRecording() || m_Engine->IsPendingRecord()) {
             StopRecording();
         }
     }

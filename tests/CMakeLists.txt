@@ -83,11 +83,20 @@ add_tas_test(ResourceManagerTest
         tas_core
 )
 
+# EventBusTest – type-safe pub/sub with RAII subscription guards (pure C++)
+add_tas_test(EventBusTest
+    SOURCES
+        EventBusTest.cpp
+    DEPENDENCIES
+        tas_core
+)
+
 # Register standalone tests with CTest
 add_test(NAME ResultTest          COMMAND ResultTest)
 add_test(NAME StateMachineTest    COMMAND StateMachineTest)
 add_test(NAME LoggerTest          COMMAND LoggerTest)
 add_test(NAME ResourceManagerTest COMMAND ResourceManagerTest)
+add_test(NAME EventBusTest        COMMAND EventBusTest)
 
 # ===========================================================================
 #  Standalone Lua integration tests (requires a Lua interpreter on PATH)

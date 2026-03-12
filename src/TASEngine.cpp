@@ -1,39 +1,46 @@
 #include "TASEngine.h"
 
+#include <filesystem>
 #include <sol/sol.hpp>
 
-#include "Logger.h"
-#include "GameInterface.h"
-#include "ProjectManager.h"
-#include "InputSystem.h"
+#include "EngineBootstrap.h"
 #include "EventManager.h"
-#include "TASHook.h"
-#include "TASProject.h"
+#include "GameEvents.h"
+#include "GameInterface.h"
+#include "HookManager.h"
+#include "InputSystem.h"
+#include "Logger.h"
+#include "PlaybackService.h"
+#include "ProjectManager.h"
+#include "RecordPlayer.h"
 #include "Recorder.h"
-#include "ScriptGenerator.h"
-#include "ScriptContextManager.h"
+#include "RecordingService.h"
 #include "ScriptContext.h"
+#include "ScriptContextManager.h"
+#include "ScriptGenerator.h"
+#include "ServiceContainer.h"
+#include "StartupProjectManager.h"
+#include "TASProject.h"
+#include "TASStateMachine.h"
+#include "TranslationService.h"
+#include "ValidationService.h"
+
 #ifdef ENABLE_REPL
 #include "LuaREPLServer.h"
 #endif
-#include "RecordPlayer.h"
-#include "UIManager.h"
-#include "StartupProjectManager.h"
-#include "TASStateMachine.h"
-#include "TASStateHandlers.h"
-#include "TASControllers.h"
-#include "SavestateManager.h"
-#include "ServiceContainer.h"
-#include "EngineBootstrap.h"
 
-TASEngine::TASEngine(GameInterface *game) : m_GameInterface(game), m_ShuttingDown(false) {
-    if (!m_GameInterface) {
-        throw std::runtime_error("TASEngine requires a valid GameInterface instance.");
+namespace fs = std::filesystem;
+
+TASEngine::TASEngine(GameInterface *gameInterface, EventBus *eventBus, HookManager *hookManager)
+    : m_GameInterface(gameInterface),
+      m_EventBus(eventBus),
+      m_HookManager(hookManager) {
+    if (!m_GameInterface || !m_EventBus || !m_HookManager) {
+        throw std::runtime_error("TASEngine requires valid game and runtime infrastructure.");
     }
 }
 
 TASEngine::~TASEngine() {
-    // Ensure shutdown is called
     if (!m_ShuttingDown) {
         Shutdown();
     }
@@ -45,12 +52,10 @@ bool TASEngine::Initialize() {
         return false;
     }
 
-    // Phase 1: Core subsystem wiring (ServiceContainer, state machine, controllers)
     if (!EngineBootstrap::InitializeCoreSubsystems(*this)) {
         return false;
     }
 
-    // Cache frequently-accessed pointers from the container
     m_InputSystem = m_ServiceContainer->Resolve<InputSystem>();
     m_EventManager = m_ServiceContainer->Resolve<EventManager>();
     m_Recorder = m_ServiceContainer->Resolve<Recorder>();
@@ -59,75 +64,106 @@ bool TASEngine::Initialize() {
     m_RecordPlayer = m_ServiceContainer->Resolve<RecordPlayer>();
     m_StartupProjectManager = m_ServiceContainer->Resolve<StartupProjectManager>();
     m_StateMachine = m_ServiceContainer->Resolve<TASStateMachine>();
-    m_RecordingController = m_ServiceContainer->Resolve<RecordingController>();
-    m_PlaybackController = m_ServiceContainer->Resolve<PlaybackController>();
-    m_TranslationController = m_ServiceContainer->Resolve<TranslationController>();
 
-    // Phase 2: Higher-level subsystems (scripting, projects, callbacks)
+    m_RecordingService = m_ServiceContainer->Resolve<RecordingService>();
+    m_PlaybackService = m_ServiceContainer->Resolve<PlaybackService>();
+    m_TranslationService = m_ServiceContainer->Resolve<TranslationService>();
+    m_ValidationService = m_ServiceContainer->Resolve<ValidationService>();
+    if (auto *eventBus = m_ServiceContainer->Resolve<EventBus>()) {
+        m_EventBus = eventBus;
+    }
+    if (auto *hookManager = m_ServiceContainer->Resolve<HookManager>()) {
+        m_HookManager = hookManager;
+    }
+
     if (!EngineBootstrap::InitializeHighLevelSubsystems(*this)) {
         return false;
     }
 
-    // Resolve remaining cached pointers that were registered in phase 2
     m_ProjectManager = m_ServiceContainer->Resolve<ProjectManager>();
 #ifdef ENABLE_REPL
     m_REPLServer = m_ServiceContainer->Resolve<LuaREPLServer>();
 #endif
+
+    RegisterEventSubscriptions();
 
     Log::Info("TASEngine initialization complete.");
     return true;
 }
 
 void TASEngine::Shutdown() {
-    if (m_ShuttingDown) {
-        return; // Already shutting down
+    const bool wasShuttingDown = m_ShuttingDown.exchange(true);
+    if (wasShuttingDown) {
+        return;
     }
 
-    m_ShuttingDown = true;
-
-    try {
-        // Clear callbacks first to prevent any timer callbacks from firing
-        ClearCallbacks();
-
-        if (IsPlaying()) {
-            StopReplayImmediate();
+    bool handledByStateMachine = false;
+    if (m_StateMachine && !m_StateMachine->IsShuttingDown()) {
+        auto result = m_StateMachine->Transition(TASStateMachine::Event::Shutdown);
+        if (!result.IsOk()) {
+            Log::Error("Failed to transition to shutdown state: %s",
+                       result.GetError().message.c_str());
+        } else {
+            handledByStateMachine = true;
         }
+    }
 
-        // Stop any active recording or playback immediately (without timers)
-        if (IsRecording()) {
-            StopRecordingImmediate();
+    if (!handledByStateMachine) {
+        if (m_ValidationService && m_ValidationService->IsActive()) {
+            m_ValidationService->StopImmediate();
         }
+        if (m_PlaybackService) {
+            m_PlaybackService->StopPlaybackImmediate();
+        }
+        if (m_RecordingService) {
+            m_RecordingService->StopRecordingImmediate();
+        }
+        if (m_TranslationService) {
+            m_TranslationService->StopTranslationImmediate();
+        }
+    }
 
-        // Call shutdown methods on subsystems
+    m_EventSubscriptions.clear();
+
 #ifdef ENABLE_REPL
-        auto replServer = GetREPLServer();
-        if (replServer) {
-            replServer->Shutdown();
-        }
+    if (m_REPLServer) {
+        m_REPLServer->Shutdown();
+    }
 #endif
 
-        auto scriptCtxMgr = GetScriptContextManager();
-        if (scriptCtxMgr) {
-            scriptCtxMgr->Shutdown();
-        }
-
-        // Destroy ServiceProvider first (it references the container)
-        m_ServiceProvider.reset();
-
-        // Clear ServiceContainer - this will destroy all registered services
-        m_ServiceContainer->Clear();
-
-        Log::Info("TASEngine shutdown complete. ServiceContainer cleared.");
-    } catch (const std::exception &e) {
-        Log::Error("Exception during TASEngine shutdown: %s", e.what());
+    if (m_ScriptContextManager) {
+        m_ScriptContextManager->Shutdown();
     }
 
+    m_ServiceProvider.reset();
+    if (m_ServiceContainer) {
+        m_ServiceContainer->Clear();
+    }
+
+    m_InputSystem = nullptr;
+    m_EventManager = nullptr;
+    m_Recorder = nullptr;
+    m_ScriptGenerator = nullptr;
+    m_ScriptContextManager = nullptr;
+    m_RecordPlayer = nullptr;
+    m_StartupProjectManager = nullptr;
+    m_ProjectManager = nullptr;
+    m_StateMachine = nullptr;
+    m_RecordingService = nullptr;
+    m_PlaybackService = nullptr;
+    m_TranslationService = nullptr;
+    m_ValidationService = nullptr;
+#ifdef ENABLE_REPL
+    m_REPLServer = nullptr;
+#endif
+
     m_GameInterface = nullptr;
+    Log::Info("TASEngine shutdown complete.");
 }
 
 void TASEngine::Start() {
-    if (m_ShuttingDown || IsPlaying() || IsRecording() || IsTranslating()) {
-        return; // Already active or shutting down
+    if (m_ShuttingDown || !m_GameInterface) {
+        return;
     }
 
     AddTimer(1ul, [this]() {
@@ -135,164 +171,72 @@ void TASEngine::Start() {
             m_GameInterface->ResetPhysicsTime();
         }
     });
-
-    // Check for translation mode first
-    if (IsPendingTranslate()) {
-        StartTranslationInternal();
-        return;
-    }
-
-    // Check if we should start playing
-    if (IsPendingPlay()) {
-        StartReplayInternal();
-        return;
-    }
-
-    // Check if we should start recording instead of playing
-    if (IsPendingRecord()) {
-        StartRecordingInternal();
-        return;
-    }
 }
 
 void TASEngine::Stop() {
-    if (m_ShuttingDown) {
+    if (m_ShuttingDown || !m_StateMachine || m_StateMachine->IsIdle() || m_StateMachine->IsShuttingDown()) {
         return;
     }
 
-    // Check if we should keep global scripts running during level transitions
-    bool shouldKeepScript = false;
-    if (IsPlaying() && m_PlaybackType == PlaybackType::Script && m_ScriptContextManager) {
-        // Global contexts persist across level transitions
-        auto globalCtx = m_ScriptContextManager->GetContext("global");
-        if (globalCtx && globalCtx->IsExecuting() && globalCtx->GetCurrentProject()) {
-            if (globalCtx->GetCurrentProject()->IsGlobalProject()) {
-                shouldKeepScript = true;
-                Log::Info("Keeping global script running during level transition");
-            }
+    bool shouldKeepGlobalScript = false;
+    if (IsPlayingScript() && m_PlaybackService) {
+        auto *project = m_PlaybackService->GetCurrentProject();
+        shouldKeepGlobalScript = project && project->IsGlobalProject();
+    }
+
+    if (shouldKeepGlobalScript) {
+        if (m_ValidationService && m_ValidationService->IsActive()) {
+            StopValidationRecording();
         }
+        Log::Info("Keeping global script playback active during level transition.");
+        return;
     }
 
-    if (IsTranslating()) {
-        StopTranslation();
-    } else if (IsPlaying()) {
-        StopReplay(!shouldKeepScript); // Clear project only if not global script
-    } else if (IsRecording()) {
-        StopRecording();
-    } else {
-        // Stop any pending operations
-        m_PendingOperation = PendingOperation::None;
-        m_PlaybackType = PlaybackType::None;
-        m_GameInterface->SetUIMode(UIMode::Idle);
-    }
-
-    if (IsAutoRestartEnabled()) {
+    m_ClearProjectOnStop = true;
+    const bool transitioned = TransitionState(TASStateMachine::Event::LevelEnd, "level end");
+    if (transitioned && IsAutoRestartEnabled()) {
         RestartCurrentProject();
     }
 }
 
-// === Recording Control ===
-
 bool TASEngine::StartRecording() {
-    if (m_ShuttingDown || IsRecording() || IsPlaying() || IsPendingPlay()) {
-        Log::Warn("Cannot start recording: TAS is already active or shutting down.");
+    if (m_ShuttingDown || !m_StateMachine || !m_StateMachine->IsIdle()) {
+        Log::Warn("Cannot start recording: TAS is not idle.");
         return false;
     }
 
-    if (!m_RecordingController) {
-        Log::Error("RecordingController not initialized.");
-        return false;
-    }
-
-    // Set pending - actual recording will start in Start() when level loads
-    SetRecordPending(true);
-    Log::Info("Recording setup complete. Will start when level loads.");
-    return true;
+    ClearControlRequests();
+    m_RequestedValidationRecording = false;
+    return TransitionState(TASStateMachine::Event::StartRecording, "start recording");
 }
 
 void TASEngine::StopRecording() {
     if (m_ShuttingDown) {
-        StopRecordingImmediate();
-        return;
-    }
-
-    if (!IsRecording() && !IsPendingRecord()) {
-        return;
-    }
-
-    if (!m_RecordingController) {
-        Log::Error("RecordingController not initialized.");
-        return;
-    }
-
-    try {
-        if (IsRecording()) {
-            // Controller handles: stopping strategy, clearing callbacks
-            auto result = m_RecordingController->StopRecording(false);
-            if (!result.IsOk()) {
-                Log::Error("Failed to stop recording: %s", result.GetError().message.c_str());
-            } else {
-                // Handle recorded frames if needed
-                auto &frames = result.Unwrap();
-                Log::Info("Recording stopped, captured %zu frames", frames.size());
-
-                // Validation dump (if enabled)
-                if (IsValidationEnabled() && m_Recorder) {
-                    std::string path = m_Path;
-                    path.append("\\").append(m_Recorder->GetGenerationOptions().projectName)
-                        .append("\\recording_").append(std::to_string(std::time(nullptr))).append(".txt");
-                    if (!m_Recorder->DumpFrameData(path, true)) {
-                        Log::Error("Failed to dump frame data to: %s", path.c_str());
-                    }
-                }
-            }
+        if (m_RecordingService) {
+            m_RecordingService->StopRecordingImmediate();
         }
-    } catch (const std::exception &e) {
-        Log::Error("Exception stopping recording: %s", e.what());
+        return;
     }
 
-    SetRecording(false);
-    SetRecordPending(false);
-}
-
-void TASEngine::StopRecordingImmediate() {
-    try {
-        if (IsRecording() && m_RecordingController) {
-            // Disable auto-generation before stopping
-            if (m_Recorder) {
-                m_Recorder->SetAutoGenerate(false);
-            }
-
-            m_RecordingController->StopRecording(true); // immediate = true
-        }
-
-        SetRecording(false);
-        SetRecordPending(false);
-
-        m_GameInterface->SetUIMode(UIMode::Idle);
-        Log::Info("Recording stopped immediately.");
-    } catch (const std::exception &e) {
-        Log::Error("Exception during immediate recording stop: %s", e.what());
+    if (!m_StateMachine || (!m_StateMachine->IsRecording() && !m_StateMachine->IsPendingRecord())) {
+        return;
     }
+
+    m_ClearProjectOnStop = false;
+    TransitionState(TASStateMachine::Event::Stop, "stop recording");
 }
 
 size_t TASEngine::GetRecordingFrameCount() const {
-    if (!IsRecording() || !m_Recorder) {
-        return 0;
-    }
-    return m_Recorder->GetTotalFrames();
+    return m_RecordingService ? m_RecordingService->GetFrameCount() : 0;
 }
 
-// === Replay Control ===
-
 bool TASEngine::StartReplay() {
-    if (m_ShuttingDown || IsPlaying() || IsRecording() || IsPendingRecord()) {
-        Log::Warn("Cannot start replay: TAS is already active or shutting down.");
+    if (m_ShuttingDown || !m_StateMachine || !m_StateMachine->IsIdle()) {
+        Log::Warn("Cannot start replay: TAS is not idle.");
         return false;
     }
-
-    if (!m_PlaybackController) {
-        Log::Error("PlaybackController not initialized.");
+    if (!m_ProjectManager) {
+        Log::Error("ProjectManager not available.");
         return false;
     }
 
@@ -302,238 +246,131 @@ bool TASEngine::StartReplay() {
         return false;
     }
 
-    // Set pending - actual playback will start in StartReplayInternal when level loads
-    SetPlayPending(true);
-    Log::Info("Replay setup complete. Will start when level loads.");
-    return true;
+    PlaybackType type = PlaybackType::None;
+    if (project->IsScriptProject()) {
+        type = PlaybackType::Script;
+    } else if (project->IsRecordProject()) {
+        type = PlaybackType::Record;
+    }
+
+    if (type == PlaybackType::None) {
+        Log::Error("Unable to determine playback type for project: %s", project->GetName().c_str());
+        return false;
+    }
+
+    ClearControlRequests();
+    m_RequestedProject = project;
+    m_RequestedPlaybackType = type;
+
+    return TransitionState(
+        type == PlaybackType::Script
+            ? TASStateMachine::Event::StartScriptPlayback
+            : TASStateMachine::Event::StartRecordPlayback,
+        "start replay"
+    );
 }
 
 void TASEngine::StopReplay(bool clearProject) {
     if (m_ShuttingDown) {
-        StopReplayImmediate();
-        return;
-    }
-
-    if (!IsPlaying() && !IsPendingPlay()) {
-        return;
-    }
-
-    if (!m_PlaybackController) {
-        Log::Error("PlaybackController not initialized.");
-        return;
-    }
-
-    try {
-        // Stop playback via controller
-        m_PlaybackController->StopPlayback(false); // Don't clear project in controller
-    } catch (const std::exception &e) {
-        Log::Error("Exception stopping replay: %s", e.what());
-    }
-
-    // Clean up validation recording if active
-    if (IsValidationEnabled()) {
-        Log::Info("Stopping validation recording due to playback end.");
-        StopValidationRecording();
-    }
-
-    // Reset keyboard state to ensure clean state
-    memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
-
-    // Only clear project if explicitly requested
-    if (clearProject) {
-        m_ProjectManager->SetCurrentProject(nullptr);
-    }
-
-    ClearCallbacks();
-    SetPlaying(false);
-    SetPlayPending(false);
-    m_PlaybackType = PlaybackType::None;
-
-    m_GameInterface->SetUIMode(UIMode::Idle);
-    Log::Info("Replay stopped.");
-}
-
-void TASEngine::StopReplayImmediate() {
-    try {
-        // Stop playback via controller
-        // Controller handles: stopping strategy, clearing callbacks
-        if (m_PlaybackController) {
-            m_PlaybackController->StopPlayback(true); // Clear project
+        if (m_ValidationService && m_ValidationService->IsActive()) {
+            m_ValidationService->StopImmediate();
         }
-
-        if (IsValidationEnabled()) {
-            Log::Info("Stopping validation recording due to playback end.");
-            StopValidationRecording();
+        if (m_PlaybackService) {
+            m_PlaybackService->StopPlaybackImmediate();
         }
-
-        // Reset keyboard state to ensure clean state
-        memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
-
-        SetPlaying(false);
-        SetPlayPending(false);
-        m_PlaybackType = PlaybackType::None;
-
-        m_GameInterface->SetUIMode(UIMode::Idle);
-        Log::Info("Replay stopped immediately.");
-    } catch (const std::exception &e) {
-        Log::Error("Exception during immediate replay stop: %s", e.what());
+        return;
     }
-}
 
-// === Translation Control ===
+    if (!m_StateMachine ||
+        (!m_StateMachine->IsPlaying() && !m_StateMachine->IsPaused() && !m_StateMachine->IsPendingPlay())) {
+        return;
+    }
+
+    m_ClearProjectOnStop = clearProject;
+    TransitionState(TASStateMachine::Event::Stop, "stop replay");
+}
 
 bool TASEngine::StartTranslation() {
-    if (m_ShuttingDown || IsTranslating() || IsPlaying() || IsRecording() ||
-        IsPendingPlay() || IsPendingRecord()) {
-        Log::Warn("Cannot start translation: TAS is already active or shutting down.");
+    if (m_ShuttingDown || !m_StateMachine || !m_StateMachine->IsIdle()) {
+        Log::Warn("Cannot start translation: TAS is not idle.");
         return false;
     }
-
-    if (!m_TranslationController) {
-        Log::Error("TranslationController not initialized.");
+    if (!m_ProjectManager) {
+        Log::Error("ProjectManager not available.");
         return false;
     }
 
     TASProject *project = m_ProjectManager->GetCurrentProject();
-    if (!project || !project->IsRecordProject() || !project->IsValid()) {
-        Log::Error("Translation requires a valid record project (.tas file).");
+    if (!project) {
+        Log::Error("No project selected for translation.");
         return false;
     }
 
-    // Check if record can be accurately translated
-    if (!project->CanBeTranslated()) {
-        Log::Error("Record cannot be accurately translated: %s",
-                   project->GetTranslationCompatibilityMessage().c_str());
-        return false;
-    }
+    ClearControlRequests();
+    m_RequestedProject = project;
 
-    // Set pending - actual translation will start in StartTranslationInternal when level loads
-    SetTranslatePending(true);
-    Log::Info("Translation setup complete. Will start when level loads.");
-    Log::Info("Translating record: %s", project->GetName().c_str());
-    return true;
+    return TransitionState(TASStateMachine::Event::StartTranslation, "start translation");
 }
 
 void TASEngine::StopTranslation(bool clearProject) {
     if (m_ShuttingDown) {
-        StopTranslationImmediate();
-        return;
-    }
-
-    if (!IsTranslating() && !IsPendingTranslate()) {
-        return;
-    }
-
-    if (!m_TranslationController) {
-        Log::Error("TranslationController not initialized.");
-        return;
-    }
-
-    try {
-        // Stop translation via controller
-        m_TranslationController->StopTranslation(false); // Don't clear project in controller
-    } catch (const std::exception &e) {
-        Log::Error("Exception stopping translation: %s", e.what());
-    }
-
-    // Reset keyboard state to ensure clean state
-    memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
-
-    // Only clear project if explicitly requested
-    if (clearProject) {
-        m_ProjectManager->SetCurrentProject(nullptr);
-    }
-
-    SetTranslating(false);
-    SetTranslatePending(false);
-
-    m_GameInterface->SetUIMode(UIMode::Idle);
-    Log::Info("Translation completed and script generated.");
-}
-
-void TASEngine::StopTranslationImmediate() {
-    try {
-        // Stop translation via controller
-        if (m_TranslationController) {
-            m_TranslationController->StopTranslation(true); // Clear project
+        if (m_TranslationService) {
+            m_TranslationService->StopTranslationImmediate();
         }
-
-        // Reset keyboard state
-        memset(m_GameInterface->GetInputManager()->GetKeyboardState(), KS_IDLE, 256);
-
-        SetTranslating(false);
-        SetTranslatePending(false);
-
-        m_GameInterface->SetUIMode(UIMode::Idle);
-        Log::Info("Translation stopped immediately.");
-    } catch (const std::exception &e) {
-        Log::Error("Exception during immediate translation stop: %s", e.what());
+        return;
     }
+
+    if (!m_StateMachine ||
+        (!m_StateMachine->IsTranslating() && !m_StateMachine->IsPendingTranslate())) {
+        return;
+    }
+
+    m_ClearProjectOnStop = clearProject;
+    TransitionState(TASStateMachine::Event::Stop, "stop translation");
 }
 
 bool TASEngine::StartValidationRecording(const std::string &outputPath) {
-    if (!IsPlayingScript()) {
-        Log::Error("Validation recording can only be enabled during script playback.");
+    if (!m_ValidationService || !m_PlaybackService) {
         return false;
     }
 
-    if (!m_Recorder) {
-        Log::Error("Recorder subsystem not available for validation recording.");
+    auto result = m_ValidationService->Start(outputPath, *m_PlaybackService);
+    if (!result.IsOk()) {
+        Log::Error("Validation recording: %s", result.GetError().message.c_str());
         return false;
     }
-
-    if (m_Recorder->IsRecording()) {
-        Log::Error("Cannot enable validation recording while regular recording is active.");
-        return false;
-    }
-
-    m_ValidationOutputPath = outputPath;
-    m_ValidationRecording = true;
-
-    // Start validation recording
-    m_Recorder->SetAutoGenerate(false);
-    m_Recorder->ClearFrameData();
-    m_Recorder->Start();
-
-    Log::Info("Validation recording enabled - output path: %s", outputPath.c_str());
     return true;
 }
 
 bool TASEngine::StopValidationRecording() {
-    if (!m_ValidationRecording) {
-        Log::Warn("Validation recording is not currently enabled.");
+    if (!m_ValidationService || !m_ValidationService->IsActive()) {
         return false;
     }
 
-    if (!m_Recorder || !m_Recorder->IsRecording()) {
-        Log::Error("Validation recording state inconsistent - recorder not active.");
-        m_ValidationRecording = false;
+    auto result = m_ValidationService->Stop();
+    if (!result.IsOk()) {
+        Log::Error("Validation recording stop: %s", result.GetError().message.c_str());
         return false;
     }
+    return true;
+}
 
-    // Stop recording and get frame data
-    auto frameData = m_Recorder->Stop();
+bool TASEngine::IsValidationEnabled() const {
+    return m_ValidationEnabled;
+}
 
-    // Generate validation dumps with timestamped filename
-    std::string timestampedPath = m_ValidationOutputPath + "validation_" +
-        std::to_string(std::time(nullptr)) + ".txt";
+void TASEngine::SetValidationEnabled(bool enabled) {
+    m_ValidationEnabled = enabled;
+}
 
-    bool success = m_Recorder->DumpFrameData(timestampedPath, true);
-    if (success) {
-        Log::Info("Validation recording completed - %zu frames captured, dumps saved to: %s",
-                  frameData.size(), timestampedPath.c_str());
-    } else {
-        Log::Error("Failed to generate validation dumps to: %s", timestampedPath.c_str());
-    }
-
-    m_ValidationRecording = false;
-    m_ValidationOutputPath.clear();
-    return success;
+const std::string &TASEngine::GetValidationOutputPath() const {
+    static const std::string empty;
+    return m_ValidationService ? m_ValidationService->GetOutputPath() : empty;
 }
 
 bool TASEngine::RestartCurrentProject() {
-    if (m_ShuttingDown) {
-        Log::Warn("Cannot restart during shutdown.");
+    if (m_ShuttingDown || !m_ProjectManager) {
+        Log::Warn("Cannot restart during shutdown or without ProjectManager.");
         return false;
     }
 
@@ -544,355 +381,8 @@ bool TASEngine::RestartCurrentProject() {
     }
 
     Log::Info("Restarting TAS project: %s", project->GetName().c_str());
-
-    // Stop current execution without clearing project
-    if (IsPlaying()) {
-        StopReplay(false);
-    }
-    if (IsTranslating()) {
-        StopTranslation(false);
-    }
-
-    if (m_ProjectManager->GetCurrentProject()) {
-        StartReplay();
-    }
-
-    return true;
+    return StartReplay();
 }
-
-// === Internal Start Methods ===
-
-void TASEngine::StartRecordingInternal() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    if (!m_RecordingController) {
-        Log::Error("RecordingController not initialized.");
-        return;
-    }
-
-    m_GameInterface->AcquireKeyBindings();
-
-    try {
-        // Start recording via controller (validation mode if enabled)
-        // Controller handles: tick reset, callback setup, strategy initialization
-        auto result = m_RecordingController->StartRecording(IsValidationEnabled());
-        if (!result.IsOk()) {
-            Log::Error("Failed to start recording: %s", result.GetError().message.c_str());
-            Stop();
-            return;
-        }
-    } catch (const std::exception &e) {
-        Log::Error("Exception during recording start: %s", e.what());
-        Stop();
-        return;
-    }
-
-    SetRecordPending(false);
-    SetRecording(true);
-
-    Log::Info("Started recording new TAS.");
-}
-
-void TASEngine::StartReplayInternal() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    if (!m_PlaybackController) {
-        Log::Error("PlaybackController not initialized.");
-        Stop();
-        return;
-    }
-
-    TASProject *project = m_ProjectManager->GetCurrentProject();
-    if (!project || !project->IsValid()) {
-        Log::Error("No valid TAS project selected.");
-        Stop();
-        return;
-    }
-
-    // Determine playback type
-    PlaybackType playbackType = DeterminePlaybackType(project);
-    if (playbackType == PlaybackType::None) {
-        Log::Error("Unable to determine playback type for project: %s", project->GetName().c_str());
-        Stop();
-        return;
-    }
-
-    m_GameInterface->AcquireKeyBindings();
-
-    try {
-        // Start playback via controller
-        // Controller handles: tick reset, callback setup (based on playback type), strategy initialization
-        auto result = m_PlaybackController->StartPlayback(project, playbackType);
-        if (!result.IsOk()) {
-            Log::Error("Failed to start playback: %s", result.GetError().message.c_str());
-            Stop();
-            return;
-        }
-    } catch (const std::exception &e) {
-        Log::Error("Exception during playback start: %s", e.what());
-        Stop();
-        return;
-    }
-
-    SetPlayPending(false);
-    m_PlaybackType = playbackType; // Set PlaybackType BEFORE SetPlaying for StateMachine
-    SetPlaying(true);
-
-    if (IsValidationEnabled()) {
-        std::string path = project->GetPath();
-        path.append("\\");
-        StartValidationRecording(path);
-    }
-
-    m_GameInterface->SetUIMode(UIMode::Playing);
-    Log::Info("Started playing TAS project: %s (%s mode)",
-              project->GetName().c_str(),
-              playbackType == PlaybackType::Script ? "Script" : "Record");
-}
-
-void TASEngine::StartTranslationInternal() {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    if (!m_TranslationController) {
-        Log::Error("TranslationController not initialized.");
-        Stop();
-        return;
-    }
-
-    TASProject *project = m_ProjectManager->GetCurrentProject();
-    if (!project || !project->IsRecordProject() || !project->IsValid()) {
-        Log::Error("No valid record project selected for translation.");
-        Stop();
-        return;
-    }
-
-    m_GameInterface->AcquireKeyBindings();
-
-    try {
-        // Set up generation options for translation
-        GenerationOptions options;
-        options.projectName = project->GetName() + "_Script";
-        options.authorName = project->GetAuthor();
-        options.targetLevel = project->GetTargetLevel();
-        options.description = "Translated from legacy record: " + project->GetName();
-        options.updateRate = project->GetUpdateRate();
-        options.addFrameComments = true;
-
-        // Start translation via controller
-        // Controller handles: tick reset, callback setup, recorder/player coordination
-        auto result = m_TranslationController->StartTranslation(project, options);
-        if (!result.IsOk()) {
-            Log::Error("Failed to start translation: %s", result.GetError().message.c_str());
-            Stop();
-            return;
-        }
-    } catch (const std::exception &e) {
-        Log::Error("Exception during translation start: %s", e.what());
-        Stop();
-        return;
-    }
-
-    SetTranslatePending(false);
-    SetTranslating(true);
-
-    m_GameInterface->SetUIMode(UIMode::Recording); // Show as recording since we're generating a script
-    Log::Info("Started translation of record: %s", project->GetName().c_str());
-}
-
-PlaybackType TASEngine::DeterminePlaybackType(const TASProject *project) const {
-    if (!project || !project->IsValid()) {
-        return PlaybackType::None;
-    }
-
-    if (project->IsScriptProject()) {
-        return PlaybackType::Script;
-    } else if (project->IsRecordProject()) {
-        return PlaybackType::Record;
-    }
-
-    return PlaybackType::None;
-}
-
-size_t TASEngine::GetCurrentTick() const {
-    return m_CurrentTick;
-}
-
-void TASEngine::SetCurrentTick(size_t tick) {
-    m_CurrentTick = tick;
-}
-
-void TASEngine::ClearCallbacks() {
-    CKTimeManagerHook::ClearPostCallbacks();
-    CKInputManagerHook::ClearPostCallbacks();
-}
-
-
-
-
-
-void TASEngine::OnTranslationPlaybackComplete() {
-    Log::Info("Record playback completed during translation. Generating script...");
-
-    if (IsTranslating()) {
-        StopTranslation();
-    }
-}
-
-// ============================================================================
-// Context Lifecycle Management
-// ============================================================================
-
-void TASEngine::HandleContextLifecycleEvent(const std::string &eventName) {
-    if (!m_ScriptContextManager) {
-        return;
-    }
-
-    // === Game Start Events ===
-    if (eventName == "post_start_menu") {
-        // Create global context when game starts
-        Log::Info("Creating global context...");
-        auto globalContext = m_ScriptContextManager->GetOrCreateGlobalContext();
-        if (globalContext) {
-            Log::Info("Global context created successfully.");
-        } else {
-            Log::Error("Failed to create global context.");
-        }
-    }
-
-    // === Level Start Events ===
-    else if (eventName == "start_level") {
-        // Create level context when level starts
-        std::string levelName = GetCurrentLevelName();
-        if (!levelName.empty()) {
-            Log::Info("Creating level context for level: %s", levelName.c_str());
-            auto levelContext = m_ScriptContextManager->GetOrCreateLevelContext(levelName);
-            if (levelContext) {
-                Log::Info("Level context created successfully.");
-
-                // Subscribe level context to level-specific events
-                m_ScriptContextManager->SubscribeToEvent(levelContext->GetName(), "start_level");
-                m_ScriptContextManager->SubscribeToEvent(levelContext->GetName(), "level_finish");
-                m_ScriptContextManager->SubscribeToEvent(levelContext->GetName(), "game_over");
-                m_ScriptContextManager->SubscribeToEvent(levelContext->GetName(), "pre_checkpoint_reached");
-                m_ScriptContextManager->SubscribeToEvent(levelContext->GetName(), "post_checkpoint_reached");
-            } else {
-                Log::Error("Failed to create level context.");
-            }
-        }
-    }
-
-    // === Level End Events ===
-    else if (eventName == "post_exit_level") {
-        // Destroy level contexts when leaving level
-        Log::Info("Destroying level contexts...");
-        m_ScriptContextManager->DestroyAllLevelContexts();
-        Log::Info("Level contexts destroyed.");
-    }
-
-    // === Game Over / Cleanup Events ===
-    else if (eventName == "game_over") {
-        // Keep global context but cleanup level contexts
-        Log::Info("Game over: cleaning up level contexts...");
-        m_ScriptContextManager->DestroyAllLevelContexts();
-    }
-}
-
-std::string TASEngine::GetCurrentLevelName() const {
-    if (!m_GameInterface) {
-        return "";
-    }
-
-    // Get current level name from GameInterface
-    // This assumes GameInterface has a method to get the current level
-    // Adjust based on actual GameInterface API
-    int currentLevel = m_GameInterface->GetCurrentLevel();
-    if (currentLevel > 0) {
-        return "Level_" + std::to_string(currentLevel);
-    }
-
-    return "";
-}
-
-
-// ============================================================================
-// Game Event Dispatching
-// ============================================================================
-
-template <typename... Args>
-void TASEngine::OnGameEvent(const std::string &eventName, Args... args) {
-    if (m_ShuttingDown) {
-        return;
-    }
-
-    // === Context Lifecycle Management ===
-    HandleContextLifecycleEvent(eventName);
-
-    // === Forward to Multi-Context System ===
-    if (m_ScriptContextManager) {
-        m_ScriptContextManager->FireGameEventToAll(eventName, args...);
-    }
-
-    // === Forward to Recorder ===
-    if ((IsRecording() || IsTranslating()) && m_Recorder) {
-        if constexpr (sizeof...(args) > 0) {
-            // If there are arguments, pass the first one as event data
-            auto firstArg = std::get<0>(std::make_tuple(args...));
-            if constexpr (std::is_convertible_v<decltype(firstArg), int>) {
-                m_Recorder->OnGameEvent(m_CurrentTick, eventName, static_cast<int>(firstArg));
-            } else {
-                m_Recorder->OnGameEvent(m_CurrentTick, eventName, 0);
-            }
-        } else {
-            m_Recorder->OnGameEvent(m_CurrentTick, eventName, 0);
-        }
-    }
-}
-
-// Explicit template instantiations for events used in BallanceTAS.cpp
-template void TASEngine::OnGameEvent(const std::string &);
-template void TASEngine::OnGameEvent(const std::string &, int);
-
-void TASEngine::AddTimer(size_t tick, const std::function<void()> &callback) {
-    m_GameInterface->AddTimer(tick, callback);
-}
-
-lua_State *TASEngine::GetLuaState() const {
-    if (!m_ScriptContextManager) {
-        return nullptr;
-    }
-
-    // Get the global context (const version - don't create)
-    auto ctx = m_ScriptContextManager->GetContext("global");
-    if (!ctx) {
-        return nullptr;
-    }
-
-    return ctx->GetLuaState().lua_state();
-}
-
-LuaScheduler *TASEngine::GetScheduler() const {
-    if (!m_ScriptContextManager) {
-        return nullptr;
-    }
-
-    // Get the global context
-    auto ctx = m_ScriptContextManager->GetContext("global");
-    if (!ctx) {
-        return nullptr;
-    }
-
-    return ctx->GetScheduler();
-}
-
-// ============================================================================
-// State Query Methods (Using StateMachine)
-// ============================================================================
 
 bool TASEngine::IsPlaying() const {
     return m_StateMachine && m_StateMachine->IsPlaying();
@@ -915,180 +405,365 @@ bool TASEngine::IsPaused() const {
 }
 
 bool TASEngine::IsPlayingScript() const {
-    return m_StateMachine &&
-        m_StateMachine->GetCurrentState() == TASStateMachine::State::PlayingScript;
+    return (IsPlaying() || IsPaused()) && GetPlaybackType() == PlaybackType::Script;
 }
 
 bool TASEngine::IsPlayingRecord() const {
-    return m_StateMachine &&
-        m_StateMachine->GetCurrentState() == TASStateMachine::State::PlayingRecord;
+    return (IsPlaying() || IsPaused()) && GetPlaybackType() == PlaybackType::Record;
 }
 
-// ============================================================================
-// State Setter Methods (Using both legacy bit-mask and StateMachine)
-// ============================================================================
+PlaybackType TASEngine::GetPlaybackType() const {
+    if (!m_StateMachine) {
+        return PlaybackType::None;
+    }
 
-void TASEngine::SetPlayPending(bool pending) {
-    if (pending) {
-        m_PendingOperation = PendingOperation::StartPlaying;
-    } else {
-        if (m_PendingOperation == PendingOperation::StartPlaying) {
-            m_PendingOperation = PendingOperation::None;
+    switch (m_StateMachine->GetCurrentState()) {
+    case TASStateMachine::State::PendingScriptPlayback:
+    case TASStateMachine::State::PlayingScript:
+        return PlaybackType::Script;
+    case TASStateMachine::State::PendingRecordPlayback:
+    case TASStateMachine::State::PlayingRecord:
+        return PlaybackType::Record;
+    case TASStateMachine::State::Paused:
+        switch (m_StateMachine->GetPreviousState()) {
+        case TASStateMachine::State::PlayingScript:
+            return PlaybackType::Script;
+        case TASStateMachine::State::PlayingRecord:
+            return PlaybackType::Record;
+        default:
+            break;
         }
+        break;
+    default:
+        break;
+    }
+
+    return m_PlaybackService ? m_PlaybackService->GetPlaybackType() : PlaybackType::None;
+}
+
+bool TASEngine::IsPendingPlay() const {
+    return m_StateMachine && m_StateMachine->IsPendingPlay();
+}
+
+bool TASEngine::IsPendingRecord() const {
+    return m_StateMachine && m_StateMachine->IsPendingRecord();
+}
+
+bool TASEngine::IsPendingTranslate() const {
+    return m_StateMachine && m_StateMachine->IsPendingTranslate();
+}
+
+void TASEngine::RegisterEventSubscriptions() {
+    if (!m_EventBus) {
+        return;
+    }
+
+    m_EventSubscriptions.clear();
+
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreStartMenuEvent>(
+        [this](const PreStartMenuEvent &) { BridgeLuaEvent(PreStartMenuEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostStartMenuEvent>(
+        [this](const PostStartMenuEvent &) {
+            EnsureGlobalContext();
+            BridgeLuaEvent(PostStartMenuEvent::name);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreLoadLevelEvent>(
+        [this](const PreLoadLevelEvent &) { BridgeLuaEvent(PreLoadLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostLoadLevelEvent>(
+        [this](const PostLoadLevelEvent &) { BridgeLuaEvent(PostLoadLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<StartLevelEvent>(
+        [this](const StartLevelEvent &event) { HandleStartLevelEvent(event); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreResetLevelEvent>(
+        [this](const PreResetLevelEvent &) { BridgeLuaEvent(PreResetLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostResetLevelEvent>(
+        [this](const PostResetLevelEvent &) { BridgeLuaEvent(PostResetLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PauseLevelEvent>(
+        [this](const PauseLevelEvent &) { BridgeLuaEvent(PauseLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<UnpauseLevelEvent>(
+        [this](const UnpauseLevelEvent &) { BridgeLuaEvent(UnpauseLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreExitLevelEvent>(
+        [this](const PreExitLevelEvent &) { BridgeLuaEvent(PreExitLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostExitLevelEvent>(
+        [this](const PostExitLevelEvent &) {
+            DestroyLevelContexts();
+            BridgeLuaEvent(PostExitLevelEvent::name);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreNextLevelEvent>(
+        [this](const PreNextLevelEvent &) { BridgeLuaEvent(PreNextLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostNextLevelEvent>(
+        [this](const PostNextLevelEvent &) { BridgeLuaEvent(PostNextLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreEndLevelEvent>(
+        [this](const PreEndLevelEvent &) { BridgeLuaEvent(PreEndLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostEndLevelEvent>(
+        [this](const PostEndLevelEvent &) { BridgeLuaEvent(PostEndLevelEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<LevelFinishEvent>(
+        [this](const LevelFinishEvent &) { BridgeLuaEvent(LevelFinishEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<BallOffEvent>(
+        [this](const BallOffEvent &) { BridgeLuaEvent(BallOffEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<GameOverEvent>(
+        [this](const GameOverEvent &) {
+            DestroyLevelContexts();
+            BridgeLuaEvent(GameOverEvent::name);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<CounterActiveEvent>(
+        [this](const CounterActiveEvent &) { BridgeLuaEvent(CounterActiveEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<CounterInactiveEvent>(
+        [this](const CounterInactiveEvent &) { BridgeLuaEvent(CounterInactiveEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<BallNavActiveEvent>(
+        [this](const BallNavActiveEvent &) { BridgeLuaEvent(BallNavActiveEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<BallNavInactiveEvent>(
+        [this](const BallNavInactiveEvent &) { BridgeLuaEvent(BallNavInactiveEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<CamNavActiveEvent>(
+        [this](const CamNavActiveEvent &) { BridgeLuaEvent(CamNavActiveEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<CamNavInactiveEvent>(
+        [this](const CamNavInactiveEvent &) { BridgeLuaEvent(CamNavInactiveEvent::name); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreCheckpointReachedEvent>(
+        [this](const PreCheckpointReachedEvent &event) {
+            BridgeLuaEvent(PreCheckpointReachedEvent::name, event.sector);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostCheckpointReachedEvent>(
+        [this](const PostCheckpointReachedEvent &event) {
+            BridgeLuaEvent(PostCheckpointReachedEvent::name, event.sector);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<ExtraPointEvent>(
+        [this](const ExtraPointEvent &event) {
+            BridgeLuaEvent(ExtraPointEvent::name, event.points);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreSubLifeEvent>(
+        [this](const PreSubLifeEvent &event) {
+            BridgeLuaEvent(PreSubLifeEvent::name, event.lifeCount);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostSubLifeEvent>(
+        [this](const PostSubLifeEvent &event) {
+            BridgeLuaEvent(PostSubLifeEvent::name, event.lifeCount);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PreLifeUpEvent>(
+        [this](const PreLifeUpEvent &event) {
+            BridgeLuaEvent(PreLifeUpEvent::name, event.lifeCount);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PostLifeUpEvent>(
+        [this](const PostLifeUpEvent &event) {
+            BridgeLuaEvent(PostLifeUpEvent::name, event.lifeCount);
+        }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<PlaybackCompletedEvent>(
+        [this](const PlaybackCompletedEvent &event) { HandlePlaybackCompletedEvent(event); }));
+    m_EventSubscriptions.push_back(m_EventBus->Subscribe<TranslationCompletedEvent>(
+        [this](const TranslationCompletedEvent &event) { HandleTranslationCompletedEvent(event); }));
+}
+
+void TASEngine::EnsureGlobalContext() {
+    if (!m_ScriptContextManager) {
+        return;
+    }
+
+    if (!m_ScriptContextManager->GetOrCreateGlobalContext()) {
+        Log::Error("Failed to create global script context.");
     }
 }
 
-void TASEngine::SetPlaying(bool playing) {
-    if (playing) {
-        // Update StateMachine based on PlaybackType
-        // Note: PlaybackType should be set BEFORE calling SetPlaying(true)
-        if (m_StateMachine) {
-            TASStateMachine::State targetState =
-                (m_PlaybackType == PlaybackType::Script)
-                    ? TASStateMachine::State::PlayingScript
-                    : TASStateMachine::State::PlayingRecord;
-            auto result = m_StateMachine->ForceSetState(targetState);
-            if (!result.IsOk()) {
-                Log::Error("Failed to transition StateMachine to playing state: %s",
-                           result.GetError().message.c_str());
-            }
-        }
-    } else {
-        m_PlaybackType = PlaybackType::None;
+void TASEngine::EnsureLevelContext() {
+    if (!m_ScriptContextManager) {
+        return;
+    }
 
-        // Transition back to Idle
-        if (m_StateMachine) {
-            auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Idle);
-            if (!result.IsOk()) {
-                Log::Error("Failed to transition StateMachine to idle state: %s",
-                           result.GetError().message.c_str());
-            }
-        }
+    const std::string levelName = GetCurrentLevelName();
+    if (levelName.empty()) {
+        return;
+    }
+
+    auto context = m_ScriptContextManager->GetOrCreateLevelContext(levelName);
+    if (!context) {
+        Log::Error("Failed to create level script context for '%s'.", levelName.c_str());
+        return;
+    }
+
+    const std::string &contextName = context->GetName();
+    m_ScriptContextManager->SubscribeToEvent(contextName, StartLevelEvent::name);
+    m_ScriptContextManager->SubscribeToEvent(contextName, LevelFinishEvent::name);
+    m_ScriptContextManager->SubscribeToEvent(contextName, GameOverEvent::name);
+    m_ScriptContextManager->SubscribeToEvent(contextName, PreCheckpointReachedEvent::name);
+    m_ScriptContextManager->SubscribeToEvent(contextName, PostCheckpointReachedEvent::name);
+}
+
+void TASEngine::DestroyLevelContexts() {
+    if (m_ScriptContextManager) {
+        m_ScriptContextManager->DestroyAllLevelContexts();
     }
 }
 
-void TASEngine::SetRecordPending(bool pending) {
-    if (pending) {
-        m_PendingOperation = PendingOperation::StartRecording;
-    } else {
-        if (m_PendingOperation == PendingOperation::StartRecording) {
-            m_PendingOperation = PendingOperation::None;
+void TASEngine::BridgeLuaEvent(const std::string &eventName, std::optional<int> eventData) {
+    if (m_ShuttingDown || eventName.empty()) {
+        return;
+    }
+
+    if (m_ScriptContextManager) {
+        if (eventData.has_value()) {
+            m_ScriptContextManager->FireGameEventToAll(eventName, *eventData);
+        } else {
+            m_ScriptContextManager->FireGameEventToAll(eventName);
         }
+    }
+
+    if ((IsRecording() || IsTranslating()) && m_Recorder) {
+        m_Recorder->OnGameEvent(m_CurrentTick, eventName, eventData.value_or(0));
     }
 }
 
-void TASEngine::SetRecording(bool recording) {
-    if (recording) {
-        // Update StateMachine
-        if (m_StateMachine) {
-            auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Recording);
-            if (!result.IsOk()) {
-                Log::Error("Failed to transition StateMachine to recording state: %s",
-                           result.GetError().message.c_str());
-            }
+void TASEngine::HandleStartLevelEvent(const StartLevelEvent &) {
+    EnsureLevelContext();
+
+    const bool transitioned = m_StateMachine && m_StateMachine->IsPending()
+        ? TransitionState(TASStateMachine::Event::LevelStart, "level start")
+        : false;
+
+    if (transitioned && IsPlayingScript() && IsValidationEnabled()) {
+        TASProject *project = m_PlaybackService ? m_PlaybackService->GetCurrentProject() : nullptr;
+        const std::string outputPath = BuildValidationOutputPath(project);
+        if (!outputPath.empty() && m_ValidationService && !m_ValidationService->IsActive()) {
+            StartValidationRecording(outputPath);
         }
-    } else {
-        // Transition back to Idle
-        if (m_StateMachine) {
-            auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Idle);
-            if (!result.IsOk()) {
-                Log::Error("Failed to transition StateMachine to idle state: %s",
-                           result.GetError().message.c_str());
-            }
-        }
+    }
+
+    BridgeLuaEvent(StartLevelEvent::name);
+}
+
+void TASEngine::HandlePlaybackCompletedEvent(const PlaybackCompletedEvent &event) {
+    if (!m_StateMachine) {
+        return;
+    }
+
+    const PlaybackType completedType = static_cast<PlaybackType>(event.playbackType);
+    if (completedType != GetPlaybackType()) {
+        return;
+    }
+    if (!m_StateMachine->IsPlaying() && !m_StateMachine->IsPaused()) {
+        return;
+    }
+
+    m_ClearProjectOnStop = false;
+    TransitionState(TASStateMachine::Event::Stop, "playback completed");
+}
+
+void TASEngine::HandleTranslationCompletedEvent(const TranslationCompletedEvent &) {
+    if (!m_StateMachine || !m_StateMachine->IsTranslating()) {
+        return;
+    }
+
+    m_ClearProjectOnStop = false;
+    TransitionState(TASStateMachine::Event::Stop, "translation completed");
+}
+
+bool TASEngine::TransitionState(TASStateMachine::Event event, const char *reason) {
+    if (!m_StateMachine) {
+        Log::Error("State machine not available for %s.", reason ? reason : "transition");
+        return false;
+    }
+
+    auto result = m_StateMachine->Transition(event);
+    if (!result.IsOk()) {
+        Log::Error("State transition failed for %s: %s",
+                   reason ? reason : "transition",
+                   result.GetError().message.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+std::string TASEngine::GetCurrentLevelName() const {
+    if (!m_GameInterface) {
+        return {};
+    }
+
+    const std::string &mapName = m_GameInterface->GetMapName();
+    if (!mapName.empty()) {
+        return mapName;
+    }
+
+    const int currentLevel = m_GameInterface->GetCurrentLevel();
+    if (currentLevel <= 0) {
+        return {};
+    }
+
+    return "Level_" + std::to_string(currentLevel);
+}
+
+std::string TASEngine::BuildValidationOutputPath(TASProject *project) const {
+    if (!project) {
+        return {};
+    }
+
+    fs::path path(project->GetPath());
+    if (path.has_extension()) {
+        path = path.parent_path();
+    }
+
+    if (path.empty()) {
+        return {};
+    }
+
+    std::string outputPath = path.string();
+    if (!outputPath.empty() && outputPath.back() != '\\' && outputPath.back() != '/') {
+        outputPath.push_back('\\');
+    }
+    return outputPath;
+}
+
+void TASEngine::ClearControlRequests() {
+    m_RequestedProject = nullptr;
+    m_RequestedPlaybackType = PlaybackType::None;
+    m_RequestedValidationRecording = false;
+    m_ClearProjectOnStop = false;
+}
+
+void TASEngine::AddTimer(size_t tick, const std::function<void()> &callback) {
+    if (m_GameInterface) {
+        m_GameInterface->AddTimer(tick, callback);
     }
 }
 
-void TASEngine::SetTranslatePending(bool pending) {
-    if (pending) {
-        m_PendingOperation = PendingOperation::StartTranslation;
-    } else {
-        if (m_PendingOperation == PendingOperation::StartTranslation) {
-            m_PendingOperation = PendingOperation::None;
-        }
+lua_State *TASEngine::GetLuaState() const {
+    if (!m_ScriptContextManager) {
+        return nullptr;
     }
+
+    auto ctx = m_ScriptContextManager->GetContext("global");
+    return ctx ? ctx->GetLuaState().lua_state() : nullptr;
 }
 
-void TASEngine::SetTranslating(bool translating) {
-    if (translating) {
-        // Update StateMachine
-        if (m_StateMachine) {
-            auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Translating);
-            if (!result.IsOk()) {
-                Log::Error("Failed to transition StateMachine to translating state: %s",
-                           result.GetError().message.c_str());
-            }
-        }
-    } else {
-        // Transition back to Idle
-        if (m_StateMachine) {
-            auto result = m_StateMachine->ForceSetState(TASStateMachine::State::Idle);
-            if (!result.IsOk()) {
-                Log::Error("Failed to transition StateMachine to idle state: %s",
-                           result.GetError().message.c_str());
-            }
-        }
+LuaScheduler *TASEngine::GetScheduler() const {
+    if (!m_ScriptContextManager) {
+        return nullptr;
     }
+
+    auto ctx = m_ScriptContextManager->GetContext("global");
+    return ctx ? ctx->GetScheduler() : nullptr;
+}
+
+size_t TASEngine::GetCurrentTick() const {
+    return m_CurrentTick;
+}
+
+void TASEngine::SetCurrentTick(size_t tick) {
+    m_CurrentTick = tick;
 }
 
 ServiceProvider *TASEngine::GetServiceProvider() const {
     if (!m_ServiceProvider && m_ServiceContainer) {
-        // Lazy-initialize ServiceProvider
         m_ServiceProvider = std::make_unique<ServiceProvider>(*m_ServiceContainer);
     }
     return m_ServiceProvider.get();
 }
 
-ProjectManager *TASEngine::GetProjectManager() const {
-    return m_ProjectManager;
-}
-
-InputSystem *TASEngine::GetInputSystem() const {
-    return m_InputSystem;
-}
-
-EventManager *TASEngine::GetEventManager() const {
-    return m_EventManager;
-}
-
-ScriptContextManager *TASEngine::GetScriptContextManager() const {
-    return m_ScriptContextManager;
-}
-
+ProjectManager *TASEngine::GetProjectManager() const { return m_ProjectManager; }
+InputSystem *TASEngine::GetInputSystem() const { return m_InputSystem; }
+EventManager *TASEngine::GetEventManager() const { return m_EventManager; }
+ScriptContextManager *TASEngine::GetScriptContextManager() const { return m_ScriptContextManager; }
 #ifdef ENABLE_REPL
-LuaREPLServer *TASEngine::GetREPLServer() const {
-    return m_REPLServer;
-}
+LuaREPLServer *TASEngine::GetREPLServer() const { return m_REPLServer; }
 #endif
-
-RecordPlayer *TASEngine::GetRecordPlayer() const {
-    return m_RecordPlayer;
-}
-
-Recorder *TASEngine::GetRecorder() const {
-    return m_Recorder;
-}
-
-ScriptGenerator *TASEngine::GetScriptGenerator() const {
-    return m_ScriptGenerator;
-}
-
-StartupProjectManager *TASEngine::GetStartupProjectManager() const {
-    return m_StartupProjectManager;
-}
-
-RecordingController *TASEngine::GetRecordingController() const {
-    return m_RecordingController;
-}
-
-PlaybackController *TASEngine::GetPlaybackController() const {
-    return m_PlaybackController;
-}
-
-TranslationController *TASEngine::GetTranslationController() const {
-    return m_TranslationController;
-}
-
-TASStateMachine *TASEngine::GetStateMachine() const {
-    return m_StateMachine;
-}
+RecordPlayer *TASEngine::GetRecordPlayer() const { return m_RecordPlayer; }
+Recorder *TASEngine::GetRecorder() const { return m_Recorder; }
+ScriptGenerator *TASEngine::GetScriptGenerator() const { return m_ScriptGenerator; }
+StartupProjectManager *TASEngine::GetStartupProjectManager() const { return m_StartupProjectManager; }
+TASStateMachine *TASEngine::GetStateMachine() const { return m_StateMachine; }

@@ -4,9 +4,13 @@
 
 #include <BML/BMLAll.h>
 
+#include "ConfigService.h"
+
 // Forward-declare the core engine to avoid including its full header here.
 // This reduces compile times and keeps dependencies clean.
+class EventBus;
 class GameInterface;
+class HookManager;
 class TASEngine;
 class UIManager;
 class BMLLogSink;
@@ -124,6 +128,9 @@ public:
     InputHook *GetInputManager() const { return m_InputManager; }
     UIManager *GetUIManager() const { return m_UIManager.get(); }
     TASEngine *GetEngine() const { return m_Engine.get(); }
+    EventBus *GetEventBus() const { return m_EventBus.get(); }
+    HookManager *GetHookManager() const { return m_HookManager.get(); }
+    ConfigService &GetConfigService() { return m_ConfigService; }
 
     //================================================================
     // UI Coordination Methods
@@ -176,6 +183,12 @@ private:
 
     std::unique_ptr<GameInterface> m_GameInterface;
 
+    // Event bus for decoupled communication between components.
+    std::unique_ptr<EventBus> m_EventBus;
+
+    // Hook manager owns the shared callback dispatchers for the mod lifetime.
+    std::unique_ptr<HookManager> m_HookManager;
+
     // The single, top-level instance of the TAS framework's core engine.
     std::unique_ptr<TASEngine> m_Engine;
 
@@ -189,37 +202,13 @@ private:
     ILogger *m_Logger = nullptr;
     InputHook *m_InputManager = nullptr;
 
-    // Owns the BML→ILogSink adapter so its lifetime exceeds Log::Shutdown
+    // Owns the BML->ILogSink adapter so its lifetime exceeds Log::Shutdown
     std::unique_ptr<BMLLogSink> m_LogSink;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;
     CKBehavior *m_ExitMain = nullptr;
 
-    // --- Configuration Properties ---
-    // These pointers are owned by BML's config manager.
-    IProperty *m_Enabled = nullptr;
-    IProperty *m_Validation = nullptr;
-    IProperty *m_AutoRestart = nullptr;
-    IProperty *m_StopOnFinish = nullptr;
-    IProperty *m_StopKey = nullptr;
-
-    IProperty *m_ShowOSD = nullptr;
-    IProperty *m_ShowOSDStatus = nullptr;
-    IProperty *m_ShowOSDVelocity = nullptr;
-    IProperty *m_ShowOSDPosition = nullptr;
-    IProperty *m_ShowOSDPhysics = nullptr;
-    IProperty *m_ShowOSDKeys = nullptr;
-    IProperty *m_OSDPositionX = nullptr;
-    IProperty *m_OSDPositionY = nullptr;
-    IProperty *m_OSDOpacity = nullptr;
-    IProperty *m_OSDScale = nullptr;
-
-    // --- Recording Configuration ---
-    IProperty *m_RecordingMaxFrames = nullptr;
-
-    // --- Startup Script Configuration ---
-    IProperty *m_StartupScriptEnabled = nullptr;
-    IProperty *m_StartupScriptProject = nullptr;
-    IProperty *m_AutoLoadStartupScript = nullptr;
+    // Owns all BML IProperty* config registrations.
+    ConfigService m_ConfigService;
 };

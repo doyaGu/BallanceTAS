@@ -57,14 +57,30 @@ add_compile_options(
 set(TAS_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")
 set(TAS_SOURCE_DIR "${PROJECT_SOURCE_DIR}/src" CACHE INTERNAL "")
 
-find_package(VirtoolsSDK REQUIRED)
-find_package(BML REQUIRED)
+# ---------------------------------------------------------------------------
+#  Build options
+# ---------------------------------------------------------------------------
+option(BUILD_MOD    "Build the full BallanceTAS mod (requires VirtoolsSDK & BML)" ON)
+option(BUILD_TESTS  "Build unit tests" ON)
+
+# Enable CTest at the top level so `ctest` discovers tests from the build root.
+if(BUILD_TESTS)
+    include(CTest)
+    enable_testing()
+endif()
+
+# ---------------------------------------------------------------------------
+#  SDK dependencies — only required when building the full mod
+# ---------------------------------------------------------------------------
+if(BUILD_MOD)
+    find_package(VirtoolsSDK REQUIRED)
+    find_package(BML REQUIRED)
+endif()
 
 add_subdirectory(deps)
 add_subdirectory(src)
 
 # Enable tests
-option(BUILD_TESTS "Build unit tests" ON)
 if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()

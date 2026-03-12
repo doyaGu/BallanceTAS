@@ -1,161 +1,163 @@
-/**
- * @file TASStateHandlers.h
- * @brief State handler implementations for TASStateMachine
- *
- * This file contains concrete implementations of IStateHandler for each
- * state in the TAS system (Idle, Recording, Playing, etc.).
- */
-
 #pragma once
 
-#include "TASStateMachine.h"
 #include "Result.h"
+#include "TASStateMachine.h"
 
-// Forward declarations
 class TASEngine;
+class InputSystem;
+class GameInterface;
+class ProjectManager;
 class Recorder;
 class RecordPlayer;
 class ScriptContextManager;
-class InputSystem;
-class GameInterface;
+class RecordingService;
+class PlaybackService;
+class TranslationService;
+class ValidationService;
+enum class UIMode;
 
-/**
- * @brief Base handler with common functionality for all state handlers
- */
 class BaseTASStateHandler : public TASStateMachine::IStateHandler {
 public:
     explicit BaseTASStateHandler(TASEngine *engine);
-    virtual ~BaseTASStateHandler() = default;
+    ~BaseTASStateHandler() override = default;
 
 protected:
     TASEngine *m_Engine;
 
-    // Helper methods for accessing TASEngine subsystems
     Recorder *GetRecorder() const;
     RecordPlayer *GetRecordPlayer() const;
     ScriptContextManager *GetScriptContextManager() const;
     InputSystem *GetInputSystem() const;
     GameInterface *GetGameInterface() const;
+    ProjectManager *GetProjectManager() const;
+    RecordingService *GetRecordingService() const;
+    PlaybackService *GetPlaybackService() const;
+    TranslationService *GetTranslationService() const;
+    ValidationService *GetValidationService() const;
+
+    void SetUIMode(UIMode mode) const;
+    void ResetInputSystem() const;
+    void StopValidationImmediate() const;
+    void StopValidationGraceful() const;
 };
 
-// ============================================================================
-// IdleHandler - Handles idle/inactive state
-// ============================================================================
-
-/**
- * @brief Handler for idle state (no TAS activity)
- *
- * In this state, the TAS system is initialized but not actively
- * recording or playing back any content.
- */
-class IdleHandler : public BaseTASStateHandler {
+class IdleHandler final : public BaseTASStateHandler {
 public:
     explicit IdleHandler(TASEngine *engine);
 
-    Result<void> OnEnter() override;
-    Result<void> OnExit() override;
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
     const char *GetStateName() const override { return "IdleHandler"; }
 };
 
-// ============================================================================
-// RecordingHandler - Handles recording state
-// ============================================================================
+class PendingRecordHandler final : public BaseTASStateHandler {
+public:
+    explicit PendingRecordHandler(TASEngine *engine);
 
-/**
- * @brief Handler for recording state
- *
- * Records player input and game state for later playback or script generation.
- */
-class RecordingHandler : public BaseTASStateHandler {
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
+    void OnTick() override;
+    bool CanTransitionTo(TASStateMachine::State newState) const override;
+    const char *GetStateName() const override { return "PendingRecordHandler"; }
+};
+
+class RecordingHandler final : public BaseTASStateHandler {
 public:
     explicit RecordingHandler(TASEngine *engine);
 
-    Result<void> OnEnter() override;
-    Result<void> OnExit() override;
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
     const char *GetStateName() const override { return "RecordingHandler"; }
 };
 
-// ============================================================================
-// PlayingScriptHandler - Handles Lua script playback
-// ============================================================================
+class PendingScriptPlaybackHandler final : public BaseTASStateHandler {
+public:
+    explicit PendingScriptPlaybackHandler(TASEngine *engine);
 
-/**
- * @brief Handler for Lua script playback state
- *
- * Executes Lua scripts that control game input programmatically.
- */
-class PlayingScriptHandler : public BaseTASStateHandler {
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
+    void OnTick() override;
+    bool CanTransitionTo(TASStateMachine::State newState) const override;
+    const char *GetStateName() const override { return "PendingScriptPlaybackHandler"; }
+};
+
+class PendingRecordPlaybackHandler final : public BaseTASStateHandler {
+public:
+    explicit PendingRecordPlaybackHandler(TASEngine *engine);
+
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
+    void OnTick() override;
+    bool CanTransitionTo(TASStateMachine::State newState) const override;
+    const char *GetStateName() const override { return "PendingRecordPlaybackHandler"; }
+};
+
+class PlayingScriptHandler final : public BaseTASStateHandler {
 public:
     explicit PlayingScriptHandler(TASEngine *engine);
 
-    Result<void> OnEnter() override;
-    Result<void> OnExit() override;
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
     const char *GetStateName() const override { return "PlayingScriptHandler"; }
 };
 
-// ============================================================================
-// PlayingRecordHandler - Handles binary record playback
-// ============================================================================
-
-/**
- * @brief Handler for binary record playback state
- *
- * Plays back pre-recorded input sequences from binary files.
- */
-class PlayingRecordHandler : public BaseTASStateHandler {
+class PlayingRecordHandler final : public BaseTASStateHandler {
 public:
     explicit PlayingRecordHandler(TASEngine *engine);
 
-    Result<void> OnEnter() override;
-    Result<void> OnExit() override;
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
     const char *GetStateName() const override { return "PlayingRecordHandler"; }
 };
 
-// ============================================================================
-// TranslatingHandler - Handles translation (record to script conversion)
-// ============================================================================
+class PendingTranslationHandler final : public BaseTASStateHandler {
+public:
+    explicit PendingTranslationHandler(TASEngine *engine);
 
-/**
- * @brief Handler for translation state
- *
- * Simultaneously plays back a record while recording it to generate
- * an equivalent Lua script (legacy record -> modern script conversion).
- */
-class TranslatingHandler : public BaseTASStateHandler {
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
+    void OnTick() override;
+    bool CanTransitionTo(TASStateMachine::State newState) const override;
+    const char *GetStateName() const override { return "PendingTranslationHandler"; }
+};
+
+class TranslatingHandler final : public BaseTASStateHandler {
 public:
     explicit TranslatingHandler(TASEngine *engine);
 
-    Result<void> OnEnter() override;
-    Result<void> OnExit() override;
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
     const char *GetStateName() const override { return "TranslatingHandler"; }
 };
 
-// ============================================================================
-// PausedHandler - Handles paused state (optional)
-// ============================================================================
-
-/**
- * @brief Handler for paused state
- *
- * Temporarily suspends playback while maintaining state for resumption.
- */
-class PausedHandler : public BaseTASStateHandler {
+class PausedHandler final : public BaseTASStateHandler {
 public:
     explicit PausedHandler(TASEngine *engine);
 
-    Result<void> OnEnter() override;
-    Result<void> OnExit() override;
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
     void OnTick() override;
     bool CanTransitionTo(TASStateMachine::State newState) const override;
     const char *GetStateName() const override { return "PausedHandler"; }
+};
+
+class ShuttingDownHandler final : public BaseTASStateHandler {
+public:
+    explicit ShuttingDownHandler(TASEngine *engine);
+
+    Result<void> OnEnter(TASStateMachine::State previousState) override;
+    Result<void> OnExit(TASStateMachine::State nextState) override;
+    void OnTick() override;
+    bool CanTransitionTo(TASStateMachine::State newState) const override;
+    const char *GetStateName() const override { return "ShuttingDownHandler"; }
 };

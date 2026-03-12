@@ -1,392 +1,155 @@
 #pragma once
 
-#include <memory>
-#include <string>
 #include <atomic>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
-#include "PlaybackTypes.h" // Lightweight – no transitive sol2/Virtools pull
+#include "EventBus.h"
+#include "PlaybackTypes.h"
+#include "TASStateMachine.h"
 
-// Forward declare lua_State to avoid pulling in Lua/sol2 headers
 extern "C" { struct lua_State; }
 
-// Forward declare TASStateMachine to avoid circular dependency
-class TASStateMachine;
-
-// Forward declare ServiceContainer
 class ServiceContainer;
 class ServiceProvider;
 
 #define BML_TAS_PATH "..\\ModLoader\\TAS\\"
 
 class TASProject;
-// Forward declarations of our subsystems and managers
 class BallanceTAS;
 class ProjectManager;
 class InputSystem;
 class DX8InputManager;
 class GameInterface;
 class EventManager;
-
-// Script and record execution subsystems
-class ScriptContextManager; // Multi-context script system
+class ScriptContextManager;
 class ScriptContext;
 class LuaScheduler;
 class RecordPlayer;
-
-// Startup script management
 class StartupProjectManager;
 class LuaREPLServer;
-
-// Recording subsystems
 class Recorder;
 class ScriptGenerator;
-struct GenerationOptions;
+class RecordingService;
+class PlaybackService;
+class TranslationService;
+class ValidationService;
+class EventBus;
+class HookManager;
 
-// Controllers (defined in TASControllers.h)
-class RecordingController;
-class PlaybackController;
-class TranslationController;
+struct StartLevelEvent;
+struct PlaybackCompletedEvent;
+struct TranslationCompletedEvent;
 
-/**
- * @enum PendingOperation
- * @brief Tracks operations waiting for level load to complete.
- *
- * Used to defer TAS operations until the game reaches a stable state
- * (e.g., waiting for level_start event before starting recording/playback).
- */
-enum class PendingOperation {
-    None,            // No pending operation
-    StartRecording,  // Waiting to start recording
-    StartPlaying,    // Waiting to start playback (Script or Record)
-    StartTranslation // Waiting to start translation (Record to Script)
-};
-
-/**
- * @class TASEngine
- * @brief The central coordinator for the BallanceTAS framework.
- *
- * TASEngine serves as a coordinator between different execution modes:
- * - Script-based TAS (via ScriptContextManager)
- * - Record-based TAS (via RecordPlayer)
- * - Recording (via Recorder)
- *
- * It provides a unified interface for starting/stopping TAS operations regardless
- * of the underlying implementation, while managing the lifecycle and state of
- * all subsystems.
- */
 class TASEngine {
-    // EngineBootstrap is the composition root — it needs access to m_ServiceContainer
-    // and other members during initialisation.  Keeping TASEngine's interface clean
-    // while allowing the bootstrap to wire internals.
     friend class EngineBootstrap;
 public:
-    explicit TASEngine(GameInterface *gameInterface);
+    explicit TASEngine(GameInterface *gameInterface, EventBus *eventBus, HookManager *hookManager);
     ~TASEngine();
 
-    // TASEngine is not copyable or movable
     TASEngine(const TASEngine &) = delete;
     TASEngine &operator=(const TASEngine &) = delete;
 
-    // --- State Queries ---
-    // Active state queries (using StateMachine - defined in .cpp to avoid forward declaration issues)
+    bool Initialize();
+    void Shutdown();
+    void Start();
+    void Stop();
+
     bool IsPlaying() const;
     bool IsRecording() const;
     bool IsTranslating() const;
     bool IsIdle() const;
     bool IsPaused() const;
-
-    // Pending state queries (using PendingOperation enum)
-    bool IsPendingPlay() const { return m_PendingOperation == PendingOperation::StartPlaying; }
-    bool IsPendingRecord() const { return m_PendingOperation == PendingOperation::StartRecording; }
-    bool IsPendingTranslate() const { return m_PendingOperation == PendingOperation::StartTranslation; }
-
+    bool IsPlayingScript() const;
+    bool IsPlayingRecord() const;
     bool IsShuttingDown() const { return m_ShuttingDown; }
 
-    /**
-     * @brief Gets the current playback type.
-     * @return The type of playback currently active.
-     */
-    PlaybackType GetPlaybackType() const { return m_PlaybackType; }
+    PlaybackType GetPlaybackType() const;
 
-    /**
-     * @brief Checks if script playback is active.
-     * @return True if playing a script-based TAS.
-     */
-    bool IsPlayingScript() const;
+    bool IsPendingPlay() const;
+    bool IsPendingRecord() const;
+    bool IsPendingTranslate() const;
 
-    /**
-     * @brief Checks if record playback is active.
-     * @return True if playing a record-based TAS.
-     */
-    bool IsPlayingRecord() const;
-
-    /**
-     * @brief Initializes all subsystems.
-     * @return True on success, false on failure.
-     */
-    bool Initialize();
-
-    /**
-     * @brief Shuts down all subsystems and releases resources.
-     */
-    void Shutdown();
-
-    /**
-     * @brief Starts the TASEngine, enabling hooks and preparing for execution.
-     * This is called when the mod is enabled or when the game starts.
-     */
-    void Start();
-
-    /**
-     * @brief Stops the TASEngine, disabling hooks and cleaning up.
-     * This is called when the mod is disabled or when the game ends.
-     */
-    void Stop();
-
-    /**
-     * @brief Handles game events forwarded from BallanceTASMod.
-     * @param eventName The name of the event (e.g., "level_start").
-     * @param args Optional arguments for the event.
-     */
-    template <typename... Args>
-    void OnGameEvent(const std::string &eventName, Args... args);
-
-    // === Recording Control ===
-
-    /**
-     * @brief Sets up recording to start when next level loads.
-     * @return True if recording mode was set successfully.
-     */
     bool StartRecording();
-
-    /**
-     * @brief Stops recording (will auto-generate script if configured).
-     */
     void StopRecording();
-
-    /**
-     * @brief Gets the current recording frame count.
-     * @return Number of frames recorded, or 0 if not recording.
-     */
     size_t GetRecordingFrameCount() const;
 
-    // === Replay Control ===
-
-    /**
-     * @brief Sets up replay to start when next level loads.
-     * Automatically chooses ScriptContextManager or RecordPlayer based on project type.
-     * @return True if replay mode was set successfully.
-     */
     bool StartReplay();
-
-    /**
-     * @brief Stops replay (works for both script and record playback).
-     */
     void StopReplay(bool clearProject = false);
 
-    // === Translation Control (Record to Script Conversion) ===
-
-    /**
-     * @brief Sets up translation to start when next level loads.
-     * Translation simultaneously plays a record and records it to generate a script.
-     * @return True if translation mode was set successfully.
-     */
     bool StartTranslation();
-
-    /**
-     * @brief Stops translation and generates the script.
-     */
     void StopTranslation(bool clearProject = false);
 
-    // === Validation Recording Control ===
-
-    /**
-     * @brief Starts validation recording during script playback.
-     * @param outputPath Base path for validation dumps (without extension).
-     * @return True if validation recording was enabled successfully.
-     */
     bool StartValidationRecording(const std::string &outputPath);
-
-    /**
-     * @brief Stop validation recording and generates validation dumps.
-     * @return True if validation dumps were generated successfully.
-     */
     bool StopValidationRecording();
+    bool IsValidationEnabled() const;
+    void SetValidationEnabled(bool enabled);
+    const std::string &GetValidationOutputPath() const;
 
-    /**
-     * @brief Checks if validation recording is currently enabled.
-     * @return True if validation recording is active.
-     */
-    bool IsValidationEnabled() const { return m_ValidationEnabled; }
-
-    /**
-     * @brief Sets whether validation recording is enabled.
-     * This controls if validation dumps are generated during script playback.
-     * @param enabled True to enable validation recording, false to disable.
-     */
-    void SetValidationEnabled(bool enabled) { m_ValidationEnabled = enabled; }
-
-    /**
-     * @brief Gets the current validation output path.
-     * @return The validation output path, or empty string if not set.
-     */
-    const std::string &GetValidationOutputPath() const { return m_ValidationOutputPath; }
-
-    // === Auto-Restart Control ===
-
-    /**
-     * @brief Checks if auto-restart is enabled.
-     * Auto-restart will automatically restart the current project when it finishes.
-     * @return True if auto-restart is enabled, false otherwise.
-     */
     bool IsAutoRestartEnabled() const { return m_AutoRestart; }
-
-    /**
-     * @brief Sets whether auto-restart is enabled.
-     * If enabled, the current project will automatically restart when it finishes.
-     * @param enabled True to enable auto-restart, false to disable.
-     */
     void SetAutoRestartEnabled(bool enabled) { m_AutoRestart = enabled; }
-
-    /**
-     * @brief Restarts the current project if auto-restart is enabled.
-     * This will reload the project and start it again.
-     * @return True if the project was restarted, false if auto-restart is disabled.
-     */
     bool RestartCurrentProject();
-
-    // --- Subsystem Accessors ---
-    // These are used by other parts of the framework (e.g., LuaApi) to get handles
-    // to the necessary systems.
 
     GameInterface *GetGameInterface() const { return m_GameInterface; }
     void AddTimer(size_t tick, const std::function<void()> &callback);
 
-    /**
-     * @brief Gets the raw Lua state pointer from the global script context.
-     * Callers that need sol::state_view can construct it: sol::state_view(engine->GetLuaState())
-     * @return Raw lua_State pointer, or nullptr if not available.
-     */
     lua_State *GetLuaState() const;
     LuaScheduler *GetScheduler() const;
 
     ProjectManager *GetProjectManager() const;
     InputSystem *GetInputSystem() const;
     EventManager *GetEventManager() const;
-
-    // Script execution subsystem
     ScriptContextManager *GetScriptContextManager() const;
 #ifdef ENABLE_REPL
     LuaREPLServer *GetREPLServer() const;
 #endif
-
-    // Record playback subsystem
     RecordPlayer *GetRecordPlayer() const;
-
-    // Recording subsystem accessors
     Recorder *GetRecorder() const;
     ScriptGenerator *GetScriptGenerator() const;
-
-    // Startup script management accessors
     StartupProjectManager *GetStartupProjectManager() const;
-
-    // Dependency Injection accessor
     ServiceProvider *GetServiceProvider() const;
-
-    // Controllers and State Machine accessors
-    RecordingController *GetRecordingController() const;
-    PlaybackController *GetPlaybackController() const;
-    TranslationController *GetTranslationController() const;
     TASStateMachine *GetStateMachine() const;
 
-    // --- Tick Management ---
+    RecordingService *GetRecordingService() const { return m_RecordingService; }
+    PlaybackService *GetPlaybackService() const { return m_PlaybackService; }
+    TranslationService *GetTranslationService() const { return m_TranslationService; }
+    ValidationService *GetValidationService() const { return m_ValidationService; }
+    EventBus *GetEventBus() const { return m_EventBus; }
+    HookManager *GetHookManager() const { return m_HookManager; }
+
     size_t GetCurrentTick() const;
     void SetCurrentTick(size_t tick);
     void IncrementCurrentTick() { ++m_CurrentTick; }
-
-    // --- Path Management ---
     const std::string &GetPath() const { return m_Path; }
     void SetPath(const std::string &path) { m_Path = path; }
 
+    TASProject *GetRequestedProject() const { return m_RequestedProject; }
+    PlaybackType GetRequestedPlaybackType() const { return m_RequestedPlaybackType; }
+    bool ShouldUseValidationForRecording() const { return m_RequestedValidationRecording; }
+    bool ShouldClearProjectOnStop() const { return m_ClearProjectOnStop; }
+    void ClearControlRequests();
+
 private:
-    /**
-     * @brief Internal method to start recording when level loads.
-     */
-    void StartRecordingInternal();
-
-    /**
-     * @brief Internal method to start replay when level loads.
-     * Chooses appropriate executor based on project type.
-     */
-    void StartReplayInternal();
-
-    /**
-     * @brief Internal method to start translation when level loads.
-     * Sets up both record playback and recording simultaneously.
-     */
-    void StartTranslationInternal();
-
-    /**
-     * @brief Immediately stops recording without timers (for shutdown).
-     */
-    void StopRecordingImmediate();
-
-    /**
-     * @brief Immediately stops replay without timers (for shutdown).
-     */
-    void StopReplayImmediate();
-
-    /**
-     * @brief Immediately stops translation without timers (for shutdown).
-     */
-    void StopTranslationImmediate();
-
-    /**
-     * @brief Clears all registered callbacks to prevent duplicates.
-     * Called before registering new callbacks in Start().
-     */
-    void ClearCallbacks();
-
-    /**
-     * @brief Handles context lifecycle events (creating/destroying contexts).
-     * @param eventName The name of the game event.
-     */
-    void HandleContextLifecycleEvent(const std::string &eventName);
-
-    /**
-     * @brief Gets the current level name from GameInterface.
-     * @return The current level name, or empty string if not available.
-     */
+    void RegisterEventSubscriptions();
+    void EnsureGlobalContext();
+    void EnsureLevelContext();
+    void DestroyLevelContexts();
+    void BridgeLuaEvent(const std::string &eventName, std::optional<int> eventData = std::nullopt);
+    void HandleStartLevelEvent(const StartLevelEvent &event);
+    void HandlePlaybackCompletedEvent(const PlaybackCompletedEvent &event);
+    void HandleTranslationCompletedEvent(const TranslationCompletedEvent &event);
+    bool TransitionState(TASStateMachine::Event event, const char *reason);
     std::string GetCurrentLevelName() const;
+    std::string BuildValidationOutputPath(TASProject *project) const;
 
-    /**
-     * @brief Handles automatic completion when record playback finishes during translation.
-     */
-    void OnTranslationPlaybackComplete();
+    GameInterface *m_GameInterface = nullptr;
 
-    /**
-     * @brief Determines the appropriate playback type for a project.
-     * @param project The project to analyze.
-     * @return The playback type to use.
-     */
-    PlaybackType DeterminePlaybackType(const TASProject *project) const;
-
-    // State setters (used internally and by callbacks - defined in .cpp to avoid forward declaration issues)
-    void SetPlayPending(bool pending);
-    void SetPlaying(bool playing);
-    void SetRecordPending(bool pending);
-    void SetRecording(bool recording);
-    void SetTranslatePending(bool pending);
-    void SetTranslating(bool translating);
-
-    GameInterface *m_GameInterface;
-
-    // --- Dependency Injection ---
     std::unique_ptr<ServiceContainer> m_ServiceContainer;
-    mutable std::unique_ptr<ServiceProvider> m_ServiceProvider; // Lazy-initialized
+    mutable std::unique_ptr<ServiceProvider> m_ServiceProvider;
 
-    // Cached pointers (ServiceContainer owns objects, TASEngine caches for performance)
     InputSystem *m_InputSystem = nullptr;
     EventManager *m_EventManager = nullptr;
     Recorder *m_Recorder = nullptr;
@@ -395,25 +158,28 @@ private:
     RecordPlayer *m_RecordPlayer = nullptr;
     StartupProjectManager *m_StartupProjectManager = nullptr;
     ProjectManager *m_ProjectManager = nullptr;
+    TASStateMachine *m_StateMachine = nullptr;
 #ifdef ENABLE_REPL
     LuaREPLServer *m_REPLServer = nullptr;
 #endif
 
-    // State Machine and Controllers (cached pointers)
-    TASStateMachine *m_StateMachine = nullptr;
-    RecordingController *m_RecordingController = nullptr;
-    PlaybackController *m_PlaybackController = nullptr;
-    TranslationController *m_TranslationController = nullptr;
+    RecordingService *m_RecordingService = nullptr;
+    PlaybackService *m_PlaybackService = nullptr;
+    TranslationService *m_TranslationService = nullptr;
+    ValidationService *m_ValidationService = nullptr;
+    EventBus *m_EventBus = nullptr;
+    HookManager *m_HookManager = nullptr;
 
-    // --- State ---
-    PlaybackType m_PlaybackType = PlaybackType::None;
-    PendingOperation m_PendingOperation = PendingOperation::None; // Operation waiting for level load
-    std::atomic<bool> m_ShuttingDown;
+    std::vector<ScopedSubscription> m_EventSubscriptions;
+
+    TASProject *m_RequestedProject = nullptr;
+    PlaybackType m_RequestedPlaybackType = PlaybackType::None;
+    bool m_RequestedValidationRecording = false;
+    bool m_ClearProjectOnStop = false;
+
+    std::atomic<bool> m_ShuttingDown = false;
     size_t m_CurrentTick = 0;
     std::string m_Path = BML_TAS_PATH;
-
-    bool m_AutoRestart = false; // Automatically restart current project when enter the same level again
+    bool m_AutoRestart = false;
     bool m_ValidationEnabled = false;
-    bool m_ValidationRecording = false;
-    std::string m_ValidationOutputPath;
 };

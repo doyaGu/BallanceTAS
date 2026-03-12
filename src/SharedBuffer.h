@@ -192,16 +192,15 @@ public:
         delete[] m_Data;
     }
 
-private:
-    explicit SharedBuffer(size_t size)
-        : m_Size(size), m_Data(new uint8_t[size]) {
-        // Zero-initialize for safety
-        std::memset(m_Data, 0, size);
-    }
-
     // Non-copyable (use Clone() for deep copy)
     SharedBuffer(const SharedBuffer &) = delete;
     SharedBuffer &operator=(const SharedBuffer &) = delete;
+
+private:
+    explicit SharedBuffer(size_t size) : m_Size(size), m_Data(new uint8_t[size]) {
+        // Zero-initialize for safety
+        std::memset(m_Data, 0, size);
+    }
 
     size_t m_Size;
     uint8_t *m_Data;

@@ -285,6 +285,10 @@ void LuaScheduler::AddCoroutineTask(sol::function func) {
 void LuaScheduler::Tick() {
     m_ThreadValidator.AssertOwnership();
 
+    if (m_IsPaused) {
+        return;
+    }
+
     // Process coroutine-based tasks
     for (auto i = m_Tasks.begin(); i != m_Tasks.end();) {
         // If the thread is dead, remove it
@@ -341,10 +345,21 @@ void LuaScheduler::Clear() {
     m_Tasks.clear();
     m_BackgroundTasks.clear();
     m_CurrentThread = nullptr;
+    m_IsPaused = false;
     // Clear the thread stack
     while (!m_ThreadStack.empty()) {
         m_ThreadStack.pop();
     }
+}
+
+void LuaScheduler::Pause() {
+    m_ThreadValidator.AssertOwnership();
+    m_IsPaused = true;
+}
+
+void LuaScheduler::Resume() {
+    m_ThreadValidator.AssertOwnership();
+    m_IsPaused = false;
 }
 
 bool LuaScheduler::IsRunning() const {

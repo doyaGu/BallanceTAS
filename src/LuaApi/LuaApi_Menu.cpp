@@ -8,6 +8,15 @@
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
+namespace {
+
+[[noreturn]] void ThrowMenuStubError(const char *functionName) {
+    Log::Warn("[STUB] %s - Not yet implemented", functionName);
+    throw sol::error(std::string(functionName) + ": Not yet implemented - stub function");
+}
+
+} // namespace
+
 // ===================================================================
 // Menu Navigation API Registration (Stub Implementation)
 // ===================================================================
@@ -49,16 +58,13 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
 
     // tas.menu.get_current() - Get current menu identifier
     menu["get_current"] = []() -> std::string {
-        Log::Warn("[STUB] menu.get_current() - Not yet implemented, returning 'unknown'");
-        Log::Info("  Future implementation: This will detect the current menu screen");
-        return "unknown"; // stub
+        ThrowMenuStubError("menu.get_current");
     };
 
     // tas.menu.is_at(menu_name) - Check if at a specific menu
     menu["is_at"] = [](const std::string &menuName) -> bool {
-        Log::Warn("[STUB] menu.is_at('%s') - Not yet implemented, returning false", menuName.c_str());
-        Log::Info("  Future implementation: This will check if at the specified menu");
-        return false; // stub
+        (void) menuName;
+        ThrowMenuStubError("menu.is_at");
     };
 
     // ===================================================================
@@ -67,38 +73,30 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
 
     // tas.menu.navigate_to(menu_path) - Navigate to a menu by path
     menu["navigate_to"] = [](const std::string &menuPath) {
-        Log::Warn("[STUB] menu.navigate_to('%s') - Not yet implemented", menuPath.c_str());
-        Log::Info("  Future implementation: This will navigate through menu hierarchy");
-        Log::Info("  Example: 'main/play/level_select' to reach level selection");
-        throw sol::error("menu.navigate_to: Not yet implemented - stub function");
+        (void) menuPath;
+        ThrowMenuStubError("menu.navigate_to");
     };
 
     // tas.menu.click_button(button_name) - Click a button by name
     menu["click_button"] = [](const std::string &buttonName) {
-        Log::Warn("[STUB] menu.click_button('%s') - Not yet implemented", buttonName.c_str());
-        Log::Info("  Future implementation: This will click a menu button");
-        throw sol::error("menu.click_button: Not yet implemented - stub function");
+        (void) buttonName;
+        ThrowMenuStubError("menu.click_button");
     };
 
     // tas.menu.select_level(level_name) - Select a level from menu
     menu["select_level"] = [](const std::string &levelName) {
-        Log::Warn("[STUB] menu.select_level('%s') - Not yet implemented", levelName.c_str());
-        Log::Info("  Future implementation: This will select and start the specified level");
-        throw sol::error("menu.select_level: Not yet implemented - stub function");
+        (void) levelName;
+        ThrowMenuStubError("menu.select_level");
     };
 
     // tas.menu.go_back() - Go back to previous menu
     menu["go_back"] = []() {
-        Log::Warn("[STUB] menu.go_back() - Not yet implemented");
-        Log::Info("  Future implementation: This will navigate to the previous menu");
-        throw sol::error("menu.go_back: Not yet implemented - stub function");
+        ThrowMenuStubError("menu.go_back");
     };
 
     // tas.menu.go_to_main() - Go to main menu
     menu["go_to_main"] = []() {
-        Log::Warn("[STUB] menu.go_to_main() - Not yet implemented");
-        Log::Info("  Future implementation: This will navigate to the main menu");
-        throw sol::error("menu.go_to_main: Not yet implemented - stub function");
+        ThrowMenuStubError("menu.go_to_main");
     };
 
     // ===================================================================
@@ -107,24 +105,19 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
 
     // tas.menu.send_key(key, duration) - Send a key press in menu
     menu["send_key"] = [](const std::string &key, sol::optional<int> duration) {
-        Log::Warn("[STUB] menu.send_key('%s', %d) - Not yet implemented",
-                  key.c_str(), duration.value_or(1));
-        Log::Info("  Future implementation: This will send keyboard input to menu");
-        throw sol::error("menu.send_key: Not yet implemented - stub function");
+        (void) key;
+        (void) duration;
+        ThrowMenuStubError("menu.send_key");
     };
 
     // tas.menu.press_enter() - Press Enter key
     menu["press_enter"] = []() {
-        Log::Warn("[STUB] menu.press_enter() - Not yet implemented");
-        Log::Info("  Future implementation: This will press Enter in the menu");
-        throw sol::error("menu.press_enter: Not yet implemented - stub function");
+        ThrowMenuStubError("menu.press_enter");
     };
 
     // tas.menu.press_escape() - Press Escape key
     menu["press_escape"] = []() {
-        Log::Warn("[STUB] menu.press_escape() - Not yet implemented");
-        Log::Info("  Future implementation: This will press Escape in the menu");
-        throw sol::error("menu.press_escape: Not yet implemented - stub function");
+        ThrowMenuStubError("menu.press_escape");
     };
 
     // ===================================================================
@@ -133,17 +126,9 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
 
     // tas.menu.wait_for_menu(menu_name) - Wait until entering a specific menu
     menu["wait_for_menu"] = sol::yielding([context](const std::string &menuName) {
-        auto *scheduler = context->GetScheduler();
-        if (!scheduler) {
-            throw sol::error("menu.wait_for_menu: Scheduler not available for this context");
-        }
-
-        Log::Warn("[STUB] menu.wait_for_menu('%s') - Partial implementation", menuName.c_str());
-        Log::Info("  Currently just waits, does not detect specific menu");
-
-        // Stub: Just wait for a short time
-        // Future: Check actual menu state
-        scheduler->YieldTicks(60); // Wait 1 second at 60fps
+        (void) context;
+        (void) menuName;
+        ThrowMenuStubError("menu.wait_for_menu");
     });
 
     // tas.menu.wait_for_game_start() - Wait until game starts
@@ -182,15 +167,7 @@ void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
 
     // tas.menu.get_available_levels() - Get list of available levels
     menu["get_available_levels"] = [context]() -> sol::object {
-        Log::Warn("[STUB] menu.get_available_levels() - Not yet implemented");
-        Log::Info("  Future implementation: This will return a list of available levels");
-
-        // Return a stub list for now
-        sol::state_view lua = context->GetLuaState();
-        sol::table levels = lua.create_table();
-        for (int i = 1; i <= 13; i++) {
-            levels[i] = "Level_" + std::to_string(i < 10 ? i : i);
-        }
-        return levels;
+        (void) context;
+        ThrowMenuStubError("menu.get_available_levels");
     };
 }

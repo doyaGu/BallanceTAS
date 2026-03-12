@@ -20,6 +20,7 @@ set(TAS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 add_library(tas_core STATIC
         Result.h
         PlaybackTypes.h
+        ILogSink.h
         ServiceContainer.h          ServiceContainer.cpp
         TASStateMachine.h           TASStateMachine.cpp
         Logger.h                    Logger.cpp
@@ -30,14 +31,13 @@ add_library(tas_core STATIC
 target_include_directories(tas_core
         PUBLIC  ${TAS_SRC_DIR}
 )
-target_link_libraries(tas_core
-        PRIVATE BML
-)
+# tas_core is now pure C++ — no BML / VirtoolsSDK dependency.
 set_target_properties(tas_core PROPERTIES FOLDER "TAS/Modules")
 
 # ── Module: game ─────────────────────────────────────────────────────────────
-#    Virtools / BML integration layer – confines <CKAll.h> and physics types.
+#    Everything below requires VirtoolsSDK & BML → only built with BUILD_MOD.
 # ─────────────────────────────────────────────────────────────────────────────
+if(BUILD_MOD)
 add_library(tas_game STATIC
         GameInterface.h             GameInterface.cpp
         physics_RT.h                physics_RT.cpp
@@ -158,6 +158,7 @@ set_target_properties(tas_ui PROPERTIES FOLDER "TAS/Modules")
 #    BML mod entry point – assembles all modules into the loadable plugin DLL.
 # ─────────────────────────────────────────────────────────────────────────────
 add_library(BallanceTAS SHARED
+        BMLLogSink.h
         BallanceTAS.h               BallanceTAS.cpp
 )
 
@@ -182,3 +183,5 @@ target_compile_options(BallanceTAS PRIVATE
 )
 
 set_target_properties(BallanceTAS PROPERTIES SUFFIX ".bmodp")
+
+endif() # BUILD_MOD

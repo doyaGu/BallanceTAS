@@ -1,6 +1,6 @@
 #pragma once
 
-class ILogger;
+class ILogSink;
 
 /**
  * @brief Thread-safe global logger namespace
@@ -16,10 +16,10 @@ class ILogger;
 namespace Log {
     /**
      * @brief Initialize the logger system
-     * @param logger Pointer to ILogger instance
+     * @param sink Pointer to ILogSink instance (pure C++ — no SDK dependency)
      * @note Must be called before any logging functions
      */
-    void Initialize(ILogger *logger);
+    void Initialize(ILogSink *sink);
 
     /**
      * @brief Shutdown the logger system

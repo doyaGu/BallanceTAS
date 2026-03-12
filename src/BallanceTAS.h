@@ -9,6 +9,7 @@
 class GameInterface;
 class TASEngine;
 class UIManager;
+class BMLLogSink;
 
 /**
  * @class BallanceTAS
@@ -32,7 +33,7 @@ public:
     //================================================================
 
     const char *GetID() override { return "BallanceTAS"; }
-    const char *GetVersion() override { return "1.6.0"; }
+    const char *GetVersion() override { return "2.0.0"; }
     const char *GetName() override { return "Ballance TAS"; }
     const char *GetAuthor() override { return "Ballance TAS Community"; }
 
@@ -187,6 +188,9 @@ private:
 
     ILogger *m_Logger = nullptr;
     InputHook *m_InputManager = nullptr;
+
+    // Owns the BML→ILogSink adapter so its lifetime exceeds Log::Shutdown
+    std::unique_ptr<BMLLogSink> m_LogSink;
 
     CK2dEntity *m_Level01 = nullptr;
     CKBehavior *m_ExitStart = nullptr;

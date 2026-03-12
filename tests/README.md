@@ -1,159 +1,147 @@
-# BallanceTAS Integration Test Suite
+# BallanceTAS Test Suite
 
-This directory contains comprehensive integration tests for BallanceTAS functionality.
+This directory contains both **standalone** and **full integration** tests for
+BallanceTAS.  Standalone tests can be built and run on *any* machine without
+VirtoolsSDK or BML installed.
 
-## Test Structure
+## Directory Layout
 
 ```
 tests/
-├── README.md                    # This file
-├── test_core.lua                # Core API tests
-├── test_input.lua               # Input system tests
-├── test_async.lua               # Async/concurrency tests
-├── test_recording.lua           # Recording API tests
-├── test_savestate.lua           # Savestate system tests
-├── test_context_comm.lua        # Context communication tests
-├── test_rng.lua                 # RNG determinism tests
-├── test_integration.lua         # Full integration test
-└── run_all_tests.lua            # Test runner
+├── README.md                      # This file
+├── CMakeLists.txt                 # Test build config (GoogleTest, CTest)
+│
+│   ── C++ standalone tests (no SDK) ──────────────────────────────
+├── ResultTest.cpp                 # Result<T> error-handling tests
+├── StateMachineTest.cpp           # TASStateMachine state-transition tests
+├── LoggerTest.cpp                 # Logger + ILogSink decoupling tests
+├── ResourceManagerTest.cpp        # RAII / temp-file management tests
+├── ConsoleLogSink.h               # ILogSink → stdout (used in tests)
+│
+│   ── C++ integration tests (require BUILD_MOD) ─────────────────
+├── LuaApiTest.cpp                 # Full Lua API tests against real engine
+│
+│   ── Lua standalone tests (mock harness, no game) ──────────────
+├── mock_tas_api.lua               # Mock `tas` namespace for standalone use
+├── run_standalone_tests.lua       # Standalone Lua runner (exit-code aware)
+├── test_core.lua                  # Core API integration tests
+├── test_savestate.lua             # Savestate integration tests
+│
+│   ── Lua in-game runner ────────────────────────────────────────
+└── run_all_tests.lua              # In-game runner (uses real game APIs)
 ```
 
-## Running Tests
+## Quick Start
 
-### Run All Tests
-```lua
--- Load and run all tests
-dofile("tests/run_all_tests.lua")
+### 1. Build & run standalone C++ tests (no SDK)
+
+```bash
+# Configure — SDK not required
+cmake -B build-tests -DBUILD_MOD=OFF -DBUILD_TESTS=ON
+
+# Build only test targets
+cmake --build build-tests --target ResultTest StateMachineTest LoggerTest ResourceManagerTest
+
+# Run via CTest
+cd build-tests && ctest --output-on-failure
 ```
 
-### Run Individual Test
-```lua
--- Run specific test
-dofile("tests/test_core.lua")
+### 2. Run standalone Lua tests
+
+Requires a Lua 5.4 interpreter on `PATH`:
+
+```bash
+lua tests/run_standalone_tests.lua
 ```
 
-## Test Categories
+Or, if CTest found the interpreter during configure:
 
-### 1. Core API Tests (`test_core.lua`)
-- Logging functions
-- Tick/frame counting
-- Manifest access
-- Error handling
-
-### 2. Input Tests (`test_input.lua`)
-- Key press/hold/release
-- Input state queries
-- Input timing accuracy
-
-### 3. Async Tests (`test_async.lua`)
-- async/await patterns
-- Coroutine management
-- Parallel/race/all operations
-- Timeout and retry
-
-### 4. Recording Tests (`test_recording.lua`)
-- Frame recording and playback
-- Section/Marker/Comment management
-- Macro creation and application
-- Branch and snapshot operations
-- Undo/Redo functionality
-
-### 5. Savestate Tests (`test_savestate.lua`)
-- State save and load
-- State validation
-- Cross-level compatibility checks
-- RNG state preservation
-
-### 6. Context Communication Tests (`test_context_comm.lua`)
-- SharedData operations
-- MessageBus pub/sub
-- Context event handling
-- Cross-context coordination
-
-### 7. RNG Tests (`test_rng.lua`)
-- Determinism verification
-- State save/restore
-- Seed consistency
-- Call counting
-
-### 8. Integration Tests (`test_integration.lua`)
-- Multi-paradigm workflows
-- Complete TAS scenarios
-- Error recovery
-- Performance benchmarks
-
-## Test Framework
-
-Tests use a simple assert-based framework:
-
-```lua
--- Test template
-function test_feature_name()
-    -- Setup
-    local initial_value = 0
-
-    -- Execute
-    local result = some_function(initial_value)
-
-    -- Verify
-    assert(result == expected_value, "Test failed: expected " .. expected_value)
-
-    -- Cleanup (if needed)
-    cleanup_function()
-
-    return true  -- Test passed
-end
+```bash
+cd build-tests && ctest -R LuaStandalone --output-on-failure
 ```
 
-## Test Results
+### 3. Build & run full integration tests (SDK required)
 
-Each test outputs:
-- ✅ Pass: Test completed successfully
-- ❌ Fail: Test failed with error message
-- ⏭️ Skip: Test skipped (feature not available)
+```bash
+cmake -B build -DBUILD_MOD=ON -DBUILD_TESTS=ON
+cmake --build build
+cd build && ctest --output-on-failure
+```
+
+## Architecture
+
+### Decoupled core (`tas_core`)
+
+The `tas_core` static library is **pure C++** with zero SDK dependencies:
+
+| Component               | Contents                                        |
+|-------------------------|-------------------------------------------------|
+| `Result.h`              | Rust-style Result<T> monad                      |
+| `TASStateMachine`       | State machine with handler interface             |
+| `Logger` / `ILogSink`   | Logging facade + pluggable sink abstraction      |
+| `ResourceManager`       | RAII temp-file & cleanup management              |
+| `ServiceContainer`      | Lightweight IoC container                        |
+
+Because `tas_core` does not link BML, test executables that only need
+these components can compile and link without any game SDKs.
+
+### Logger decoupling
+
+`Logger.cpp` uses `ILogSink*` (pure C++ interface) rather than BML's
+`ILogger*` directly.  Two concrete sinks are provided:
+
+* **`BMLLogSink`** (in `src/`) — adapter for the real BML logger, used by the
+  mod at runtime.
+* **`ConsoleLogSink`** (in `tests/`) — prints to stdout/stderr, used in tests.
+
+### Lua mock harness
+
+`mock_tas_api.lua` creates a global `tas` table that stubs every API used by
+`test_core.lua` and `test_savestate.lua`:
+
+* Timing → synthetic tick/frame counter
+* Logging → stdout via `print()`
+* Savestate → in-memory table
+* Level/ball → dummy data
+* `tas._mock.*` — control functions to reset state between tests
 
 ## Writing New Tests
 
-1. Create test file: `test_<feature>.lua`
-2. Implement test functions
-3. Add to `run_all_tests.lua`
-4. Document in this README
+### C++ standalone test
 
-## Continuous Testing
+1. Create `tests/MyTest.cpp` with GoogleTest macros.
+2. In `tests/CMakeLists.txt`:
+   ```cmake
+   add_tas_test(MyTest
+       SOURCES MyTest.cpp
+       DEPENDENCIES tas_core    # add more if needed
+   )
+   add_test(NAME MyTest COMMAND MyTest)
+   ```
+3. Build & run.
 
-For CI/CD integration, run:
-```bash
-# Run headless test suite
-ballance_tas --headless --script tests/run_all_tests.lua
+### Lua standalone test
+
+1. Create `tests/test_myfeature.lua` following the `run_test()` / `return { run = main }` pattern.
+2. Add the path to `test_files` in `run_standalone_tests.lua`.
+3. Add any new API stubs needed to `mock_tas_api.lua`.
+4. Run: `lua tests/run_standalone_tests.lua`.
+
+## CI / Headless
+
+A CI pipeline only needs CMake, a C++20 compiler, and (optionally) Lua 5.4:
+
+```yaml
+steps:
+  - name: Configure (standalone)
+    run: cmake -B build -DBUILD_MOD=OFF -DBUILD_TESTS=ON
+
+  - name: Build tests
+    run: cmake --build build
+
+  - name: Run C++ tests
+    run: cd build && ctest --output-on-failure
+
+  - name: Run Lua tests
+    run: lua tests/run_standalone_tests.lua
 ```
-
-## Troubleshooting
-
-### Test Failures
-- Check log output for detailed error messages
-- Verify TASEngine is initialized
-- Ensure level is loaded before level-specific tests
-
-### Flaky Tests
-- Some tests may be timing-sensitive
-- Run multiple times to verify consistency
-- Check for race conditions in async tests
-
-## Coverage
-
-Current test coverage (estimated):
-- Core API: 90%
-- Input System: 85%
-- Async/Concurrency: 80%
-- Recording: 75%
-- Savestate: 70%
-- Context Communication: 85%
-- RNG: 90%
-
-## Contributing
-
-When adding new features:
-1. Add corresponding tests
-2. Update this README
-3. Run full test suite before committing
-4. Maintain >80% coverage target

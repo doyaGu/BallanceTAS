@@ -6,6 +6,29 @@
 #include "BallanceTAS.h"
 #include "UIManager.h"
 
+namespace {
+
+template <typename T>
+bool SetDataArrayValue(CKDataArray *array, int row, int column, const T &value) {
+    if (!array) {
+        return false;
+    }
+
+    return array->SetElementValue(row, column, const_cast<T *>(&value), sizeof(T)) == CK_OK;
+}
+
+template <typename T>
+bool SetParameterValue(CKParameter *parameter, const T &value) {
+    if (!parameter) {
+        return false;
+    }
+
+    parameter->SetValue(&value, sizeof(T));
+    return true;
+}
+
+} // namespace
+
 // ========================================
 // Construction & Destruction
 // ========================================
@@ -428,6 +451,15 @@ int GameInterface::GetPoints() const {
     return points;
 }
 
+bool GameInterface::SetPoints(int points) {
+    if (!SetDataArrayValue(m_Energy, 0, 0, points)) {
+        Log::Error("Failed to set points: Energy array not available or write failed.");
+        return false;
+    }
+
+    return true;
+}
+
 int GameInterface::GetLifeCount() const {
     int life = 0;
     if (m_Energy) {
@@ -436,12 +468,50 @@ int GameInterface::GetLifeCount() const {
     return life;
 }
 
+bool GameInterface::SetLifeCount(int lives) {
+    if (!SetDataArrayValue(m_Energy, 0, 1, lives)) {
+        Log::Error("Failed to set life count: Energy array not available or write failed.");
+        return false;
+    }
+
+    return true;
+}
+
+bool GameInterface::SetCurrentSector(int sector) {
+    if (!SetParameterValue(m_CurrentSector, sector)) {
+        Log::Error("Failed to set current sector: parameter not available.");
+        return false;
+    }
+
+    return true;
+}
+
 float GameInterface::GetSRScore() const {
+    if (m_SRScoreOverride.has_value()) {
+        return *m_SRScoreOverride;
+    }
+
     return m_BML->GetSRScore();
 }
 
+bool GameInterface::SetSRScore(float score) {
+    m_SRScoreOverride = score;
+    Log::Warn("SetSRScore: BML exposes SR score as read-only; using TAS-layer override for restored state.");
+    return true;
+}
+
 int GameInterface::GetHSScore() const {
+    if (m_HSScoreOverride.has_value()) {
+        return *m_HSScoreOverride;
+    }
+
     return m_BML->GetHSScore();
+}
+
+bool GameInterface::SetHSScore(int score) {
+    m_HSScoreOverride = score;
+    Log::Warn("SetHSScore: BML exposes HS score as read-only; using TAS-layer override for restored state.");
+    return true;
 }
 
 // ========================================

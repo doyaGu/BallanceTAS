@@ -653,6 +653,21 @@ public:
     void Clear();
 
     /**
+     * @brief Suspends scheduler advancement without discarding queued work.
+     */
+    void Pause();
+
+    /**
+     * @brief Resumes scheduler advancement after a pause.
+     */
+    void Resume();
+
+    /**
+     * @brief Checks whether scheduler advancement is currently paused.
+     */
+    bool IsPaused() const { return m_IsPaused; }
+
+    /**
      * @brief Checks if there are any active scripts running.
      */
     bool IsRunning() const;
@@ -731,6 +746,7 @@ private:
     std::list<detail::SchedulerThreadTask> m_Tasks;
     std::list<std::shared_ptr<SchedulerTask>> m_BackgroundTasks;
     std::stack<std::shared_ptr<detail::SchedulerCothread>> m_ThreadStack;
+    bool m_IsPaused = false;
 
     // Thread safety enforcement
     mutable ThreadOwnershipValidator m_ThreadValidator{"LuaScheduler"};

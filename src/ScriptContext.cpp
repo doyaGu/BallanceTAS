@@ -193,6 +193,7 @@ bool ScriptContext::Reinitialize(const std::string &newName, int newPriority) {
         // 6. Reset sleep/idle state
         m_Sleeping = false;
         m_TicksSinceLastActive = 0;
+        m_IsPaused = false;
 
         // 7. Force Lua garbage collection to clean up previous script's memory
         lua_State *L = m_LuaState.lua_state();
@@ -279,6 +280,7 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
         m_CurrentProject = project;
         m_CurrentExecutionPath = executionPath;
         m_IsExecuting = true;
+        m_IsPaused = false;
 
         NotifyStatusChange(true);
 
@@ -318,6 +320,7 @@ void ScriptContext::Stop() {
 
         // Reset execution state
         m_IsExecuting = false;
+        m_IsPaused = false;
 
         NotifyStatusChange(false);
 
@@ -327,10 +330,50 @@ void ScriptContext::Stop() {
     }
 }
 
+void ScriptContext::Pause() {
+    m_ThreadValidator.AssertOwnership();
+
+    if (!m_IsExecuting || m_IsPaused) {
+        return;
+    }
+
+    if (m_Scheduler) {
+        m_Scheduler->Pause();
+    }
+
+    m_IsPaused = true;
+    m_Sleeping = false;
+    m_TicksSinceLastActive = 0;
+
+    Log::Info("[%s] Script execution paused.", m_Name.c_str());
+}
+
+void ScriptContext::Resume() {
+    m_ThreadValidator.AssertOwnership();
+
+    if (!m_IsExecuting || !m_IsPaused) {
+        return;
+    }
+
+    if (m_Scheduler) {
+        m_Scheduler->Resume();
+    }
+
+    m_IsPaused = false;
+    m_Sleeping = false;
+    m_TicksSinceLastActive = 0;
+
+    Log::Info("[%s] Script execution resumed.", m_Name.c_str());
+}
+
 void ScriptContext::Tick() {
     m_ThreadValidator.AssertOwnership();
 
     if (!m_IsExecuting || !m_Scheduler) {
+        return;
+    }
+
+    if (m_IsPaused) {
         return;
     }
 

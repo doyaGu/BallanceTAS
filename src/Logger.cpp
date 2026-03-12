@@ -1,30 +1,30 @@
 #include "Logger.h"
-#include <BML/ILogger.h>
+#include "ILogSink.h"
 #include <mutex>
 #include <cstdarg>
 #include <cstdio>
 
 namespace {
-    ILogger *g_Logger = nullptr;
+    ILogSink *g_Sink = nullptr;
     std::mutex g_LoggerMutex;
 
     constexpr size_t MAX_LOG_MESSAGE_SIZE = 4096;
 }
 
 namespace Log {
-    void Initialize(ILogger *logger) {
+    void Initialize(ILogSink *sink) {
         std::lock_guard<std::mutex> lock(g_LoggerMutex);
-        g_Logger = logger;
+        g_Sink = sink;
     }
 
     void Shutdown() {
         std::lock_guard<std::mutex> lock(g_LoggerMutex);
-        g_Logger = nullptr;
+        g_Sink = nullptr;
     }
 
     void Info(const char *fmt, ...) {
         std::lock_guard<std::mutex> lock(g_LoggerMutex);
-        if (!g_Logger) return;
+        if (!g_Sink) return;
 
         char buffer[MAX_LOG_MESSAGE_SIZE];
         va_list args;
@@ -32,12 +32,12 @@ namespace Log {
         vsnprintf(buffer, sizeof(buffer), fmt, args);
         va_end(args);
 
-        g_Logger->Info("%s", buffer);
+        g_Sink->Info("%s", buffer);
     }
 
     void Warn(const char *fmt, ...) {
         std::lock_guard<std::mutex> lock(g_LoggerMutex);
-        if (!g_Logger) return;
+        if (!g_Sink) return;
 
         char buffer[MAX_LOG_MESSAGE_SIZE];
         va_list args;
@@ -45,12 +45,12 @@ namespace Log {
         vsnprintf(buffer, sizeof(buffer), fmt, args);
         va_end(args);
 
-        g_Logger->Warn("%s", buffer);
+        g_Sink->Warn("%s", buffer);
     }
 
     void Error(const char *fmt, ...) {
         std::lock_guard<std::mutex> lock(g_LoggerMutex);
-        if (!g_Logger) return;
+        if (!g_Sink) return;
 
         char buffer[MAX_LOG_MESSAGE_SIZE];
         va_list args;
@@ -58,6 +58,6 @@ namespace Log {
         vsnprintf(buffer, sizeof(buffer), fmt, args);
         va_end(args);
 
-        g_Logger->Error("%s", buffer);
+        g_Sink->Error("%s", buffer);
     }
 }

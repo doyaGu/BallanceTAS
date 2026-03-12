@@ -326,8 +326,8 @@ function main()
     }
 end
 
--- Auto-run if executed directly
-if not ... then
+-- Auto-run if executed directly (not via standalone runner)
+if not ... and not _G._STANDALONE_RUNNER then
     main()
 end
 

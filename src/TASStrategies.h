@@ -74,7 +74,7 @@ public:
     void Pause() override;
     void Resume() override;
 
-    bool IsPlaying() const override { return m_IsPlaying && !m_IsPaused; }
+    bool IsPlaying() const override { return m_IsPlaying; }
     bool IsPaused() const override { return m_IsPaused; }
     Type GetType() const override { return Type::Script; }
 
@@ -117,7 +117,7 @@ public:
     void Pause() override;
     void Resume() override;
 
-    bool IsPlaying() const override { return m_IsPlaying && !m_IsPaused; }
+    bool IsPlaying() const override { return m_IsPlaying; }
     bool IsPaused() const override { return m_IsPaused; }
     Type GetType() const override { return Type::Record; }
 

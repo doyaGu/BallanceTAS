@@ -10,6 +10,7 @@
 #include "GameInterface.h"
 #include "UIManager.h"
 #include "Logger.h"
+#include "BMLLogSink.h"
 
 // Global instance pointer required by BML
 BallanceTAS *g_Mod;
@@ -42,8 +43,9 @@ BallanceTAS::~BallanceTAS() {
 }
 
 void BallanceTAS::OnLoad() {
-    // Initialize global logger system
-    Log::Initialize(GetLogger());
+    // Initialize global logger system via the BML adapter
+    m_LogSink = std::make_unique<BMLLogSink>(GetLogger());
+    Log::Initialize(m_LogSink.get());
 
     // --- 1. Initialize Configuration ---
     // This is the primary switch for the TAS framework.

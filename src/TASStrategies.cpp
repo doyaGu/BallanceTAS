@@ -113,9 +113,28 @@ void ScriptPlaybackStrategy::Pause() {
         return;
     }
 
+    auto scriptManager = m_Services->Resolve<ScriptContextManager>();
+    if (!scriptManager) {
+        Log::Error("ScriptPlaybackStrategy: ScriptContextManager not available for pause.");
+        return;
+    }
+
+    bool pausedAnyContext = false;
+    auto contexts = scriptManager->GetContextsByPriority();
+    for (const auto &ctx : contexts) {
+        if (ctx && ctx->IsExecuting() && !ctx->IsPaused()) {
+            ctx->Pause();
+            pausedAnyContext = true;
+        }
+    }
+
+    if (!pausedAnyContext) {
+        Log::Warn("ScriptPlaybackStrategy: Pause requested, but no executing script contexts were found.");
+        return;
+    }
+
     m_IsPaused = true;
-    // TODO: Implement pause for script execution (requires ScriptContext changes)
-    Log::Info("ScriptPlaybackStrategy: Paused (note: full pause not yet implemented)");
+    Log::Info("ScriptPlaybackStrategy: Paused script playback");
 }
 
 void ScriptPlaybackStrategy::Resume() {
@@ -123,9 +142,21 @@ void ScriptPlaybackStrategy::Resume() {
         return;
     }
 
+    auto scriptManager = m_Services->Resolve<ScriptContextManager>();
+    if (!scriptManager) {
+        Log::Error("ScriptPlaybackStrategy: ScriptContextManager not available for resume.");
+        return;
+    }
+
+    auto contexts = scriptManager->GetContextsByPriority();
+    for (const auto &ctx : contexts) {
+        if (ctx && ctx->IsExecuting() && ctx->IsPaused()) {
+            ctx->Resume();
+        }
+    }
+
     m_IsPaused = false;
-    // TODO: Implement resume for script execution
-    Log::Info("ScriptPlaybackStrategy: Resumed");
+    Log::Info("ScriptPlaybackStrategy: Resumed script playback");
 }
 
 size_t ScriptPlaybackStrategy::GetCurrentTick() const {

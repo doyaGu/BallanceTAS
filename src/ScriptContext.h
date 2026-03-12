@@ -83,6 +83,16 @@ public:
     void Stop();
 
     /**
+     * @brief Suspends script execution without clearing scheduler state.
+     */
+    void Pause();
+
+    /**
+     * @brief Resumes script execution after a pause.
+     */
+    void Resume();
+
+    /**
      * @brief Processes one tick of script execution.
      * This advances the Lua scheduler and processes any pending script operations.
      */
@@ -93,6 +103,11 @@ public:
      * @return True if script execution is active.
      */
     bool IsExecuting() const;
+
+    /**
+     * @brief Checks whether this context is currently paused.
+     */
+    bool IsPaused() const { return m_IsPaused; }
 
     /**
      * @brief Gets the context name.
@@ -306,6 +321,7 @@ private:
     TASProject *m_CurrentProject = nullptr;
     std::string m_CurrentExecutionPath;
     bool m_IsExecuting = false;
+    bool m_IsPaused = false;
     bool m_IsInitialized = false;
 
     // Callback for execution status changes

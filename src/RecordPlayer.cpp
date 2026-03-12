@@ -10,6 +10,32 @@
 #include "TASProject.h"
 #include "GameInterface.h"
 
+namespace {
+
+constexpr float kDefaultFrameDeltaTimeMs = 1000.0f / 132.0f;
+
+void EnsureFrameSentinel(std::vector<RecordFrameData> &frames, size_t totalFrames) {
+    if (frames.size() < totalFrames) {
+        frames.resize(totalFrames);
+    }
+
+    frames.resize(totalFrames + 1);
+    frames[totalFrames] = RecordFrameData();
+}
+
+void ClampPlaybackCursor(size_t &currentFrame, size_t totalFrames) {
+    if (currentFrame > totalFrames) {
+        currentFrame = totalFrames;
+    }
+}
+
+bool CanUseLegacyPackSize(size_t byteCount) {
+    return byteCount <= static_cast<size_t>(std::numeric_limits<int>::max())
+        && byteCount <= static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+}
+
+} // namespace
+
 RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::runtime_error("RecordPlayer requires a valid TASEngine instance.");
@@ -147,6 +173,14 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
         return;
     }
 
+    if (m_Frames.size() <= m_CurrentFrame + 1) {
+        Log::Error("Record playback frame storage is corrupt (frame=%zu total=%zu size=%zu).",
+                   m_CurrentFrame, m_TotalFrames, m_Frames.size());
+        Stop();
+        NotifyStatusChange(false);
+        return;
+    }
+
     // Apply input for the current frame
     ApplyFrameInput(m_Frames[m_CurrentFrame], m_Frames[m_CurrentFrame + 1], keyboardState);
 
@@ -156,7 +190,7 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
 
 float RecordPlayer::GetFrameDeltaTime(size_t currentTick) const {
     if (!m_IsPlaying || m_CurrentFrame >= m_TotalFrames) {
-        return 1000.0f / 132.0f; // Default delta time
+        return kDefaultFrameDeltaTimeMs;
     }
     return m_Frames[m_CurrentFrame].deltaTime;
 }
@@ -173,7 +207,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         }
 
         // --- 2. Read the 4-byte header for uncompressed size (legacy format) ---
-        uint32_t uncompressedSize;
+        uint32_t uncompressedSize = 0;
         file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
         if (file.gcount() != sizeof(uncompressedSize)) {
             Log::Error("Failed to read uncompressed size header from file.");
@@ -194,12 +228,28 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
             return false;
         }
 
+        if (!CanUseLegacyPackSize(uncompressedSize)) {
+            Log::Error("Record payload is too large for legacy packing format: %u bytes.",
+                       uncompressedSize);
+            return false;
+        }
+
         // --- 3. Read the compressed payload ---
         file.seekg(0, std::ios::end);
         std::streampos fileSize = file.tellg();
+        if (fileSize < static_cast<std::streampos>(sizeof(uncompressedSize))) {
+            Log::Error("Record file is truncated or has an invalid size.");
+            return false;
+        }
+
         file.seekg(sizeof(uncompressedSize), std::ios::beg);
 
         size_t compressedSize = static_cast<size_t>(fileSize) - sizeof(uncompressedSize);
+        if (compressedSize == 0) {
+            Log::Error("Record file is missing the compressed payload.");
+            return false;
+        }
+
         std::vector<char> compressedData(compressedSize);
         file.read(compressedData.data(), compressedSize);
         if (static_cast<size_t>(file.gcount()) != compressedSize) {
@@ -219,8 +269,11 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         // --- 5. Copy the decompressed data to our frame vector ---
         size_t frameCount = uncompressedSize / sizeof(RecordFrameData);
         m_TotalFrames = frameCount;
-        m_Frames.resize(frameCount + 1); // +1 for the next frame input
+        EnsureFrameSentinel(m_Frames, m_TotalFrames);
         memcpy(m_Frames.data(), uncompressedData, uncompressedSize);
+        m_Frames[m_TotalFrames] = RecordFrameData();
+        m_CurrentFrame = 0;
+        m_IsModified = false;
 
         // Clean up the decompressed data
         CKDeletePointer(uncompressedData);
@@ -353,12 +406,14 @@ bool RecordPlayer::InsertFrames(size_t startFrame, size_t count) {
 
     // Create blank frames with default delta time
     RecordFrameData blankFrame;
-    blankFrame.deltaTime = m_TotalFrames > 0 ? m_Frames[0].deltaTime : (1000.0f / 132.0f);
+    blankFrame.deltaTime = m_TotalFrames > 0 ? m_Frames[0].deltaTime : kDefaultFrameDeltaTimeMs;
     blankFrame.keyStates = 0;
 
     // Insert blank frames at the specified position
     m_Frames.insert(m_Frames.begin() + startFrame, count, blankFrame);
     m_TotalFrames += count;
+    EnsureFrameSentinel(m_Frames, m_TotalFrames);
+    ClampPlaybackCursor(m_CurrentFrame, m_TotalFrames);
     m_IsModified = true;
 
     Log::Info("Inserted %zu blank frames at position %zu.", count, startFrame);
@@ -379,6 +434,8 @@ bool RecordPlayer::DeleteFrames(size_t startFrame, size_t count) {
     size_t actualCount = std::min(count, m_TotalFrames - startFrame);
     m_Frames.erase(m_Frames.begin() + startFrame, m_Frames.begin() + startFrame + actualCount);
     m_TotalFrames -= actualCount;
+    EnsureFrameSentinel(m_Frames, m_TotalFrames);
+    ClampPlaybackCursor(m_CurrentFrame, m_TotalFrames);
     m_IsModified = true;
 
     Log::Info("Deleted %zu frames starting at position %zu.", actualCount, startFrame);
@@ -410,11 +467,13 @@ bool RecordPlayer::CopyFrames(size_t srcStart, size_t destStart, size_t count) {
     // Insert/overwrite at destination
     if (destStart + actualCount > m_TotalFrames) {
         // Extend the vector if necessary
-        m_Frames.resize(destStart + actualCount);
         m_TotalFrames = destStart + actualCount;
+        EnsureFrameSentinel(m_Frames, m_TotalFrames);
     }
 
     std::copy(copiedFrames.begin(), copiedFrames.end(), m_Frames.begin() + destStart);
+    EnsureFrameSentinel(m_Frames, m_TotalFrames);
+    ClampPlaybackCursor(m_CurrentFrame, m_TotalFrames);
     m_IsModified = true;
 
     Log::Info("Copied %zu frames from %zu to %zu.", actualCount, srcStart, destStart);
@@ -434,6 +493,8 @@ bool RecordPlayer::DuplicateFrame(size_t frame, size_t count) {
     RecordFrameData frameData = m_Frames[frame];
     m_Frames.insert(m_Frames.begin() + frame + 1, count, frameData);
     m_TotalFrames += count;
+    EnsureFrameSentinel(m_Frames, m_TotalFrames);
+    ClampPlaybackCursor(m_CurrentFrame, m_TotalFrames);
     m_IsModified = true;
 
     Log::Info("Duplicated frame %zu %zu times.", frame, count);
@@ -579,8 +640,30 @@ bool RecordPlayer::Save(const std::string &path) {
     try {
         Log::Info("Saving record to: %s", path.c_str());
 
+        if (m_TotalFrames == 0) {
+            std::ofstream file(path, std::ios::binary);
+            if (!file) {
+                Log::Error("Failed to open file for writing: %s", path.c_str());
+                return false;
+            }
+
+            const uint32_t header = 0;
+            file.write(reinterpret_cast<const char *>(&header), sizeof(header));
+            file.close();
+
+            m_IsModified = false;
+            Log::Info("Record saved successfully: 0 frames.");
+            return true;
+        }
+
         // Prepare uncompressed data
         size_t uncompressedSize = m_TotalFrames * sizeof(RecordFrameData);
+        if (!CanUseLegacyPackSize(uncompressedSize)) {
+            Log::Error("Record is too large to save in legacy format: %zu bytes.", uncompressedSize);
+            return false;
+        }
+
+        EnsureFrameSentinel(m_Frames, m_TotalFrames);
         const char *uncompressedData = reinterpret_cast<const char *>(m_Frames.data());
 
         // Compress data using CKPackData
@@ -1118,6 +1201,15 @@ bool RecordPlayer::InsertMacro(const std::string &name, size_t atFrame, size_t r
         return false;
     }
 
+    if (atFrame > m_TotalFrames) {
+        Log::Error("InsertMacro: frame %zu is out of bounds (total: %zu).", atFrame, m_TotalFrames);
+        return false;
+    }
+
+    if (repeatCount == 0 || it->second.frames.empty()) {
+        return true;
+    }
+
     const auto &macro = it->second;
     size_t totalFrames = macro.frames.size() * repeatCount;
 
@@ -1130,8 +1222,11 @@ bool RecordPlayer::InsertMacro(const std::string &name, size_t atFrame, size_t r
                   m_Frames.begin() + atFrame + i * macro.frames.size());
     }
 
-    m_TotalFrames = m_Frames.size();
+    m_TotalFrames += totalFrames;
+    EnsureFrameSentinel(m_Frames, m_TotalFrames);
+    ClampPlaybackCursor(m_CurrentFrame, m_TotalFrames);
     UpdateMetadataStats();
+    m_IsModified = true;
 
     Log::Info("Inserted macro '%s' x%zu at frame %zu", name.c_str(), repeatCount, atFrame);
     return true;

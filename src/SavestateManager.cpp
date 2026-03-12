@@ -97,8 +97,8 @@ Result<SavestateData> SavestateData::FromJson(const string &json) {
     SavestateData data;
 
     // Helper to get string
-    auto get_str = [&](const char *key) -> string {
-        yyjson_val *val = yyjson_obj_get(root, key);
+    auto get_str = [&](yyjson_val *object, const char *key) -> string {
+        yyjson_val *val = object ? yyjson_obj_get(object, key) : nullptr;
         if (val && yyjson_is_str(val)) {
             return string(yyjson_get_str(val));
         }
@@ -106,58 +106,58 @@ Result<SavestateData> SavestateData::FromJson(const string &json) {
     };
 
     // Helper to get int
-    auto get_int = [&](const char *key, int default_val = 0) -> int {
-        yyjson_val *val = yyjson_obj_get(root, key);
-        if (val && yyjson_is_int(val)) {
+    auto get_int = [&](yyjson_val *object, const char *key, int default_val = 0) -> int {
+        yyjson_val *val = object ? yyjson_obj_get(object, key) : nullptr;
+        if (val && yyjson_is_num(val)) {
             return yyjson_get_int(val);
         }
         return default_val;
     };
 
     // Helper to get float
-    auto get_real = [&](const char *key, float default_val = 0.0f) -> float {
-        yyjson_val *val = yyjson_obj_get(root, key);
-        if (val && yyjson_is_real(val)) {
+    auto get_real = [&](yyjson_val *object, const char *key, float default_val = 0.0f) -> float {
+        yyjson_val *val = object ? yyjson_obj_get(object, key) : nullptr;
+        if (val && yyjson_is_num(val)) {
             return static_cast<float>(yyjson_get_real(val));
         }
         return default_val;
     };
 
     // Metadata
-    data.name = get_str("name");
-    data.timestamp = get_str("timestamp");
-    data.levelName = get_str("levelName");
-    data.levelNumber = get_int("levelNumber");
-    data.description = get_str("description");
+    data.name = get_str(root, "name");
+    data.timestamp = get_str(root, "timestamp");
+    data.levelName = get_str(root, "levelName");
+    data.levelNumber = get_int(root, "levelNumber");
+    data.description = get_str(root, "description");
 
     // Physics state
     yyjson_val *pos_obj = yyjson_obj_get(root, "position");
     if (pos_obj && yyjson_is_obj(pos_obj)) {
-        data.position.x = get_real("x");
-        data.position.y = get_real("y");
-        data.position.z = get_real("z");
+        data.position.x = get_real(pos_obj, "x");
+        data.position.y = get_real(pos_obj, "y");
+        data.position.z = get_real(pos_obj, "z");
     }
 
     yyjson_val *vel_obj = yyjson_obj_get(root, "velocity");
     if (vel_obj && yyjson_is_obj(vel_obj)) {
-        data.velocity.x = get_real("x");
-        data.velocity.y = get_real("y");
-        data.velocity.z = get_real("z");
+        data.velocity.x = get_real(vel_obj, "x");
+        data.velocity.y = get_real(vel_obj, "y");
+        data.velocity.z = get_real(vel_obj, "z");
     }
 
     yyjson_val *angVel_obj = yyjson_obj_get(root, "angularVelocity");
     if (angVel_obj && yyjson_is_obj(angVel_obj)) {
-        data.angularVelocity.x = get_real("x");
-        data.angularVelocity.y = get_real("y");
-        data.angularVelocity.z = get_real("z");
+        data.angularVelocity.x = get_real(angVel_obj, "x");
+        data.angularVelocity.y = get_real(angVel_obj, "y");
+        data.angularVelocity.z = get_real(angVel_obj, "z");
     }
 
     yyjson_val *rot_obj = yyjson_obj_get(root, "rotation");
     if (rot_obj && yyjson_is_obj(rot_obj)) {
-        data.rotation.x = get_real("x");
-        data.rotation.y = get_real("y");
-        data.rotation.z = get_real("z");
-        data.rotation.w = get_real("w");
+        data.rotation.x = get_real(rot_obj, "x");
+        data.rotation.y = get_real(rot_obj, "y");
+        data.rotation.z = get_real(rot_obj, "z");
+        data.rotation.w = get_real(rot_obj, "w", 1.0f);
     }
 
     // RNG state
@@ -173,11 +173,11 @@ Result<SavestateData> SavestateData::FromJson(const string &json) {
     }
 
     // Game state
-    data.points = get_int("points");
-    data.lives = get_int("lives");
-    data.sector = get_int("sector");
-    data.srScore = get_real("srScore");
-    data.hsScore = get_real("hsScore");
+    data.points = get_int(root, "points");
+    data.lives = get_int(root, "lives");
+    data.sector = get_int(root, "sector");
+    data.srScore = get_real(root, "srScore");
+    data.hsScore = get_real(root, "hsScore");
 
     // Time state
     yyjson_val *tick_val = yyjson_obj_get(root, "tick");
@@ -502,12 +502,25 @@ Result<void> SavestateManager::RestoreState(const SavestateData &data) {
         // Continue anyway, RNG is not critical
     }
 
-    // TODO: Restore game state (these methods don't exist yet in GameInterface)
-    // m_GameInterface->SetPoints(data.points);
-    // m_GameInterface->SetLifeCount(data.lives);
-    // m_GameInterface->SetSector(data.sector);
-    // m_GameInterface->SetSRScore(data.srScore);
-    // m_GameInterface->SetHSScore(data.hsScore);
+    if (!m_GameInterface->SetPoints(data.points)) {
+        return Result<void>::Error("Failed to restore points");
+    }
+
+    if (!m_GameInterface->SetLifeCount(data.lives)) {
+        return Result<void>::Error("Failed to restore life count");
+    }
+
+    if (!m_GameInterface->SetCurrentSector(data.sector)) {
+        return Result<void>::Error("Failed to restore current sector");
+    }
+
+    if (!m_GameInterface->SetSRScore(data.srScore)) {
+        return Result<void>::Error("Failed to restore SR score");
+    }
+
+    if (!m_GameInterface->SetHSScore(static_cast<int>(data.hsScore))) {
+        return Result<void>::Error("Failed to restore HS score");
+    }
 
     // Note: Time state (tick) is not restored as it would affect timing
     // Users can manually adjust if needed

@@ -4,6 +4,7 @@
 #include <string>
 #include <stack>
 #include <functional>
+#include <optional>
 
 #include <BML/InputHook.h>
 
@@ -186,10 +187,16 @@ public:
     int GetCurrentSector() const;
 
     int GetPoints() const;
+    bool SetPoints(int points);
     int GetLifeCount() const;
+    bool SetLifeCount(int lives);
+
+    bool SetCurrentSector(int sector);
 
     float GetSRScore() const;
+    bool SetSRScore(float score);
     int GetHSScore() const;
+    bool SetHSScore(int score);
 
     // ========================================
     // UI & Output
@@ -242,6 +249,12 @@ private:
     // ========================================
     CKParameter *m_CurrentSector = nullptr;
     CKParameter *m_ActiveBallParam = nullptr;
+
+    // ========================================
+    // TAS-layer score overrides
+    // ========================================
+    std::optional<float> m_SRScoreOverride;
+    std::optional<int> m_HSScoreOverride;
 
     // ========================================
     // UI Data

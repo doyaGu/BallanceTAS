@@ -1,198 +1,198 @@
 #include "LuaApi.h"
 
-#include "Logger.h"
-#include "TASEngine.h"
+#include "../LuaRuntime/LuaStackGuard.h"
+
 #include "LuaScheduler.h"
 #include "SavestateManager.h"
 #include "ScriptContext.h"
-#include "ServiceContainer.h"
 
-/**
- * @brief Register savestate API to Lua
- *
- * Provides tas.savestate.* functions for quick state save/load.
- *
- * API:
- * - tas.savestate.save(name, description?) - Save current state
- * - tas.savestate.load(name) - Load state (yielding, waits for stabilization)
- * - tas.savestate.delete(name) - Delete state
- * - tas.savestate.list() - List all states
- * - tas.savestate.exists(name) - Check if state exists
- * - tas.savestate.get_info(name) - Get state metadata
- */
-void LuaApi::RegisterSavestateApi(sol::table &tas, ScriptContext *context) {
-    auto serviceProvider = context->GetEngine()->GetServiceProvider();
-    auto savestateManager = serviceProvider->Resolve<SavestateManager>();
+namespace {
 
-    if (!savestateManager) {
-        Log::Error("SavestateManager not available for Lua API");
+ScriptContext *GetContext(lua_State *L) {
+    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+}
+
+SavestateManager *GetManager(lua_State *L) {
+    auto *context = GetContext(L);
+    return context ? context->GetSavestateManager() : nullptr;
+}
+
+void PushErrorOrNil(lua_State *L, const Result<void> &result) {
+    if (result.IsOk()) {
+        lua_pushnil(L);
         return;
     }
+    const auto &error = result.GetError();
+    lua_pushlstring(L, error.message.data(), error.message.size());
+}
 
-    // Create tas.savestate table
-    auto savestate_table = tas["savestate"].get_or_create<sol::table>();
+void PushVectorTable(lua_State *L, const VxVector &value) {
+    lua_newtable(L);
+    lua_pushnumber(L, value.x);
+    lua_setfield(L, -2, "x");
+    lua_pushnumber(L, value.y);
+    lua_setfield(L, -2, "y");
+    lua_pushnumber(L, value.z);
+    lua_setfield(L, -2, "z");
+}
 
-    // ========================================================================
-    // tas.savestate.save(name, description?)
-    // ========================================================================
-    savestate_table["save"] = [savestateManager, context](
-        const string& name,
-        sol::optional<string> description
-    ) -> sol::object {
-        if (!context) {
-            return sol::make_object(context->GetLuaState(), "Context not available");
-        }
+void PushSavestateInfo(lua_State *L, const SavestateData &data) {
+    lua_newtable(L);
+    lua_pushlstring(L, data.name.data(), data.name.size());
+    lua_setfield(L, -2, "name");
+    lua_pushlstring(L, data.timestamp.data(), data.timestamp.size());
+    lua_setfield(L, -2, "timestamp");
+    lua_pushlstring(L, data.levelName.data(), data.levelName.size());
+    lua_setfield(L, -2, "level_name");
+    lua_pushinteger(L, data.levelNumber);
+    lua_setfield(L, -2, "level_number");
+    lua_pushlstring(L, data.description.data(), data.description.size());
+    lua_setfield(L, -2, "description");
 
-        auto result = description
-            ? savestateManager->SaveState(name, *description)
-            : savestateManager->SaveState(name);
+    PushVectorTable(L, data.position);
+    lua_setfield(L, -2, "position");
 
-        if (result.IsOk()) {
-            return sol::make_object(context->GetLuaState(), sol::nil);
-        } else {
-            return sol::make_object(context->GetLuaState(), result.GetError().message);
-        }
-    };
+    lua_pushinteger(L, data.points);
+    lua_setfield(L, -2, "points");
+    lua_pushinteger(L, data.lives);
+    lua_setfield(L, -2, "lives");
+    lua_pushinteger(L, data.sector);
+    lua_setfield(L, -2, "sector");
+    lua_pushnumber(L, data.srScore);
+    lua_setfield(L, -2, "sr_score");
+    lua_pushnumber(L, data.hsScore);
+    lua_setfield(L, -2, "hs_score");
+    lua_pushinteger(L, static_cast<lua_Integer>(data.tick));
+    lua_setfield(L, -2, "tick");
+}
 
-    // ========================================================================
-    // tas.savestate.load(name) - Yielding function
-    // ========================================================================
-    savestate_table["load"] = [savestateManager, context](const string& name) {
-        if (!context) {
-            throw std::runtime_error("Context not available");
-        }
+void SetSavestateFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(L, context);
+    lua_pushcclosure(L, function, 1);
+    lua_setfield(L, -2, name);
+}
 
-        // Load state
-        auto result = savestateManager->LoadState(name);
+int Save(lua_State *L) {
+    auto *manager = GetManager(L);
+    if (!manager) {
+        lua_pushstring(L, "SavestateManager not available");
+        return 1;
+    }
+    const char *name = luaL_checkstring(L, 1);
+    const char *description = lua_gettop(L) >= 2 && !lua_isnil(L, 2) ? luaL_checkstring(L, 2) : "";
+    PushErrorOrNil(L, manager->SaveState(name ? name : "", description ? description : ""));
+    return 1;
+}
 
-        if (result.IsError()) {
-            throw std::runtime_error("Failed to load savestate: " + result.GetError().message);
-        }
+int Load(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *manager = context ? context->GetSavestateManager() : nullptr;
+    if (!manager) {
+        return luaL_error(L, "SavestateManager not available");
+    }
 
-        // Wait a few frames for physics to stabilize
-        // This is a yielding operation
-        auto* scheduler = context->GetScheduler();
-        if (scheduler) {
-            scheduler->YieldTicks(5);  // Wait 5 ticks
-        }
+    const char *name = luaL_checkstring(L, 1);
+    auto result = manager->LoadState(name ? name : "");
+    if (result.IsError()) {
+        return luaL_error(L, "Failed to load savestate: %s", result.GetError().message.c_str());
+    }
 
-        Log::Info("[%s] Loaded savestate: %s", context->GetName().c_str(), name.c_str());
-    };
+    if (auto *scheduler = context->GetScheduler()) {
+        scheduler->YieldTicks(5);
+        return lua_yieldk(L, 0, 0, nullptr);
+    }
+    return 0;
+}
 
-    // ========================================================================
-    // tas.savestate.delete(name)
-    // ========================================================================
-    savestate_table["del"] = [savestateManager, context](const string& name) -> sol::object {
-        if (!context) {
-            return sol::make_object(context->GetLuaState(),
-                                   "Context not available");
-        }
+int Delete(lua_State *L) {
+    auto *manager = GetManager(L);
+    if (!manager) {
+        lua_pushstring(L, "SavestateManager not available");
+        return 1;
+    }
+    const char *name = luaL_checkstring(L, 1);
+    PushErrorOrNil(L, manager->DeleteState(name ? name : ""));
+    return 1;
+}
 
-        auto result = savestateManager->DeleteState(name);
+int List(lua_State *L) {
+    auto *manager = GetManager(L);
+    if (!manager) {
+        lua_pushnil(L);
+        return 1;
+    }
 
-        if (result.IsOk()) {
-            return sol::make_object(context->GetLuaState(), sol::nil);
-        } else {
-            return sol::make_object(context->GetLuaState(), result.GetError().message);
-        }
-    };
+    auto result = manager->ListStates();
+    if (result.IsError()) {
+        lua_pushnil(L);
+        return 1;
+    }
 
-    // Alias: delete is a keyword, so also provide "remove"
-    savestate_table["remove"] = savestate_table["del"];
+    const auto states = result.Unwrap();
+    lua_newtable(L);
+    int index = 1;
+    for (const auto &name : states) {
+        lua_pushlstring(L, name.data(), name.size());
+        lua_seti(L, -2, index++);
+    }
+    return 1;
+}
 
-    // ========================================================================
-    // tas.savestate.list()
-    // ========================================================================
-    savestate_table["list"] = [savestateManager, context]() -> sol::object {
-        if (!context) {
-            return sol::make_object(context->GetLuaState(), sol::nil);
-        }
+int Exists(lua_State *L) {
+    auto *manager = GetManager(L);
+    const char *name = luaL_checkstring(L, 1);
+    lua_pushboolean(L, manager && manager->StateExists(name ? name : ""));
+    return 1;
+}
 
-        auto result = savestateManager->ListStates();
+int GetInfo(lua_State *L) {
+    auto *manager = GetManager(L);
+    if (!manager) {
+        lua_pushnil(L);
+        return 1;
+    }
 
-        if (result.IsError()) {
-            Log::Error("Failed to list savestates: %s", result.GetError().message.c_str());
-            return sol::make_object(context->GetLuaState(), sol::nil);
-        }
+    const char *name = luaL_checkstring(L, 1);
+    auto result = manager->GetStateInfo(name ? name : "");
+    if (result.IsError()) {
+        lua_pushnil(L);
+        return 1;
+    }
+    PushSavestateInfo(L, result.Unwrap());
+    return 1;
+}
 
-        auto states = result.Unwrap();
+int GetDirectory(lua_State *L) {
+    auto *manager = GetManager(L);
+    std::string directory = manager ? manager->GetSavestatesDirectory() : "";
+    lua_pushlstring(L, directory.data(), directory.size());
+    return 1;
+}
 
-        // Convert to Lua table
-        sol::state_view lua = context->GetLuaState();
-        sol::table table = lua.create_table();
+} // namespace
 
-        for (size_t i = 0; i < states.size(); ++i) {
-            table[i + 1] = states[i];  // Lua is 1-indexed
-        }
+void LuaApi::RegisterSavestateApi(lua_State *state, ScriptContext *context) {
+    tas::lua::LuaStackGuard guard(state);
 
-        return table;
-    };
+    lua_getglobal(state, "tas");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_setglobal(state, "tas");
+        lua_getglobal(state, "tas");
+    }
 
-    // ========================================================================
-    // tas.savestate.exists(name)
-    // ========================================================================
-    savestate_table["exists"] = [savestateManager, context](const string& name) -> bool {
-        if (!context) {
-            return false;
-        }
+    lua_newtable(state);
+    SetSavestateFunction(state, "save", Save, context);
+    SetSavestateFunction(state, "load", Load, context);
+    SetSavestateFunction(state, "del", Delete, context);
+    lua_getfield(state, -1, "del");
+    lua_setfield(state, -2, "remove");
+    SetSavestateFunction(state, "list", List, context);
+    SetSavestateFunction(state, "exists", Exists, context);
+    SetSavestateFunction(state, "get_info", GetInfo, context);
+    SetSavestateFunction(state, "get_directory", GetDirectory, context);
+    lua_setfield(state, -2, "savestate");
 
-        return savestateManager->StateExists(name);
-    };
-
-    // ========================================================================
-    // tas.savestate.get_info(name)
-    // ========================================================================
-    savestate_table["get_info"] = [savestateManager, context](
-        const string& name
-    ) -> sol::object {
-        if (!context) {
-            return sol::make_object(context->GetLuaState(), sol::nil);
-        }
-
-        auto result = savestateManager->GetStateInfo(name);
-
-        if (result.IsError()) {
-            Log::Error("Failed to get savestate info: %s", result.GetError().message.c_str());
-            return sol::make_object(context->GetLuaState(), sol::nil);
-        }
-
-        auto data = result.Unwrap();
-        sol::state_view lua = context->GetLuaState();
-
-        // Create info table
-        sol::table info = lua.create_table();
-
-        info["name"] = data.name;
-        info["timestamp"] = data.timestamp;
-        info["level_name"] = data.levelName;
-        info["level_number"] = data.levelNumber;
-        info["description"] = data.description;
-
-        // Position
-        sol::table pos_table = lua.create_table();
-        pos_table["x"] = data.position.x;
-        pos_table["y"] = data.position.y;
-        pos_table["z"] = data.position.z;
-        info["position"] = pos_table;
-
-        // Game state
-        info["points"] = data.points;
-        info["lives"] = data.lives;
-        info["sector"] = data.sector;
-        info["sr_score"] = data.srScore;
-        info["hs_score"] = data.hsScore;
-
-        info["tick"] = data.tick;
-
-        return info;
-    };
-
-    // ========================================================================
-    // tas.savestate.get_directory()
-    // ========================================================================
-    savestate_table["get_directory"] = [savestateManager]() -> string {
-        return savestateManager->GetSavestatesDirectory();
-    };
-
-    Log::Info("Savestate API registered");
+    lua_pop(state, 1);
 }

@@ -1,330 +1,157 @@
 #include "LuaApi.h"
 
-#include <stdexcept>
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
 
-#include "TASEngine.h"
 #include "GameInterface.h"
 #include "ScriptContext.h"
 
-// ===================================================================
-//  World Query API Registration
-// ===================================================================
+#include <CK3dEntity.h>
+#include <CKCamera.h>
+#include <CKObject.h>
+#include <VxMath.h>
 
-void LuaApi::RegisterWorldQueryApi(sol::table &tas, ScriptContext *context) {
-    if (!context) {
-        throw std::runtime_error("LuaApi::RegisterWorldQueryApi requires a valid ScriptContext");
+namespace {
+
+constexpr const char *kCKObjectMt = "BallanceTAS.CKObject";
+constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
+constexpr const char *kCKCameraMt = "BallanceTAS.CKCamera";
+constexpr const char *kContextUpvalue = "LuaApi.World.Context";
+
+ScriptContext *GetContext(lua_State *L) {
+    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+}
+
+void PushCKObject(lua_State *L, CKObject *object) {
+    if (!object) {
+        lua_pushnil(L);
+        return;
+    }
+    tas::lua::PushBorrowedUserdata<CKObject>(L, kCKObjectMt, object);
+}
+
+void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
+    if (!entity) {
+        lua_pushnil(L);
+        return;
+    }
+    tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
+}
+
+void PushCKCamera(lua_State *L, CKCamera *camera) {
+    if (!camera) {
+        lua_pushnil(L);
+        return;
+    }
+    tas::lua::PushBorrowedUserdata<CKCamera>(L, kCKCameraMt, camera);
+}
+
+void SetContextFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(L, context);
+    lua_pushcclosure(L, function, 1);
+    lua_setfield(L, -2, name);
+}
+
+int IsPaused(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPaused());
+    return 1;
+}
+
+int IsPlaying(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPlaying());
+    return 1;
+}
+
+int GetLevel(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetCurrentLevel() : 0);
+    return 1;
+}
+
+int GetSector(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetCurrentSector() : 0);
+    return 1;
+}
+
+int GetObjectById(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    const int id = static_cast<int>(luaL_checkinteger(L, 1));
+    PushCK3dEntity(L, game && id > 0 ? game->GetObjectByID(id) : nullptr);
+    return 1;
+}
+
+int GetObject(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    const char *name = luaL_checkstring(L, 1);
+    PushCK3dEntity(L, game && name && *name ? game->GetObjectByName(name) : nullptr);
+    return 1;
+}
+
+int GetCamera(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    PushCKCamera(L, game ? game->GetActiveCamera() : nullptr);
+    return 1;
+}
+
+int GetBall(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    PushCK3dEntity(L, game ? game->GetActiveBall() : nullptr);
+    return 1;
+}
+
+int GetBallPosition(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    CK3dEntity *ball = game ? game->GetActiveBall() : nullptr;
+    if (!game || !ball) {
+        lua_pushnil(L);
+        return 1;
+    }
+    VxVector position = game->GetPosition(ball);
+    lua_getglobal(L, "VxVector");
+    lua_pushnumber(L, position.x);
+    lua_pushnumber(L, position.y);
+    lua_pushnumber(L, position.z);
+    lua_call(L, 3, 1);
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterWorldQueryApi(lua_State *state, ScriptContext *context) {
+    tas::lua::LuaStackGuard guard(state);
+
+    lua_getglobal(state, "tas");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_setglobal(state, "tas");
+        lua_getglobal(state, "tas");
     }
 
-    // tas.is_paused()
-    tas["is_paused"] = [context]() -> bool {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
+    lua_pushlightuserdata(state, context);
+    lua_setfield(state, LUA_REGISTRYINDEX, kContextUpvalue);
 
-        return g->IsPaused();
-    };
+    SetContextFunction(state, "is_paused", IsPaused, context);
+    SetContextFunction(state, "is_playing", IsPlaying, context);
+    SetContextFunction(state, "get_level", GetLevel, context);
+    SetContextFunction(state, "get_sector", GetSector, context);
+    SetContextFunction(state, "get_object", GetObject, context);
+    SetContextFunction(state, "get_object_by_id", GetObjectById, context);
+    SetContextFunction(state, "get_camera", GetCamera, context);
+    SetContextFunction(state, "get_ball", GetBall, context);
+    SetContextFunction(state, "get_ball_position", GetBallPosition, context);
 
-    // tas.is_playing()
-    tas["is_playing"] = [context]() -> bool {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-
-        return g->IsPlaying();
-    };
-
-    // tas.get_sr_score()
-    tas["get_sr_score"] = [context]() -> float {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0.0f;
-        }
-
-        return g->GetSRScore();
-    };
-
-    // tas.get_hs_score()
-    tas["get_hs_score"] = [context]() -> int {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-
-        return g->GetHSScore();
-    };
-
-    // tas.get_points()
-    tas["get_points"] = [context]() -> int {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-
-        return g->GetPoints();
-    };
-
-    // tas.get_life_count()
-    tas["get_life_count"] = [context]() -> int {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-
-        return g->GetLifeCount();
-    };
-
-    // tas.get_level()
-    tas["get_level"] = [context]() -> int {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-
-        return g->GetCurrentLevel();
-    };
-
-    // tas.get_sector()
-    tas["get_sector"] = [context]() -> int {
-        const auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-
-        return g->GetCurrentSector();
-    };
-
-    // tas.get_object(name)
-    tas["get_object"] = [context](const std::string &name) -> sol::object {
-        if (name.empty()) {
-            return sol::nil;
-        }
-        try {
-            const auto *g = context->GetGameInterface();
-            if (g) {
-                CK3dEntity *obj = g->GetObjectByName(name);
-                if (obj) {
-                    return sol::make_object(context->GetLuaState(), obj);
-                }
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_object_by_id(id)
-    tas["get_object_by_id"] = [context](int id) -> sol::object {
-        if (id <= 0) {
-            return sol::nil;
-        }
-        try {
-            const auto *g = context->GetGameInterface();
-            if (!g) {
-                return sol::nil;
-            }
-            CK3dEntity *obj = g->GetObjectByID(id);
-            if (obj) {
-                return sol::make_object(context->GetLuaState(), obj);
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_physics_object(entity)
-    tas["get_physics_object"] = [context](CK3dEntity *entity) -> sol::object {
-        if (!entity) {
-            return sol::nil;
-        }
-        try {
-            const auto *g = context->GetGameInterface();
-            if (!g) {
-                return sol::nil;
-            }
-            PhysicsObject *obj = g->GetPhysicsObject(entity);
-            if (obj) {
-                return sol::make_object(context->GetLuaState(), obj);
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_ball()
-    tas["get_ball"] = [context]() -> sol::object {
-        try {
-            const auto *g = context->GetGameInterface();
-            CK3dEntity *ball = g->GetActiveBall();
-            if (ball) {
-                return sol::make_object(context->GetLuaState(), ball);
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_ball_position()
-    tas["get_ball_position"] = [context]() -> sol::object {
-        try {
-            const auto *g = context->GetGameInterface();
-            CK3dEntity *ball = g->GetActiveBall();
-            if (ball) {
-                return sol::make_object(context->GetLuaState(), g->GetPosition(ball));
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_ball_velocity()
-    tas["get_ball_velocity"] = [context]() -> sol::object {
-        try {
-            const auto *g = context->GetGameInterface();
-            CK3dEntity *ball = g->GetActiveBall();
-            if (ball) {
-                return sol::make_object(context->GetLuaState(), g->GetVelocity(ball));
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_ball_angular_velocity()
-    tas["get_ball_angular_velocity"] = [context]() -> sol::object {
-        try {
-            const auto *g = context->GetGameInterface();
-            CK3dEntity *ball = g->GetActiveBall();
-            if (ball) {
-                return sol::make_object(context->GetLuaState(), g->GetAngularVelocity(ball));
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // tas.get_camera()
-    tas["get_camera"] = [context]() -> sol::object {
-        try {
-            const auto *g = context->GetGameInterface();
-            CK3dEntity *camera = g->GetActiveCamera();
-            if (camera) {
-                return sol::make_object(context->GetLuaState(), camera);
-            }
-        } catch (const std::exception &) {
-            // Fall through to return nil
-        }
-        return sol::nil;
-    };
-
-    // ===================================================================
-    // RNG State Management API (tas.rng.*)
-    // ===================================================================
-
-    sol::table rng = tas["rng"] = tas.create();
-
-    // tas.rng.get_state() - Get current RNG state
-    rng["get_state"] = [context]() -> sol::object {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                return sol::nil;
-            }
-            RNGState state = g->GetRNGState();
-            sol::state_view lua = context->GetLuaState();
-            sol::table result = lua.create_table();
-            result["id"] = state.id;
-            result["next_movement_check"] = state.next_movement_check;
-            result["ivp_seed"] = state.ivp_seed;
-            result["qh_seed"] = state.qh_seed;
-            return result;
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.get_state: ") + e.what());
-        }
-    };
-
-    // tas.rng.push_state() - Save current RNG state to stack
-    rng["push_state"] = [context]() {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                throw sol::error("rng.push_state: GameInterface not available");
-            }
-            g->PushRNGState();
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.push_state: ") + e.what());
-        }
-    };
-
-    // tas.rng.pop_state() - Restore RNG state from stack
-    rng["pop_state"] = [context]() {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                throw sol::error("rng.pop_state: GameInterface not available");
-            }
-            g->PopRNGState();
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.pop_state: ") + e.what());
-        }
-    };
-
-    // tas.rng.clear_stack() - Clear all saved RNG states
-    rng["clear_stack"] = [context]() {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                throw sol::error("rng.clear_stack: GameInterface not available");
-            }
-            g->ClearRNGStateStack();
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.clear_stack: ") + e.what());
-        }
-    };
-
-    // tas.rng.get_stack_depth() - Get the depth of RNG state stack
-    rng["get_stack_depth"] = [context]() -> size_t {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                return 0;
-            }
-            return g->GetRNGStateStackDepth();
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.get_stack_depth: ") + e.what());
-        }
-    };
-
-    // tas.rng.is_stack_empty() - Check if RNG state stack is empty
-    rng["is_stack_empty"] = [context]() -> bool {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                return true;
-            }
-            return g->IsRNGStateStackEmpty();
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.is_stack_empty: ") + e.what());
-        }
-    };
-
-    // tas.rng.reset_id() - Reset RNG state ID counter to 1
-    rng["reset_id"] = [context]() {
-        try {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                throw sol::error("rng.reset_id: GameInterface not available");
-            }
-            g->ResetRNGStateID();
-        } catch (const std::exception &e) {
-            throw sol::error(std::string("rng.reset_id: ") + e.what());
-        }
-    };
+    lua_pop(state, 1);
 }

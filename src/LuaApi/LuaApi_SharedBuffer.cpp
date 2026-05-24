@@ -1,297 +1,509 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
 #include "Logger.h"
-#include "TASEngine.h"
 #include "ScriptContext.h"
 #include "SharedBuffer.h"
 
-// ===================================================================
-//  SharedBuffer Lua API Registration
-// ===================================================================
+#include <cctype>
+#include <cstdint>
+#include <cstring>
+#include <exception>
+#include <memory>
+#include <string>
+#include <vector>
 
-void LuaApi::RegisterSharedBufferApi(sol::table &tas, ScriptContext *context) {
-    if (!context) {
-        throw std::runtime_error("LuaApi::RegisterSharedBufferApi requires a valid ScriptContext");
+namespace {
+
+constexpr const char *kSharedBufferMt = "BallanceTAS.SharedBuffer";
+constexpr uint8_t kValueNil = 0;
+constexpr uint8_t kValueBool = 1;
+constexpr uint8_t kValueInteger = 2;
+constexpr uint8_t kValueNumber = 3;
+constexpr uint8_t kValueString = 4;
+constexpr uint8_t kValueTable = 5;
+constexpr int kMaxSerializedDepth = 16;
+
+using SharedBufferHandle = std::shared_ptr<SharedBuffer>;
+
+SharedBufferHandle *CheckBufferHandle(lua_State *L, int index) {
+    auto *handle = tas::lua::CheckUserdata<SharedBufferHandle>(L, index, kSharedBufferMt);
+    if (!handle || !*handle) {
+        luaL_error(L, "SharedBuffer: invalid buffer");
+    }
+    return handle;
+}
+
+SharedBuffer &CheckBuffer(lua_State *L, int index) {
+    return **CheckBufferHandle(L, index);
+}
+
+const SharedBuffer &CheckConstBuffer(lua_State *L, int index) {
+    return **CheckBufferHandle(L, index);
+}
+
+void PushBuffer(lua_State *L, SharedBufferHandle buffer) {
+    tas::lua::PushOwnedUserdata<SharedBufferHandle>(L, kSharedBufferMt, std::move(buffer));
+}
+
+template <typename T>
+void AppendPod(std::vector<uint8_t> &out, T value) {
+    const auto *bytes = reinterpret_cast<const uint8_t *>(&value);
+    out.insert(out.end(), bytes, bytes + sizeof(T));
+}
+
+void AppendString(std::vector<uint8_t> &out, const char *data, size_t length) {
+    AppendPod<uint32_t>(out, static_cast<uint32_t>(length));
+    out.insert(out.end(), reinterpret_cast<const uint8_t *>(data), reinterpret_cast<const uint8_t *>(data) + length);
+}
+
+bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out, int depth) {
+    if (depth <= 0) {
+        luaL_error(L, "shared_buffer.from_table: table nesting exceeds limit");
+        return false;
     }
 
-    std::string logPrefix = "[" + context->GetName() + "]";
-    sol::state_view lua = context->GetLuaState();
-
-    // Register SharedBuffer userdata type
-    sol::usertype<SharedBuffer> buffer_type = lua.new_usertype<SharedBuffer>(
-        "SharedBuffer",
-        sol::no_constructor // Use factory functions instead
-    );
-
-    // --- Properties ---
-
-    // buffer:size() - Get buffer size in bytes
-    buffer_type["size"] = &SharedBuffer::Size;
-
-    // --- Read/Write Methods ---
-
-    // buffer:read_u8(offset) - Read unsigned 8-bit integer
-    buffer_type["read_u8"] = [](const SharedBuffer &self, size_t offset) -> uint8_t {
-        if (offset >= self.Size()) {
-            throw sol::error("SharedBuffer read_u8: offset out of bounds");
-        }
-        return self.Data()[offset];
-    };
-
-    // buffer:write_u8(offset, value) - Write unsigned 8-bit integer
-    buffer_type["write_u8"] = [](SharedBuffer &self, size_t offset, uint8_t value) {
-        if (offset >= self.Size()) {
-            throw sol::error("SharedBuffer write_u8: offset out of bounds");
-        }
-        self.Data()[offset] = value;
-    };
-
-    // buffer:read_u16(offset) - Read unsigned 16-bit integer (little-endian)
-    buffer_type["read_u16"] = [](const SharedBuffer &self, size_t offset) -> uint16_t {
-        if (offset + sizeof(uint16_t) > self.Size()) {
-            throw sol::error("SharedBuffer read_u16: offset out of bounds");
-        }
-        uint16_t value;
-        std::memcpy(&value, self.Data() + offset, sizeof(uint16_t));
-        return value;
-    };
-
-    // buffer:write_u16(offset, value) - Write unsigned 16-bit integer (little-endian)
-    buffer_type["write_u16"] = [](SharedBuffer &self, size_t offset, uint16_t value) {
-        if (offset + sizeof(uint16_t) > self.Size()) {
-            throw sol::error("SharedBuffer write_u16: offset out of bounds");
-        }
-        std::memcpy(self.Data() + offset, &value, sizeof(uint16_t));
-    };
-
-    // buffer:read_u32(offset) - Read unsigned 32-bit integer (little-endian)
-    buffer_type["read_u32"] = [](const SharedBuffer &self, size_t offset) -> uint32_t {
-        if (offset + sizeof(uint32_t) > self.Size()) {
-            throw sol::error("SharedBuffer read_u32: offset out of bounds");
-        }
-        uint32_t value;
-        std::memcpy(&value, self.Data() + offset, sizeof(uint32_t));
-        return value;
-    };
-
-    // buffer:write_u32(offset, value) - Write unsigned 32-bit integer (little-endian)
-    buffer_type["write_u32"] = [](SharedBuffer &self, size_t offset, uint32_t value) {
-        if (offset + sizeof(uint32_t) > self.Size()) {
-            throw sol::error("SharedBuffer write_u32: offset out of bounds");
-        }
-        std::memcpy(self.Data() + offset, &value, sizeof(uint32_t));
-    };
-
-    // buffer:read_i32(offset) - Read signed 32-bit integer (little-endian)
-    buffer_type["read_i32"] = [](const SharedBuffer &self, size_t offset) -> int32_t {
-        if (offset + sizeof(int32_t) > self.Size()) {
-            throw sol::error("SharedBuffer read_i32: offset out of bounds");
-        }
-        int32_t value;
-        std::memcpy(&value, self.Data() + offset, sizeof(int32_t));
-        return value;
-    };
-
-    // buffer:write_i32(offset, value) - Write signed 32-bit integer (little-endian)
-    buffer_type["write_i32"] = [](SharedBuffer &self, size_t offset, int32_t value) {
-        if (offset + sizeof(int32_t) > self.Size()) {
-            throw sol::error("SharedBuffer write_i32: offset out of bounds");
-        }
-        std::memcpy(self.Data() + offset, &value, sizeof(int32_t));
-    };
-
-    // buffer:read_f32(offset) - Read 32-bit float (little-endian)
-    buffer_type["read_f32"] = [](const SharedBuffer &self, size_t offset) -> float {
-        if (offset + sizeof(float) > self.Size()) {
-            throw sol::error("SharedBuffer read_f32: offset out of bounds");
-        }
-        float value;
-        std::memcpy(&value, self.Data() + offset, sizeof(float));
-        return value;
-    };
-
-    // buffer:write_f32(offset, value) - Write 32-bit float (little-endian)
-    buffer_type["write_f32"] = [](SharedBuffer &self, size_t offset, float value) {
-        if (offset + sizeof(float) > self.Size()) {
-            throw sol::error("SharedBuffer write_f32: offset out of bounds");
-        }
-        std::memcpy(self.Data() + offset, &value, sizeof(float));
-    };
-
-    // buffer:read_f64(offset) - Read 64-bit double (little-endian)
-    buffer_type["read_f64"] = [](const SharedBuffer &self, size_t offset) -> double {
-        if (offset + sizeof(double) > self.Size()) {
-            throw sol::error("SharedBuffer read_f64: offset out of bounds");
-        }
-        double value;
-        std::memcpy(&value, self.Data() + offset, sizeof(double));
-        return value;
-    };
-
-    // buffer:write_f64(offset, value) - Write 64-bit double (little-endian)
-    buffer_type["write_f64"] = [](SharedBuffer &self, size_t offset, double value) {
-        if (offset + sizeof(double) > self.Size()) {
-            throw sol::error("SharedBuffer write_f64: offset out of bounds");
-        }
-        std::memcpy(self.Data() + offset, &value, sizeof(double));
-    };
-
-    // buffer:read_string(offset, length) - Read string (null-terminated if length not specified)
-    buffer_type["read_string"] = [](const SharedBuffer &self, size_t offset, sol::optional<size_t> length) -> std::string {
-        if (offset >= self.Size()) {
-            throw sol::error("SharedBuffer read_string: offset out of bounds");
-        }
-
-        if (length.has_value()) {
-            // Fixed-length read
-            size_t len = length.value();
-            if (offset + len > self.Size()) {
-                throw sol::error("SharedBuffer read_string: length exceeds buffer size");
-            }
-            return std::string(reinterpret_cast<const char *>(self.Data() + offset), len);
+    index = lua_absindex(L, index);
+    const int type = lua_type(L, index);
+    switch (type) {
+    case LUA_TNIL:
+        out.push_back(kValueNil);
+        return true;
+    case LUA_TBOOLEAN:
+        out.push_back(kValueBool);
+        out.push_back(lua_toboolean(L, index) ? 1 : 0);
+        return true;
+    case LUA_TNUMBER:
+        if (lua_isinteger(L, index)) {
+            out.push_back(kValueInteger);
+            AppendPod<lua_Integer>(out, lua_tointeger(L, index));
         } else {
-            // Null-terminated read
-            const char *str = reinterpret_cast<const char *>(self.Data() + offset);
-            size_t remaining = self.Size() - offset;
-
-            // Find null terminator or end of buffer
-            size_t len = 0;
-            while (len < remaining && str[len] != '\0') {
-                ++len;
+            out.push_back(kValueNumber);
+            AppendPod<lua_Number>(out, lua_tonumber(L, index));
+        }
+        return true;
+    case LUA_TSTRING: {
+        size_t length = 0;
+        const char *data = lua_tolstring(L, index, &length);
+        out.push_back(kValueString);
+        AppendString(out, data ? data : "", length);
+        return true;
+    }
+    case LUA_TTABLE: {
+        out.push_back(kValueTable);
+        const size_t countOffset = out.size();
+        AppendPod<uint32_t>(out, 0);
+        uint32_t count = 0;
+        lua_pushnil(L);
+        while (lua_next(L, index) != 0) {
+            if (!lua_isinteger(L, -2) && !lua_isstring(L, -2)) {
+                luaL_error(L, "shared_buffer.from_table: table keys must be integer or string");
+                return false;
             }
-
-            return std::string(str, len);
+            SerializeLuaValue(L, -2, out, depth - 1);
+            SerializeLuaValue(L, -1, out, depth - 1);
+            ++count;
+            lua_pop(L, 1);
         }
-    };
+        std::memcpy(out.data() + countOffset, &count, sizeof(count));
+        return true;
+    }
+    default:
+        luaL_error(L, "shared_buffer.from_table: unsupported value type '%s'", lua_typename(L, type));
+        return false;
+    }
+}
 
-    // buffer:write_string(offset, str) - Write string (without null terminator)
-    buffer_type["write_string"] = [](SharedBuffer &self, size_t offset, const std::string &str) {
-        if (offset + str.size() > self.Size()) {
-            throw sol::error("SharedBuffer write_string: string exceeds buffer size");
+template <typename T>
+T ReadPodValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, const char *context) {
+    if (static_cast<size_t>(end - cursor) < sizeof(T)) {
+        luaL_error(L, "%s: truncated buffer", context);
+    }
+    T value{};
+    std::memcpy(&value, cursor, sizeof(T));
+    cursor += sizeof(T);
+    return value;
+}
+
+void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, int depth) {
+    if (depth <= 0) {
+        luaL_error(L, "shared_buffer.to_table: table nesting exceeds limit");
+    }
+    if (cursor >= end) {
+        luaL_error(L, "shared_buffer.to_table: truncated buffer");
+    }
+
+    const uint8_t tag = *cursor++;
+    switch (tag) {
+    case kValueNil:
+        lua_pushnil(L);
+        return;
+    case kValueBool:
+        if (cursor >= end) {
+            luaL_error(L, "shared_buffer.to_table: truncated boolean");
         }
-        std::memcpy(self.Data() + offset, str.data(), str.size());
-    };
-
-    // buffer:write_string_z(offset, str) - Write null-terminated string
-    buffer_type["write_string_z"] = [](SharedBuffer &self, size_t offset, const std::string &str) {
-        if (offset + str.size() + 1 > self.Size()) {
-            throw sol::error("SharedBuffer write_string_z: string exceeds buffer size");
+        lua_pushboolean(L, *cursor++ != 0);
+        return;
+    case kValueInteger:
+        lua_pushinteger(L, ReadPodValue<lua_Integer>(L, cursor, end, "shared_buffer.to_table"));
+        return;
+    case kValueNumber:
+        lua_pushnumber(L, ReadPodValue<lua_Number>(L, cursor, end, "shared_buffer.to_table"));
+        return;
+    case kValueString: {
+        const uint32_t length = ReadPodValue<uint32_t>(L, cursor, end, "shared_buffer.to_table");
+        if (static_cast<size_t>(end - cursor) < length) {
+            luaL_error(L, "shared_buffer.to_table: truncated string");
         }
-        std::memcpy(self.Data() + offset, str.data(), str.size());
-        self.Data()[offset + str.size()] = '\0';
-    };
-
-    // buffer:fill(value, offset, length) - Fill buffer with byte value
-    buffer_type["fill"] = [](SharedBuffer &self, uint8_t value, sol::optional<size_t> offset, sol::optional<size_t> length) {
-        size_t start = offset.value_or(0);
-        size_t len = length.value_or(self.Size() - start);
-
-        if (start >= self.Size()) {
-            throw sol::error("SharedBuffer fill: offset out of bounds");
+        lua_pushlstring(L, reinterpret_cast<const char *>(cursor), length);
+        cursor += length;
+        return;
+    }
+    case kValueTable: {
+        const uint32_t count = ReadPodValue<uint32_t>(L, cursor, end, "shared_buffer.to_table");
+        lua_newtable(L);
+        for (uint32_t i = 0; i < count; ++i) {
+            PushSerializedValue(L, cursor, end, depth - 1);
+            PushSerializedValue(L, cursor, end, depth - 1);
+            lua_settable(L, -3);
         }
-        if (start + len > self.Size()) {
-            throw sol::error("SharedBuffer fill: length exceeds buffer size");
+        return;
+    }
+    default:
+        luaL_error(L, "shared_buffer.to_table: invalid value tag");
+    }
+}
+
+size_t CheckSize(lua_State *L, int index, const char *name) {
+    const lua_Integer value = luaL_checkinteger(L, index);
+    if (value < 0) {
+        luaL_error(L, "%s must be non-negative", name);
+    }
+    return static_cast<size_t>(value);
+}
+
+size_t OptionalSize(lua_State *L, int index, size_t fallback, const char *name) {
+    if (lua_isnoneornil(L, index)) {
+        return fallback;
+    }
+    return CheckSize(L, index, name);
+}
+
+void CheckRange(lua_State *L, const SharedBuffer &buffer, size_t offset, size_t width, const char *functionName) {
+    if (offset > buffer.Size() || width > buffer.Size() - offset) {
+        luaL_error(L, "%s: offset out of bounds", functionName);
+    }
+}
+
+template <typename T>
+int ReadPod(lua_State *L, const char *functionName) {
+    const auto &buffer = CheckConstBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    CheckRange(L, buffer, offset, sizeof(T), functionName);
+
+    T value{};
+    std::memcpy(&value, buffer.Data() + offset, sizeof(T));
+    if constexpr (std::is_floating_point_v<T>) {
+        lua_pushnumber(L, static_cast<lua_Number>(value));
+    } else {
+        lua_pushinteger(L, static_cast<lua_Integer>(value));
+    }
+    return 1;
+}
+
+template <typename T>
+int WritePod(lua_State *L, const char *functionName) {
+    auto &buffer = CheckBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    CheckRange(L, buffer, offset, sizeof(T), functionName);
+
+    T value{};
+    if constexpr (std::is_floating_point_v<T>) {
+        value = static_cast<T>(luaL_checknumber(L, 3));
+    } else {
+        value = static_cast<T>(luaL_checkinteger(L, 3));
+    }
+    std::memcpy(buffer.Data() + offset, &value, sizeof(T));
+    return 0;
+}
+
+int BufferSize(lua_State *L) {
+    lua_pushinteger(L, static_cast<lua_Integer>(CheckConstBuffer(L, 1).Size()));
+    return 1;
+}
+
+int ReadU8(lua_State *L) {
+    const auto &buffer = CheckConstBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    CheckRange(L, buffer, offset, 1, "SharedBuffer read_u8");
+    lua_pushinteger(L, static_cast<lua_Integer>(buffer.Data()[offset]));
+    return 1;
+}
+
+int WriteU8(lua_State *L) {
+    auto &buffer = CheckBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    CheckRange(L, buffer, offset, 1, "SharedBuffer write_u8");
+    buffer.Data()[offset] = static_cast<uint8_t>(luaL_checkinteger(L, 3));
+    return 0;
+}
+
+int ReadU16(lua_State *L) { return ReadPod<uint16_t>(L, "SharedBuffer read_u16"); }
+int WriteU16(lua_State *L) { return WritePod<uint16_t>(L, "SharedBuffer write_u16"); }
+int ReadU32(lua_State *L) { return ReadPod<uint32_t>(L, "SharedBuffer read_u32"); }
+int WriteU32(lua_State *L) { return WritePod<uint32_t>(L, "SharedBuffer write_u32"); }
+int ReadI32(lua_State *L) { return ReadPod<int32_t>(L, "SharedBuffer read_i32"); }
+int WriteI32(lua_State *L) { return WritePod<int32_t>(L, "SharedBuffer write_i32"); }
+int ReadF32(lua_State *L) { return ReadPod<float>(L, "SharedBuffer read_f32"); }
+int WriteF32(lua_State *L) { return WritePod<float>(L, "SharedBuffer write_f32"); }
+int ReadF64(lua_State *L) { return ReadPod<double>(L, "SharedBuffer read_f64"); }
+int WriteF64(lua_State *L) { return WritePod<double>(L, "SharedBuffer write_f64"); }
+
+int ReadString(lua_State *L) {
+    const auto &buffer = CheckConstBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    if (offset >= buffer.Size()) {
+        return luaL_error(L, "SharedBuffer read_string: offset out of bounds");
+    }
+
+    size_t length = 0;
+    if (lua_isnoneornil(L, 3)) {
+        const char *data = reinterpret_cast<const char *>(buffer.Data() + offset);
+        const size_t remaining = buffer.Size() - offset;
+        while (length < remaining && data[length] != '\0') {
+            ++length;
         }
+    } else {
+        length = CheckSize(L, 3, "length");
+        CheckRange(L, buffer, offset, length, "SharedBuffer read_string");
+    }
 
-        std::memset(self.Data() + start, value, len);
-    };
+    lua_pushlstring(L, reinterpret_cast<const char *>(buffer.Data() + offset), length);
+    return 1;
+}
 
-    // buffer:clone() - Create a deep copy
-    buffer_type["clone"] = &SharedBuffer::Clone;
+int WriteString(lua_State *L) {
+    auto &buffer = CheckBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    size_t length = 0;
+    const char *data = luaL_checklstring(L, 3, &length);
+    CheckRange(L, buffer, offset, length, "SharedBuffer write_string");
+    std::memcpy(buffer.Data() + offset, data, length);
+    return 0;
+}
 
-    // buffer:to_hex([offset], [length]) - Convert to hex string
-    buffer_type["to_hex"] = [](const SharedBuffer &self, sol::optional<size_t> offset, sol::optional<size_t> length) -> std::string {
-        size_t start = offset.value_or(0);
-        size_t len = length.value_or(self.Size() - start);
+int WriteStringZ(lua_State *L) {
+    auto &buffer = CheckBuffer(L, 1);
+    const size_t offset = CheckSize(L, 2, "offset");
+    size_t length = 0;
+    const char *data = luaL_checklstring(L, 3, &length);
+    CheckRange(L, buffer, offset, length + 1, "SharedBuffer write_string_z");
+    std::memcpy(buffer.Data() + offset, data, length);
+    buffer.Data()[offset + length] = '\0';
+    return 0;
+}
 
-        if (start >= self.Size()) {
-            throw sol::error("SharedBuffer to_hex: offset out of bounds");
+int Fill(lua_State *L) {
+    auto &buffer = CheckBuffer(L, 1);
+    const auto value = static_cast<uint8_t>(luaL_checkinteger(L, 2));
+    const size_t offset = OptionalSize(L, 3, 0, "offset");
+    if (offset >= buffer.Size()) {
+        return luaL_error(L, "SharedBuffer fill: offset out of bounds");
+    }
+    const size_t length = OptionalSize(L, 4, buffer.Size() - offset, "length");
+    CheckRange(L, buffer, offset, length, "SharedBuffer fill");
+    std::memset(buffer.Data() + offset, value, length);
+    return 0;
+}
+
+int Clone(lua_State *L) {
+    PushBuffer(L, CheckConstBuffer(L, 1).Clone());
+    return 1;
+}
+
+int ToHex(lua_State *L) {
+    const auto &buffer = CheckConstBuffer(L, 1);
+    const size_t offset = OptionalSize(L, 2, 0, "offset");
+    if (offset >= buffer.Size()) {
+        return luaL_error(L, "SharedBuffer to_hex: offset out of bounds");
+    }
+    const size_t length = OptionalSize(L, 3, buffer.Size() - offset, "length");
+    CheckRange(L, buffer, offset, length, "SharedBuffer to_hex");
+
+    std::string hex;
+    hex.reserve(length * 2);
+    constexpr char kHex[] = "0123456789abcdef";
+    for (size_t i = 0; i < length; ++i) {
+        const uint8_t byte = buffer.Data()[offset + i];
+        hex.push_back(kHex[(byte >> 4) & 0x0F]);
+        hex.push_back(kHex[byte & 0x0F]);
+    }
+    lua_pushlstring(L, hex.data(), hex.size());
+    return 1;
+}
+
+int ToString(lua_State *L) {
+    const auto &buffer = CheckConstBuffer(L, 1);
+    lua_pushfstring(L, "SharedBuffer(size=%d)", static_cast<int>(buffer.Size()));
+    return 1;
+}
+
+int ToTable(lua_State *L) {
+    const auto &buffer = CheckConstBuffer(L, 1);
+    const uint8_t *cursor = buffer.Data();
+    const uint8_t *end = cursor + buffer.Size();
+    PushSerializedValue(L, cursor, end, kMaxSerializedDepth);
+    if (cursor != end) {
+        return luaL_error(L, "shared_buffer.to_table: trailing data");
+    }
+    return 1;
+}
+
+int Create(lua_State *L) {
+    const size_t size = CheckSize(L, 1, "size");
+    try {
+        PushBuffer(L, SharedBuffer::Create(size));
+        return 1;
+    } catch (const std::exception &e) {
+        Log::Error("Error in shared_buffer.create: %s", e.what());
+        return luaL_error(L, "shared_buffer.create: %s", e.what());
+    }
+}
+
+int FromString(lua_State *L) {
+    size_t length = 0;
+    const char *data = luaL_checklstring(L, 1, &length);
+    try {
+        PushBuffer(L, SharedBuffer::CreateFrom(data, length));
+        return 1;
+    } catch (const std::exception &e) {
+        Log::Error("Error in shared_buffer.from_string: %s", e.what());
+        return luaL_error(L, "shared_buffer.from_string: %s", e.what());
+    }
+}
+
+int HexNibble(lua_State *L, char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    luaL_error(L, "shared_buffer.from_hex: invalid hex character");
+    return 0;
+}
+
+int FromHex(lua_State *L) {
+    size_t hexLength = 0;
+    const char *hex = luaL_checklstring(L, 1, &hexLength);
+    if ((hexLength % 2) != 0) {
+        return luaL_error(L, "shared_buffer.from_hex: hex string must have even length");
+    }
+
+    const size_t size = hexLength / 2;
+    try {
+        auto buffer = SharedBuffer::Create(size);
+        for (size_t i = 0; i < size; ++i) {
+            const int high = HexNibble(L, hex[i * 2]);
+            const int low = HexNibble(L, hex[i * 2 + 1]);
+            buffer->Data()[i] = static_cast<uint8_t>((high << 4) | low);
         }
-        if (start + len > self.Size()) {
-            throw sol::error("SharedBuffer to_hex: length exceeds buffer size");
-        }
+        PushBuffer(L, std::move(buffer));
+        return 1;
+    } catch (const std::exception &e) {
+        Log::Error("Error in shared_buffer.from_hex: %s", e.what());
+        return luaL_error(L, "shared_buffer.from_hex: %s", e.what());
+    }
+}
 
-        std::string hex;
-        hex.reserve(len * 2);
-        static const char hex_chars[] = "0123456789abcdef";
+int FromTable(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TTABLE);
+    std::vector<uint8_t> encoded;
+    encoded.reserve(256);
+    SerializeLuaValue(L, 1, encoded, kMaxSerializedDepth);
+    try {
+        PushBuffer(L, SharedBuffer::CreateFrom(encoded.data(), encoded.size()));
+        return 1;
+    } catch (const std::exception &e) {
+        Log::Error("Error in shared_buffer.from_table: %s", e.what());
+        return luaL_error(L, "shared_buffer.from_table: %s", e.what());
+    }
+}
 
-        for (size_t i = 0; i < len; ++i) {
-            uint8_t byte = self.Data()[start + i];
-            hex.push_back(hex_chars[(byte >> 4) & 0x0F]);
-            hex.push_back(hex_chars[byte & 0x0F]);
-        }
+int GetMaxSize(lua_State *L) {
+    lua_pushinteger(L, static_cast<lua_Integer>(SharedBuffer::GetMaxSize()));
+    return 1;
+}
 
-        return hex;
-    };
+int SetMaxSize(lua_State *L) {
+    const size_t size = CheckSize(L, 1, "size");
+    SharedBuffer::SetMaxSize(size);
+    Log::Info("SharedBuffer max size set to %zu bytes", size);
+    return 0;
+}
 
-    // --- Create nested 'shared_buffer' table for factory functions ---
-    sol::table sb = tas["shared_buffer"] = tas.create();
+void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+    lua_pushcfunction(L, function);
+    lua_setfield(L, -2, name);
+}
 
-    // tas.shared_buffer.create(size) - Create new buffer
-    sb["create"] = [logPrefix](size_t size) -> std::shared_ptr<SharedBuffer> {
-        try {
-            return SharedBuffer::Create(size);
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in shared_buffer.create: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
+void RegisterFactoryTable(lua_State *L) {
+    lua_getglobal(L, "tas");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        lua_newtable(L);
+        lua_pushvalue(L, -1);
+        lua_setglobal(L, "tas");
+    }
 
-    // tas.shared_buffer.from_string(str) - Create buffer from string
-    sb["from_string"] = [logPrefix](const std::string &str) -> std::shared_ptr<SharedBuffer> {
-        try {
-            return SharedBuffer::CreateFrom(str.data(), str.size());
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in shared_buffer.from_string: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
+    lua_newtable(L);
+    SetFunction(L, "create", Create);
+    SetFunction(L, "from_string", FromString);
+    SetFunction(L, "from_hex", FromHex);
+    SetFunction(L, "from_table", FromTable);
+    SetFunction(L, "get_max_size", GetMaxSize);
+    SetFunction(L, "set_max_size", SetMaxSize);
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, "SharedBuffer");
+    lua_setfield(L, -2, "shared_buffer");
+    lua_pop(L, 1);
+}
 
-    // tas.shared_buffer.from_hex(hex_str) - Create buffer from hex string
-    sb["from_hex"] = [logPrefix](const std::string &hex_str) -> std::shared_ptr<SharedBuffer> {
-        try {
-            if (hex_str.size() % 2 != 0) {
-                throw sol::error("shared_buffer.from_hex: hex string must have even length");
-            }
+} // namespace
 
-            size_t size = hex_str.size() / 2;
-            auto buffer = SharedBuffer::Create(size);
+void LuaApi::RegisterSharedBufferApi(lua_State *state, ScriptContext *context) {
+    if (!state || !context) {
+        throw std::runtime_error("LuaApi::RegisterSharedBufferApi requires a valid Lua state and ScriptContext");
+    }
 
-            for (size_t i = 0; i < size; ++i) {
-                char high = hex_str[i * 2];
-                char low = hex_str[i * 2 + 1];
+    tas::lua::LuaStackGuard guard(state);
+    tas::lua::LuaUserdataRegistry<SharedBufferHandle>(state, kSharedBufferMt)
+        .Method("size", BufferSize)
+        .Method("read_u8", ReadU8)
+        .Method("write_u8", WriteU8)
+        .Method("read_u16", ReadU16)
+        .Method("write_u16", WriteU16)
+        .Method("read_u32", ReadU32)
+        .Method("write_u32", WriteU32)
+        .Method("read_i32", ReadI32)
+        .Method("write_i32", WriteI32)
+        .Method("read_f32", ReadF32)
+        .Method("write_f32", WriteF32)
+        .Method("read_f64", ReadF64)
+        .Method("write_f64", WriteF64)
+        .Method("read_string", ReadString)
+        .Method("write_string", WriteString)
+        .Method("write_string_z", WriteStringZ)
+        .Method("fill", Fill)
+        .Method("clone", Clone)
+        .Method("to_hex", ToHex)
+        .Method("to_table", ToTable)
+        .MetaMethod("__tostring", ToString);
 
-                auto hex_to_nibble = [](char c) -> uint8_t {
-                    if (c >= '0' && c <= '9') return c - '0';
-                    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-                    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-                    throw sol::error("shared_buffer.from_hex: invalid hex character");
-                };
-
-                uint8_t byte = (hex_to_nibble(high) << 4) | hex_to_nibble(low);
-                buffer->Data()[i] = byte;
-            }
-
-            return buffer;
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in shared_buffer.from_hex: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
-
-    // tas.shared_buffer.get_max_size() - Get maximum buffer size
-    sb["get_max_size"] = []() -> size_t {
-        return SharedBuffer::GetMaxSize();
-    };
-
-    // tas.shared_buffer.set_max_size(size) - Set maximum buffer size
-    sb["set_max_size"] = [logPrefix](size_t size) {
-        try {
-            SharedBuffer::SetMaxSize(size);
-            Log::Info("%s SharedBuffer max size set to %zu bytes", logPrefix.c_str(), size);
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in shared_buffer.set_max_size: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
+    RegisterFactoryTable(state);
 }

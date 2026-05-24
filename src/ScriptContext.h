@@ -1,11 +1,15 @@
 #pragma once
 
 #include <string>
+#include <map>
 #include <memory>
 #include <functional>
+#include <vector>
 
-#include <sol/sol.hpp>
-
+#include "GameEvents.h"
+#include "LuaRuntime/LuaFunction.h"
+#include "LuaRuntime/LuaState.h"
+#include "TASConstants.h"
 #include "ThreadOwnershipValidator.h"
 #include "ScriptContextTypes.h"
 
@@ -19,13 +23,15 @@ class InputSystem;
 class RecordPlayer;
 class GameInterface;
 class ScriptContextManager;
+class SavestateManager;
+class DeterminismVerifier;
 
 /**
  * @class ScriptContext
  * @brief An independent script execution context with its own Lua VM and scheduler.
  *
  * ScriptContext is designed to be nestable and isolated. Each context has:
- * - Its own Lua VM (sol::state)
+ * - Its own Lua VM (tas::lua::LuaState)
  * - Its own LuaScheduler for coroutine management
  * - Its own EventManager for event handling
  * - Its own execution state and priority
@@ -155,7 +161,8 @@ public:
      * @brief Gets the Lua state for direct access (used by LuaApi).
      * @return Reference to the Lua state.
      */
-    sol::state_view GetLuaState() { return sol::state_view(m_LuaState); }
+    tas::lua::LuaState &GetLuaState() { return m_LuaState; }
+    const tas::lua::LuaState &GetLuaState() const { return m_LuaState; }
 
     /**
      * @brief Gets the Lua scheduler for coroutine management.
@@ -198,6 +205,18 @@ public:
      * @return Pointer to the GameInterface, or nullptr if not available.
      */
     GameInterface *GetGameInterface() const;
+
+    /**
+     * @brief Gets the savestate manager from the service container.
+     * @return Pointer to the SavestateManager, or nullptr if not available.
+     */
+    SavestateManager *GetSavestateManager() const;
+
+    /**
+     * @brief Gets the determinism verifier from the service container.
+     * @return Pointer to the DeterminismVerifier, or nullptr if not available.
+     */
+    DeterminismVerifier *GetDeterminismVerifier() const;
 
     /**
      * @brief Sets a callback to be called when execution status changes.
@@ -272,13 +291,11 @@ public:
      */
     void SetSleepInterval(int interval) { m_SleepInterval = interval; }
 
-    /**
-     * @brief Fires a game event to any listening Lua scripts in this context.
-     * @param eventName The name of the event.
-     * @param args Optional arguments to pass to event handlers.
-     */
-    template <typename... Args>
-    void FireGameEvent(const std::string &eventName, Args... args);
+    size_t AddGameEventListener(GameEventType eventType, tas::lua::LuaFunction callback);
+    bool RemoveGameEventListener(size_t listenerId);
+    void ClearGameEventListeners();
+    bool HasGameEventListener(GameEventType eventType) const;
+    void DispatchGameEvent(const LuaGameEvent &event);
 
 private:
     /**
@@ -312,7 +329,7 @@ private:
     int m_Priority;
 
     // Lua execution environment (isolated)
-    sol::state m_LuaState;
+    tas::lua::LuaState m_LuaState;
     std::unique_ptr<LuaScheduler> m_Scheduler;
     std::unique_ptr<EventManager> m_EventManager;
     std::unique_ptr<InputSystem> m_InputSystem;
@@ -332,8 +349,15 @@ private:
 
     // Sleep/idle management
     bool m_Sleeping = false;
-    int m_SleepInterval = 8;        // Skip 8 frames when sleeping (configurable)
+    int m_SleepInterval = TASConstants::DefaultSleepInterval;
     int m_TicksSinceLastActive = 0; // Counter for sleep detection
+
+    struct GameEventListener {
+        size_t id = 0;
+        tas::lua::LuaFunction callback;
+    };
+    std::map<GameEventType, std::vector<GameEventListener>> m_GameEventListeners;
+    size_t m_NextGameEventListenerId = 0;
 
     // Thread safety enforcement
     mutable ThreadOwnershipValidator m_ThreadValidator{"ScriptContext"};

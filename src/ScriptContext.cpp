@@ -1,16 +1,86 @@
 #include "ScriptContext.h"
 
+#include <algorithm>
+
 #include "Logger.h"
+#include "TASConstants.h"
 #include "TASEngine.h"
 #include "TASProject.h"
 #include "LuaScheduler.h"
-#include "LuaApi.h"
+#include "LuaApi/LuaApi.h"
+#include "LuaRuntime/LuaProtectedCall.h"
+#include "LuaRuntime/LuaValue.h"
 #include "EventManager.h"
 #include "InputSystem.h"
 #include "ProjectManager.h"
+#include "RecordPlayer.h"
+#include "SavestateManager.h"
+#include "DeterminismVerifier.h"
 #include "ScriptContextManager.h"
+#include "ServiceContainer.h"
 #include "MessageBus.h"
 #include "SharedDataManager.h"
+
+namespace {
+
+void AddLuaPath(lua_State *state, const std::string &path) {
+    if (!state || path.empty()) {
+        return;
+    }
+
+    lua_getglobal(state, "package");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        return;
+    }
+
+    lua_getfield(state, -1, "path");
+    const char *currentPath = lua_tostring(state, -1);
+    std::string newPath = currentPath ? currentPath : "";
+    lua_pop(state, 1);
+
+    if (!newPath.empty()) {
+        newPath += ";";
+    }
+    newPath += path + "/?.lua;";
+    newPath += path + "/?/init.lua";
+
+    lua_pushlstring(state, newPath.data(), newPath.size());
+    lua_setfield(state, -2, "path");
+    lua_pop(state, 1);
+}
+
+tas::lua::LuaValue MakeGameEventValue(const LuaGameEvent &event) {
+    using tas::lua::LuaValue;
+
+    auto table = std::make_shared<LuaValue::Table>();
+    auto addString = [&](std::string key, std::string value) {
+        table->entries.push_back({LuaValue::Key{std::move(key)},
+                                  std::make_shared<LuaValue>(LuaValue::Storage{std::move(value)})});
+    };
+    auto addInteger = [&](std::string key, lua_Integer value) {
+        table->entries.push_back({LuaValue::Key{std::move(key)},
+                                  std::make_shared<LuaValue>(LuaValue::Storage{value})});
+    };
+
+    addInteger("type", static_cast<lua_Integer>(event.type));
+    addString("name", event.name);
+    addInteger("tick", static_cast<lua_Integer>(event.tick));
+
+    if (event.sector.has_value()) {
+        addInteger("sector", static_cast<lua_Integer>(*event.sector));
+    }
+    if (event.points.has_value()) {
+        addInteger("points", static_cast<lua_Integer>(*event.points));
+    }
+    if (event.lifeCount.has_value()) {
+        addInteger("life_count", static_cast<lua_Integer>(*event.lifeCount));
+    }
+
+    return LuaValue(LuaValue::Storage{table});
+}
+
+} // namespace
 
 ScriptContext::ScriptContext(TASEngine *engine, std::string name, ScriptContextType type, int priority)
     : m_Engine(engine), m_Name(std::move(name)), m_Type(type), m_Priority(priority) {
@@ -38,17 +108,7 @@ bool ScriptContext::Initialize() {
 
     try {
         // 1. Initialize Lua State (independent VM for this context)
-        m_LuaState.open_libraries(
-            sol::lib::base,
-            sol::lib::package,
-            sol::lib::coroutine,
-            sol::lib::string,
-            sol::lib::os,
-            sol::lib::math,
-            sol::lib::table,
-            sol::lib::debug,
-            sol::lib::io // Potentially restrict this for security later
-        );
+        m_LuaState.OpenStandardLibraries();
 
         // 2. Create Lua Scheduler (independent scheduler for this context)
         // Pass 'this' context for proper context isolation
@@ -59,13 +119,14 @@ bool ScriptContext::Initialize() {
 
         // 4. Create Input System (independent input system for this context)
         m_InputSystem = std::make_unique<InputSystem>();
+        m_InputSystem->SetEnabled(true);
 
-        // 5. Register Lua APIs for this context (multi-context mode)
-        // Uses context's local subsystems (InputSystem, Scheduler, EventManager)
+        // 5. Register Lua APIs and configure script resolution for this context.
         LuaApi::Register(this);
-
-        LuaApi::AddLuaPath(GetLuaState(), BML_TAS_PATH);
-        LuaApi::AddLuaPath(GetLuaState(), BML_TAS_PATH "lua");
+        lua_State *state = m_LuaState.Get();
+        AddLuaPath(state, TASConstants::DefaultBasePath);
+        std::string luaSubPath = std::string(TASConstants::DefaultBasePath) + "lua";
+        AddLuaPath(state, luaSubPath);
 
         // 6. Set default GC mode (Generational for TAS workloads)
         SetGCMode(LuaGCMode::Generational);
@@ -93,7 +154,7 @@ void ScriptContext::Shutdown() {
 
     try {
         // Clean up inter-context communication registrations
-        auto *contextManager = m_Engine->GetScriptContextManager();
+        auto *contextManager = GetScriptContextManager();
         if (contextManager) {
             // Remove all message handlers for this context
             auto *messageBus = contextManager->GetMessageBus();
@@ -123,6 +184,8 @@ void ScriptContext::Shutdown() {
             m_EventManager.reset();
         }
 
+        ClearGameEventListeners();
+
         // Shutdown scheduler
         if (m_Scheduler) {
             m_Scheduler->Clear();
@@ -133,8 +196,8 @@ void ScriptContext::Shutdown() {
         // This prevents any code from trying to use the context during Lua state destruction
         m_IsInitialized = false;
 
-        // Clean up Lua state (automatic with sol2)
-        m_LuaState = sol::state{};
+        // Recreate the Lua state after all registry refs owned by this context are gone.
+        m_LuaState = tas::lua::LuaState{};
 
         Log::Info("[%s] ScriptContext shutdown complete.", m_Name.c_str());
     } catch (const std::exception &e) {
@@ -156,56 +219,12 @@ bool ScriptContext::Reinitialize(const std::string &newName, int newPriority) {
               m_Name.c_str(), newName.c_str(), newPriority);
 
     try {
-        // 1. Clean up inter-context communication registrations
-        auto *contextManager = m_Engine->GetScriptContextManager();
-        if (contextManager) {
-            // Remove all message handlers for this context
-            auto *messageBus = contextManager->GetMessageBus();
-            if (messageBus) {
-                messageBus->RemoveAllHandlers(m_Name);
-            }
-
-            // Remove all shared data watches for this context
-            auto *sharedData = contextManager->GetSharedData();
-            if (sharedData) {
-                sharedData->UnwatchAll(m_Name);
-            }
-        }
-
-        // 2. Stop any running script execution
-        Stop();
-
-        // 3. Clear scheduler tasks (but keep the scheduler object)
-        if (m_Scheduler) {
-            m_Scheduler->Clear();
-        }
-
-        // 4. Clear event listeners (but keep the event manager object)
-        if (m_EventManager) {
-            m_EventManager->ClearListeners();
-        }
-
-        // 5. Reset input system (but keep the input system object)
-        if (m_InputSystem) {
-            m_InputSystem->Reset();
-        }
-
-        // 6. Reset sleep/idle state
-        m_Sleeping = false;
-        m_TicksSinceLastActive = 0;
-        m_IsPaused = false;
-
-        // 7. Force Lua garbage collection to clean up previous script's memory
-        lua_State *L = m_LuaState.lua_state();
-        if (L) {
-            lua_gc(L, LUA_GCCOLLECT, 0); // Full GC cycle
-        }
-
-        // 8. Update context identity
+        Shutdown();
         m_Name = newName;
         m_Priority = newPriority;
-
-        // Note: We preserve m_LuaState (expensive VM), registered APIs, GC mode, and m_IsInitialized
+        if (!Initialize()) {
+            return false;
+        }
 
         Log::Info("[%s] ScriptContext reinitialized successfully.", m_Name.c_str());
         return true;
@@ -229,8 +248,15 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
         return false;
     }
 
-    // Stop any currently running script
+    // Stop any currently running script and rebuild the Lua VM so reload cannot
+    // inherit globals, package.loaded entries, registry refs, or callbacks.
     Stop();
+    Shutdown();
+    if (!Initialize()) {
+        Log::Error("[%s] Failed to reset Lua VM before loading project '%s'.",
+                   m_Name.c_str(), project->GetName().c_str());
+        return false;
+    }
 
     try {
         // Prepare project for execution
@@ -253,27 +279,37 @@ bool ScriptContext::LoadAndExecute(TASProject *project) {
                   m_Name.c_str(), entryScriptPath.c_str());
 
         // Load and execute the main script file in the Lua VM
-        auto result = m_LuaState.safe_script_file(entryScriptPath, &sol::script_pass_on_error);
-        if (!result.valid()) {
-            sol::error err = result;
+        auto loadResult = m_LuaState.LoadFile(entryScriptPath);
+        if (loadResult.IsError()) {
+            Log::Error("[%s] Failed to load script: %s",
+                       m_Name.c_str(), loadResult.GetError().message.c_str());
+            CleanupCurrentProject();
+            return false;
+        }
+
+        lua_State *L = m_LuaState.Get();
+        auto execResult = tas::lua::ProtectedCall(L, 0, 0);
+        if (execResult.IsError()) {
             Log::Error("[%s] Failed to execute script: %s",
-                       m_Name.c_str(), err.what());
+                       m_Name.c_str(), execResult.GetError().message.c_str());
             CleanupCurrentProject();
             return false;
         }
 
         // The script should define a global 'main' function
-        sol::function mainFunc = m_LuaState["main"];
-        if (!mainFunc.valid()) {
+        lua_getglobal(L, "main");
+        if (!lua_isfunction(L, -1)) {
+            lua_pop(L, 1);
             Log::Error("[%s] 'main' function not found in entry script.",
                        m_Name.c_str());
             CleanupCurrentProject();
             return false;
         }
+        tas::lua::LuaFunction mainFunc = tas::lua::LuaFunction::FromStack(L, -1);
 
         // Start the main coroutine
         if (m_Scheduler) {
-            m_Scheduler->AddCoroutineTask(mainFunc);
+            m_Scheduler->AddCoroutineTask(std::move(mainFunc));
         }
 
         // Set execution state
@@ -312,6 +348,8 @@ void ScriptContext::Stop() {
         if (m_EventManager) {
             m_EventManager->ClearListeners();
         }
+
+        ClearGameEventListeners();
 
         // Clean up project resources
         CleanupCurrentProject();
@@ -412,29 +450,107 @@ bool ScriptContext::IsExecuting() const {
 }
 
 ScriptContextManager *ScriptContext::GetScriptContextManager() const {
-    return m_Engine->GetScriptContextManager();
+    return m_Engine->GetServiceProvider().Resolve<ScriptContextManager>();
 }
 
 size_t ScriptContext::GetCurrentTick() const {
     return m_Engine->GetCurrentTick();
 }
 
-template <typename... Args>
-void ScriptContext::FireGameEvent(const std::string &eventName, Args... args) {
-    if (!m_IsExecuting || !m_EventManager) {
+size_t ScriptContext::AddGameEventListener(GameEventType eventType, tas::lua::LuaFunction callback) {
+    m_ThreadValidator.AssertOwnership();
+
+    if (!callback.IsValid()) {
+        throw std::invalid_argument("events.on: callback must be a valid function");
+    }
+
+    auto &listeners = m_GameEventListeners[eventType];
+    const bool wasEmpty = listeners.empty();
+
+    const size_t listenerId = ++m_NextGameEventListenerId;
+    listeners.push_back(GameEventListener{listenerId, std::move(callback)});
+
+    if (wasEmpty) {
+        if (auto *contextManager = GetScriptContextManager()) {
+            contextManager->SubscribeToGameEvent(m_Name, eventType);
+        }
+    }
+
+    return listenerId;
+}
+
+bool ScriptContext::RemoveGameEventListener(size_t listenerId) {
+    m_ThreadValidator.AssertOwnership();
+
+    for (auto it = m_GameEventListeners.begin(); it != m_GameEventListeners.end(); ++it) {
+        auto &listeners = it->second;
+        auto listenerIt = std::remove_if(
+            listeners.begin(),
+            listeners.end(),
+            [listenerId](const GameEventListener &listener) {
+                return listener.id == listenerId;
+            });
+
+        if (listenerIt == listeners.end()) {
+            continue;
+        }
+
+        listeners.erase(listenerIt, listeners.end());
+        if (listeners.empty()) {
+            if (auto *contextManager = GetScriptContextManager()) {
+                contextManager->UnsubscribeFromGameEvent(m_Name, it->first);
+            }
+            m_GameEventListeners.erase(it);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+void ScriptContext::ClearGameEventListeners() {
+    m_ThreadValidator.AssertOwnership();
+
+    if (auto *contextManager = GetScriptContextManager()) {
+        contextManager->UnsubscribeFromAllGameEvents(m_Name);
+    }
+    m_GameEventListeners.clear();
+}
+
+bool ScriptContext::HasGameEventListener(GameEventType eventType) const {
+    auto it = m_GameEventListeners.find(eventType);
+    return it != m_GameEventListeners.end() && !it->second.empty();
+}
+
+void ScriptContext::DispatchGameEvent(const LuaGameEvent &event) {
+    if (!m_IsExecuting) {
+        return;
+    }
+
+    auto it = m_GameEventListeners.find(event.type);
+    if (it == m_GameEventListeners.end() || it->second.empty()) {
         return;
     }
 
     try {
-        m_EventManager->FireEvent(eventName, args...);
+        tas::lua::LuaValue eventValue = MakeGameEventValue(event);
+
+        for (const auto &listener : it->second) {
+            if (!listener.callback.IsValid()) {
+                continue;
+            }
+            auto result = listener.callback.Call(1, 0, [&](lua_State *state) {
+                eventValue.Push(state);
+            });
+            if (result.IsError()) {
+                Log::Error("[%s] Exception dispatching typed game event: %s",
+                           m_Name.c_str(), result.GetError().message.c_str());
+            }
+        }
     } catch (const std::exception &e) {
-        Log::Error("[%s] Exception firing game event to script: %s", m_Name.c_str(), e.what());
+        Log::Error("[%s] Exception dispatching typed game event: %s", m_Name.c_str(), e.what());
     }
 }
-
-// Explicit template instantiations for events used in TASEngine
-template void ScriptContext::FireGameEvent(const std::string &);
-template void ScriptContext::FireGameEvent(const std::string &, int);
 
 std::string ScriptContext::PrepareProjectForExecution(TASProject *project) {
     if (!project || !project->IsScriptProject()) {
@@ -443,7 +559,7 @@ std::string ScriptContext::PrepareProjectForExecution(TASProject *project) {
 
     // For zip projects, we need to prepare them for execution (extract if needed)
     if (project->IsZipProject()) {
-        auto *projectManager = m_Engine->GetProjectManager();
+        auto *projectManager = GetProjectManager();
         if (!projectManager) {
             Log::Error("[%s] ProjectManager not available for zip project preparation.",
                        m_Name.c_str());
@@ -475,8 +591,8 @@ void ScriptContext::CleanupCurrentProject() {
     }
 
     // Clean up temporary directories for zip projects
-    if (m_CurrentProject->IsZipProject() && m_Engine->GetProjectManager()) {
-        m_Engine->GetProjectManager()->CleanupProjectTempDirectory(m_CurrentProject);
+    if (m_CurrentProject->IsZipProject() && GetProjectManager()) {
+        GetProjectManager()->CleanupProjectTempDirectory(m_CurrentProject);
         m_CurrentProject->SetExecutionBasePath(""); // Clear execution base path
     }
 
@@ -485,15 +601,23 @@ void ScriptContext::CleanupCurrentProject() {
 }
 
 ProjectManager *ScriptContext::GetProjectManager() const {
-    return m_Engine->GetProjectManager();
+    return m_Engine->GetServiceProvider().Resolve<ProjectManager>();
 }
 
 RecordPlayer *ScriptContext::GetRecordPlayer() const {
-    return m_Engine->GetRecordPlayer();
+    return m_Engine->GetServiceProvider().Resolve<RecordPlayer>();
 }
 
 GameInterface *ScriptContext::GetGameInterface() const {
     return m_Engine->GetGameInterface();
+}
+
+SavestateManager *ScriptContext::GetSavestateManager() const {
+    return m_Engine->GetServiceProvider().Resolve<SavestateManager>();
+}
+
+DeterminismVerifier *ScriptContext::GetDeterminismVerifier() const {
+    return m_Engine->GetServiceProvider().Resolve<DeterminismVerifier>();
 }
 
 // ============================================================================
@@ -501,13 +625,13 @@ GameInterface *ScriptContext::GetGameInterface() const {
 // ============================================================================
 
 bool ScriptContext::SetGCMode(LuaGCMode mode) {
-    if (!m_IsInitialized) {
+    if (!m_IsInitialized && !m_LuaState.Get()) {
         Log::Warn("[%s] Cannot set GC mode: context not initialized.", m_Name.c_str());
         return false;
     }
 
     try {
-        lua_State *L = m_LuaState.lua_state();
+        lua_State *L = m_LuaState.Get();
 
         // STACK SAFETY: lua_gc() does not manipulate the Lua stack, so no stack guard needed.
         // However, we record the stack top for debug validation.
@@ -575,7 +699,7 @@ size_t ScriptContext::GetLuaMemoryBytes() const {
 
     try {
         // Get memory usage via collectgarbage("count") which returns KB
-        lua_State *L = m_LuaState.lua_state();
+        lua_State *L = m_LuaState.Get();
         int kb = lua_gc(L, LUA_GCCOUNT, 0);
         return static_cast<size_t>(kb) * 1024;
     } catch (const std::exception &) {
@@ -589,7 +713,7 @@ double ScriptContext::GetLuaMemoryKB() const {
     }
 
     try {
-        lua_State *L = m_LuaState.lua_state();
+        lua_State *L = m_LuaState.Get();
         int kb = lua_gc(L, LUA_GCCOUNT, 0);
         return static_cast<double>(kb);
     } catch (const std::exception &) {

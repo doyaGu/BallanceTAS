@@ -7,7 +7,7 @@
  * This header is intentionally lightweight — it contains only enum definitions
  * used across module boundaries (e.g., by ScriptContextManager, ScriptContext,
  * LuaApi bindings) so that consumers don't need to include the full
- * ScriptContext.h and its heavy sol2 dependency.
+ * ScriptContext.h and its runtime dependencies.
  */
 
 /**

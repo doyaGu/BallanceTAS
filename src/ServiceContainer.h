@@ -238,6 +238,16 @@ public:
         return static_cast<T *>(it->second->Resolve());
     }
 
+    template <typename T>
+    T *Resolve() const {
+        auto it = m_Services.find(std::type_index(typeid(T)));
+        if (it == m_Services.end()) {
+            return nullptr;
+        }
+
+        return static_cast<T *>(it->second->Resolve());
+    }
+
     /**
      * @brief Resolve a service with Result<T> error handling
      * @tparam T Service type
@@ -329,6 +339,11 @@ public:
 
     template <typename T>
     T *Resolve() {
+        return m_Container->Resolve<T>();
+    }
+
+    template <typename T>
+    T *Resolve() const {
         return m_Container->Resolve<T>();
     }
 

@@ -1,6 +1,6 @@
 #include "GameInterface.h"
 
-#include <sol/sol.hpp>
+#include <stdexcept>
 
 #include "Logger.h"
 #include "BallanceTAS.h"
@@ -101,6 +101,10 @@ void GameInterface::AcquireKeyBindings() {
 // ========================================
 
 void GameInterface::ResetPhysicsTime() {
+    ResetPhysicsTime(m_TimeManager ? m_TimeManager->GetLastDeltaTime() : 1000.0f / 132.0f);
+}
+
+void GameInterface::ResetPhysicsTime(float deltaTimeMs) {
     // Reset physics time in order to sync with TAS records
     // IVP_Environment
     auto *env = m_IpionManager->GetEnvironment();
@@ -129,82 +133,15 @@ void GameInterface::ResetPhysicsTime() {
 #endif
     time_of_next_psi = time_of_last_psi + 1.0 / 66;
 
-    m_IpionManager->SetDeltaTime(m_TimeManager->GetLastDeltaTime());
+    if (m_TimeManager) {
+        m_TimeManager->SetLastDeltaTime(deltaTimeMs);
+    }
+    m_IpionManager->SetDeltaTime(deltaTimeMs);
 }
 
 void GameInterface::SetPhysicsTimeFactor(float factor) {
     // Reset physics time factor in case it was changed
     m_IpionManager->SetPhysicsTimeFactor(factor * 0.001f);
-}
-
-// ========================================
-// RNG State Management
-// ========================================
-
-RNGState GameInterface::GetRNGState() {
-    // Create and return current RNG state snapshot
-    // If stack is not empty, return the top; otherwise create a new state
-    if (!m_RNGStateStack.empty()) {
-        return m_RNGStateStack.top();
-    }
-
-    // Create current state without incrementing ID
-    RNGState state = {
-        m_NextRNGStateID,
-        m_IpionManager->GetEnvironment()->next_movement_check,
-        ivp_srand_read(),
-        qh_srand_read()
-    };
-    return state;
-}
-
-void GameInterface::PushRNGState() {
-    // Save current RNG state to stack and increment ID for next state
-    RNGState state = {
-        m_NextRNGStateID++,
-        m_IpionManager->GetEnvironment()->next_movement_check,
-        ivp_srand_read(),
-        qh_srand_read()
-    };
-    m_RNGStateStack.push(state);
-}
-
-void GameInterface::PopRNGState() {
-    // Restore RNG state from stack
-    if (m_RNGStateStack.empty()) {
-        throw std::runtime_error("RNG state stack underflow: cannot pop from empty stack.");
-    }
-
-    RNGState state = m_RNGStateStack.top();
-    m_RNGStateStack.pop();
-
-    // Restore physics and RNG states
-    m_IpionManager->GetEnvironment()->next_movement_check = state.next_movement_check;
-    ivp_srand(state.ivp_seed);
-    qh_srand(state.qh_seed);
-}
-
-void GameInterface::ClearRNGStateStack() {
-    // Clear all saved RNG states from the stack
-    while (!m_RNGStateStack.empty()) {
-        m_RNGStateStack.pop();
-    }
-}
-
-size_t GameInterface::GetRNGStateStackDepth() const {
-    // Return the number of saved RNG states in the stack
-    return m_RNGStateStack.size();
-}
-
-bool GameInterface::IsRNGStateStackEmpty() const {
-    // Check if there are any saved RNG states
-    return m_RNGStateStack.empty();
-}
-
-void GameInterface::ResetRNGStateID() {
-    // Reset the RNG state ID counter to 1
-    // Note: This should typically be called when starting a new recording session
-    m_NextRNGStateID = 1;
 }
 
 // ========================================
@@ -271,6 +208,9 @@ CK3dEntity *GameInterface::GetObjectByName(const std::string &name) const {
 
 CK3dEntity *GameInterface::GetObjectByID(int id) const {
     CKObject *obj = m_CKContext->GetObject(id);
+    if (!obj) {
+        return nullptr;
+    }
     if (CKIsChildClassOf(obj,CKCID_3DENTITY)) {
         return static_cast<CK3dEntity *>(obj);
     }

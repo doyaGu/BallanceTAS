@@ -2,22 +2,22 @@
 
 #include <CKAll.h>
 #include <string>
-#include <stack>
 #include <functional>
 #include <optional>
 
 #include <BML/InputHook.h>
 
 #include "physics_RT.h"
+#include "IGameControl.h"
+#include "IGameQuery.h"
+#include "IInputAccess.h"
 #include "IPhysicsProvider.h"
 #include "IObjectProvider.h"
-#include "IRNGProvider.h"
 #include "IGameStateProvider.h"
 #include "ITimeProvider.h"
 
 // Forward declarations — full headers deferred to GameInterface.cpp
 enum class UIMode;
-namespace sol { class state; }
 
 // Forward declarations
 class BallanceTAS;
@@ -25,24 +25,19 @@ class CKIpionManager;
 class UIManager;
 class IBML;
 
-struct RNGState {
-    short id;
-    short next_movement_check;
-    int ivp_seed;
-    int qh_seed;
-};
-
 /**
  * @class GameInterface
  * @brief Concrete implementation of all game-facing ISP interfaces.
  *
- * Implements IPhysicsProvider, IObjectProvider, IRNGProvider,
- * IGameStateProvider, and ITimeProvider. Components should depend
+ * Implements IPhysicsProvider, IObjectProvider, IGameStateProvider,
+ * and ITimeProvider. Components should depend
  * on the narrow interface they need rather than this full class.
  */
 class GameInterface : public IPhysicsProvider,
                       public IObjectProvider,
-                      public IRNGProvider,
+                      public IGameQuery,
+                      public IGameControl,
+                      public IInputAccess,
                       public IGameStateProvider,
                       public ITimeProvider {
 public:
@@ -78,18 +73,8 @@ public:
     // Physics & Time Management
     // ========================================
     void ResetPhysicsTime() override;
+    void ResetPhysicsTime(float deltaTimeMs);
     void SetPhysicsTimeFactor(float factor = 1.0f) override;
-
-    // ========================================
-    // RNG State Management
-    // ========================================
-    RNGState GetRNGState() override;
-    void PushRNGState() override;
-    void PopRNGState() override;
-    void ClearRNGStateStack() override;
-    size_t GetRNGStateStackDepth() const override;
-    bool IsRNGStateStackEmpty() const override;
-    void ResetRNGStateID() override;
 
     // ========================================
     // Input Management
@@ -236,12 +221,6 @@ private:
     CKIpionManager *m_IpionManager = nullptr;
 
     // ========================================
-    // RNG State
-    // ========================================
-    short m_NextRNGStateID = 1;
-    std::stack<RNGState> m_RNGStateStack;
-
-    // ========================================
     // Game Data
     // ========================================
     std::string m_MapName;
@@ -274,8 +253,4 @@ private:
     CKBehavior *m_ExitStart = nullptr;
     CKBehavior *m_ExitMain = nullptr;
 
-    // ========================================
-    // Lua State
-    // ========================================
-    sol::state *m_LuaState = nullptr;
 };

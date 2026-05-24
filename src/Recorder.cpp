@@ -12,6 +12,7 @@
 #include "TASEngine.h"
 #include "GameInterface.h"
 #include "ScriptGenerator.h"
+#include "ServiceContainer.h"
 
 Recorder::Recorder(TASEngine *engine)
     : m_Engine(engine) {
@@ -125,7 +126,7 @@ bool Recorder::GenerateScript() {
 
     try {
         // Get script generator from engine
-        auto *scriptGenerator = m_Engine->GetScriptGenerator();
+        auto *scriptGenerator = m_Engine->GetServiceProvider().Resolve<ScriptGenerator>();
         if (!scriptGenerator) {
             Log::Error("ScriptGenerator not available.");
             return false;

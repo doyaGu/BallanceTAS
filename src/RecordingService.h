@@ -11,9 +11,9 @@
 class ServiceProvider;
 class Recorder;
 class InputSystem;
+class IGameControl;
 class GameInterface;
 struct FrameData;
-struct StartLevelEvent;
 
 /**
  * @struct RecordingResult
@@ -31,8 +31,8 @@ struct RecordingResult {
  * Replaces: RecordingController + StandardRecorder strategy + IRecordingStrategy.
  *
  * Uses HookManager for per-frame callbacks (RAII-guarded) and directly drives
- * the Recorder subsystem from the ServiceContainer. Hook guards are released on
- * stop or destruction, so callbacks never leak.
+ * the Recorder subsystem. Hook guards are released on stop or destruction, so
+ * callbacks never leak.
  *
  * The state machine owns pending/active truth. This service is an execution
  * primitive: prepare, activate, stop, and clean up.
@@ -46,22 +46,10 @@ public:
     RecordingService &operator=(const RecordingService &) = delete;
 
     /**
-     * @brief Wire the service to the EventBus so it can react to level-start.
-     * @param bus  The application-wide EventBus. Pointer must outlive this service.
-     */
-    void SetEventBus(EventBus *bus);
-
-    /**
-     * @brief Wire the service to the HookManager for per-frame tick callbacks.
-     * @param hookMgr  The application-wide HookManager. Pointer must outlive this service.
-     */
-    void SetHookManager(HookManager *hookMgr);
-
-    /**
      * @brief Begin a recording session.
      *
      * If a level is not yet loaded the caller should keep the state machine in
-     * PendingRecord; when StartLevelEvent fires, call ActivateRecording().
+     * PendingRecord; when PreLoadLevelEvent fires, call ActivateRecording().
      *
      * @param useValidation  If true, capture additional physics data per frame.
      * @return Ok on success, Error if preconditions aren't met.
@@ -72,7 +60,7 @@ public:
      * @brief Activate a pending recording (called when the level actually loads).
      *
      * Sets up hook callbacks and starts the Recorder. Typically invoked in
-     * response to a StartLevelEvent.
+     * response to a PreLoadLevelEvent so recording aligns with playback.
      */
     Result<void> ActivateRecording();
 
@@ -99,13 +87,12 @@ private:
     void RemoveHookCallbacks();
     void SetupInputSystem();
     void CleanupInputSystem();
-    ServiceProvider *m_ServiceProvider;
+    ServiceProvider *m_ServiceProvider = nullptr;
     EventBus *m_EventBus = nullptr;
     HookManager *m_HookManager = nullptr;
-
-    // Cached subsystem pointers (ServiceContainer owns the objects)
     Recorder *m_Recorder = nullptr;
     InputSystem *m_InputSystem = nullptr;
+    IGameControl *m_GameControl = nullptr;
     GameInterface *m_GameInterface = nullptr;
 
     // State

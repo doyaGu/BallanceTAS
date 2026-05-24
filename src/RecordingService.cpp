@@ -5,11 +5,11 @@
 
 #include "RecordingService.h"
 
-#include "EventBus.h"
 #include "ServiceContainer.h"
+#include "GameInterface.h"
+#include "IGameControl.h"
 #include "Recorder.h"
 #include "InputSystem.h"
-#include "GameInterface.h"
 #include "Logger.h"
 
 #include <CKInputManager.h>
@@ -21,8 +21,11 @@ RecordingService::RecordingService(ServiceProvider *provider)
         throw std::invalid_argument("ServiceProvider cannot be null");
     }
 
+    m_EventBus = m_ServiceProvider->Resolve<EventBus>();
+    m_HookManager = m_ServiceProvider->Resolve<HookManager>();
     m_Recorder = m_ServiceProvider->Resolve<Recorder>();
     m_InputSystem = m_ServiceProvider->Resolve<InputSystem>();
+    m_GameControl = m_ServiceProvider->Resolve<IGameControl>();
     m_GameInterface = m_ServiceProvider->Resolve<GameInterface>();
 }
 
@@ -32,14 +35,6 @@ RecordingService::~RecordingService() {
     }
 }
 
-void RecordingService::SetEventBus(EventBus *bus) {
-    m_EventBus = bus;
-}
-
-void RecordingService::SetHookManager(HookManager *hookMgr) {
-    m_HookManager = hookMgr;
-}
-
 Result<void> RecordingService::PrepareRecording(bool useValidation) {
     if (m_IsRecording) {
         return Result<void>::Error("Already recording", "recording_service");
@@ -47,10 +42,6 @@ Result<void> RecordingService::PrepareRecording(bool useValidation) {
     if (m_IsPrepared) {
         return Result<void>::Error("Recording already prepared", "recording_service");
     }
-    if (!m_Recorder) {
-        return Result<void>::Error("Recorder subsystem not available", "recording_service");
-    }
-
     m_UseValidation = useValidation;
     m_IsPrepared = true;
     m_CurrentTick = 0;
@@ -66,13 +57,7 @@ Result<void> RecordingService::ActivateRecording() {
     if (!m_IsPrepared) {
         return Result<void>::Error("Recording is not prepared", "recording_service");
     }
-    if (!m_Recorder) {
-        return Result<void>::Error("Recorder subsystem not available", "recording_service");
-    }
-
-    if (m_GameInterface) {
-        m_GameInterface->AcquireKeyBindings();
-    }
+    m_GameControl->AcquireKeyBindings();
 
     SetupInputSystem();
     m_Recorder->Start();
@@ -101,10 +86,7 @@ Result<RecordingResult> RecordingService::StopRecordingGraceful() {
 
     RemoveHookCallbacks();
 
-    std::vector<FrameData> frames;
-    if (m_Recorder) {
-        frames = m_Recorder->Stop();
-    }
+    std::vector<FrameData> frames = m_Recorder->Stop();
 
     CleanupInputSystem();
 
@@ -124,7 +106,7 @@ Result<RecordingResult> RecordingService::StopRecordingGraceful() {
 void RecordingService::StopRecordingImmediate() {
     RemoveHookCallbacks();
 
-    if (m_Recorder && m_Recorder->IsRecording()) {
+    if (m_Recorder->IsRecording()) {
         m_Recorder->SetAutoGenerate(false);
         m_Recorder->Stop();
     }
@@ -137,18 +119,13 @@ void RecordingService::StopRecordingImmediate() {
 }
 
 size_t RecordingService::GetFrameCount() const {
-    return m_Recorder ? m_Recorder->GetTotalFrames() : 0;
+    return m_Recorder->GetTotalFrames();
 }
 
 void RecordingService::InstallHookCallbacks() {
-    if (!m_HookManager) {
-        Log::Warn("RecordingService: No HookManager - callbacks not installed.");
-        return;
-    }
-
     m_PostTickGuard = m_HookManager->RegisterPostTickCallback(
         [this](CKTimeManager *tm) {
-            if (!m_IsRecording || !m_Recorder) {
+            if (!m_IsRecording) {
                 return;
             }
             tm->SetLastDeltaTime(m_Recorder->GetDeltaTime());
@@ -156,7 +133,7 @@ void RecordingService::InstallHookCallbacks() {
 
     m_PostInputGuard = m_HookManager->RegisterPostInputCallback(
         [this](CKInputManager *im) {
-            if (!m_IsRecording || !m_Recorder) {
+            if (!m_IsRecording) {
                 return;
             }
             m_Recorder->Tick(m_CurrentTick, im->GetKeyboardState());
@@ -170,15 +147,11 @@ void RecordingService::RemoveHookCallbacks() {
 }
 
 void RecordingService::SetupInputSystem() {
-    if (m_InputSystem) {
-        m_InputSystem->Reset();
-        m_InputSystem->SetEnabled(false);
-    }
+    m_InputSystem->Reset();
+    m_InputSystem->SetEnabled(false);
 }
 
 void RecordingService::CleanupInputSystem() {
-    if (m_InputSystem) {
-        m_InputSystem->Reset();
-        m_InputSystem->SetEnabled(false);
-    }
+    m_InputSystem->Reset();
+    m_InputSystem->SetEnabled(false);
 }

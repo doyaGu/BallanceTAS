@@ -1,282 +1,204 @@
 #include "LuaApi.h"
 
-#include <stdexcept>
-#include <chrono>
+#include "../LuaRuntime/LuaStackGuard.h"
 
-#include <fmt/format.h>
-#include <fmt/args.h>
-
-#include "Logger.h"
-#include "TASEngine.h"
 #include "ScriptContext.h"
 
-// ===================================================================
-//  GC (Garbage Collection) API Registration
-// ===================================================================
+#include <cstring>
 
-void LuaApi::RegisterGCApi(sol::table &tas, ScriptContext *context) {
+namespace {
+
+ScriptContext *GetContext(lua_State *L) {
+    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+}
+
+void SetGCFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(L, context);
+    lua_pushcclosure(L, function, 1);
+    lua_setfield(L, -2, name);
+}
+
+const char *GCModeName(LuaGCMode mode) {
+    return mode == LuaGCMode::Generational ? "generational" : "incremental";
+}
+
+int Collect(lua_State *L) {
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    return 0;
+}
+
+int Stop(lua_State *L) {
+    lua_gc(L, LUA_GCSTOP, 0);
+    return 0;
+}
+
+int Restart(lua_State *L) {
+    lua_gc(L, LUA_GCRESTART, 0);
+    return 0;
+}
+
+int Step(lua_State *L) {
+    const int stepSize = lua_gettop(L) >= 1 && !lua_isnil(L, 1) ? static_cast<int>(luaL_checkinteger(L, 1)) : 1;
+    if (stepSize < 0) {
+        return luaL_error(L, "gc.step: step_size must be non-negative");
+    }
+    lua_pushboolean(L, lua_gc(L, LUA_GCSTEP, stepSize) != 0);
+    return 1;
+}
+
+int SetMode(lua_State *L) {
+    auto *context = GetContext(L);
     if (!context) {
-        throw std::runtime_error("LuaApi::RegisterGCApi requires a valid ScriptContext");
+        return luaL_error(L, "gc.set_mode: context unavailable");
     }
 
-    std::string logPrefix = "[" + context->GetName() + "]";
+    const char *mode = luaL_checkstring(L, 1);
+    if (std::strcmp(mode, "generational") == 0) {
+        lua_pushboolean(L, context->SetGCMode(LuaGCMode::Generational));
+        return 1;
+    }
+    if (std::strcmp(mode, "incremental") == 0) {
+        lua_pushboolean(L, context->SetGCMode(LuaGCMode::Incremental));
+        return 1;
+    }
+    return luaL_error(L, "gc.set_mode: mode must be 'generational' or 'incremental'");
+}
 
-    // Create nested 'gc' table
-    sol::table gc = tas["gc"] = tas.create();
+int GetMode(lua_State *L) {
+    auto *context = GetContext(L);
+    lua_pushstring(L, context ? GCModeName(context->GetGCMode()) : "incremental");
+    return 1;
+}
 
-    // --- GC Control APIs ---
+int Tune(lua_State *L) {
+    if (lua_gettop(L) != 1 || !lua_istable(L, 1)) {
+        return luaL_error(L, "gc.tune(params): expected table");
+    }
 
-    // tas.gc.collect() - Perform a full garbage collection cycle
-    gc["collect"] = [context, logPrefix]() {
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
-            lua_gc(L, LUA_GCCOLLECT, 0);
-            Log::Info("%s Full GC cycle completed.", logPrefix.c_str());
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in gc.collect: %s", logPrefix.c_str(), e.what());
-            throw;
+    lua_newtable(L);
+
+    lua_getfield(L, 1, "pause");
+    if (!lua_isnil(L, -1)) {
+        const int value = static_cast<int>(luaL_checkinteger(L, -1));
+        if (value < 0) {
+            return luaL_error(L, "gc.tune: pause must be non-negative");
         }
-    };
-
-    // tas.gc.stop() - Stop automatic garbage collection
-    gc["stop"] = [context, logPrefix]() {
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
-            lua_gc(L, LUA_GCSTOP, 0);
-            Log::Info("%s GC stopped.", logPrefix.c_str());
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in gc.stop: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
-
-    // tas.gc.restart() - Restart automatic garbage collection
-    gc["restart"] = [context, logPrefix]() {
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
-            lua_gc(L, LUA_GCRESTART, 0);
-            Log::Info("%s GC restarted.", logPrefix.c_str());
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in gc.restart: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
-
-    // tas.gc.step(step_size) - Perform an incremental GC step
-    // step_size: Amount of work to perform (in KB for Lua 5.4+, arbitrary units for 5.3)
-    gc["step"] = [context, logPrefix](sol::optional<int> stepSize) {
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
-            int size = stepSize.value_or(1); // Default 1KB step
-            if (size < 0) {
-                throw sol::error("gc.step: step_size must be non-negative");
-            }
-
-            // LUA_GCSTEP performs a single incremental step
-            // Return value: 1 if GC cycle completed, 0 otherwise
-            int completed = lua_gc(L, LUA_GCSTEP, size);
-
-            if (completed) {
-                Log::Info("%s GC step completed a full cycle.", logPrefix.c_str());
-            }
-
-            return completed != 0;
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in gc.step: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
-
-    // --- GC Mode APIs (Lua 5.4+) ---
-
-    // tas.gc.set_mode(mode) - Set GC mode ("generational" or "incremental")
-    gc["set_mode"] = [context, logPrefix](const std::string &mode) {
-        try {
-#if LUA_VERSION_NUM >= 504
-            lua_State *L = context->GetLuaState().lua_state();
-
-            if (mode == "generational") {
-                lua_gc(L, LUA_GCGEN, 0, 0);
-                Log::Info("%s GC mode set to Generational.", logPrefix.c_str());
-                return true;
-            } else if (mode == "incremental") {
-                lua_gc(L, LUA_GCINC, 0, 0, 0);
-                Log::Info("%s GC mode set to Incremental.", logPrefix.c_str());
-                return true;
-            } else {
-                throw sol::error("gc.set_mode: mode must be 'generational' or 'incremental'");
-            }
+#if defined(LUA_GCPARAM)
+        const int old = lua_gc(L, LUA_GCPARAM, LUA_GCPPAUSE, value);
 #else
-            Log::Warn("%s gc.set_mode: Lua version < 5.4, only incremental mode available.", logPrefix.c_str());
-            return false;
+        const int old = lua_gc(L, LUA_GCSETPAUSE, value);
 #endif
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in gc.set_mode: %s", logPrefix.c_str(), e.what());
-            throw;
+        lua_pushinteger(L, old);
+        lua_setfield(L, -3, "old_pause");
+    }
+    lua_pop(L, 1);
+
+    lua_getfield(L, 1, "stepmul");
+    if (!lua_isnil(L, -1)) {
+        const int value = static_cast<int>(luaL_checkinteger(L, -1));
+        if (value < 0) {
+            return luaL_error(L, "gc.tune: stepmul must be non-negative");
         }
-    };
-
-    // tas.gc.get_mode() - Get current GC mode
-    gc["get_mode"] = [context]() -> std::string {
-        LuaGCMode mode = context->GetGCMode();
-        return mode == LuaGCMode::Generational ? "generational" : "incremental";
-    };
-
-    // --- GC Tuning APIs ---
-
-    // tas.gc.tune(params) - Tune GC parameters
-    // params: table with optional keys: pause, stepmul, minormul, majormul
-    gc["tune"] = [context, logPrefix](sol::table params) {
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
-            sol::table result = context->GetLuaState().create_table();
-
-#if LUA_VERSION_NUM >= 504
-            // Lua 5.4+ parameters
-
-            // pause: How long to wait before starting a new GC cycle (percentage)
-            // Default: 200 (waits until memory doubles)
-            if (sol::optional<int> pause = params["pause"]) {
-                int value = pause.value();
-                if (value < 0) {
-                    throw sol::error("gc.tune: pause must be non-negative");
-                }
-                int oldPause = lua_gc(L, LUA_GCSETPAUSE, value);
-                result["old_pause"] = oldPause;
-                Log::Info("%s GC pause set to %d%% (was %d%%)", logPrefix.c_str(), value, oldPause);
-            }
-
-            // stepmul: GC speed multiplier (percentage)
-            // Default: 200 (GC runs 2x faster than memory allocation)
-            if (sol::optional<int> stepmul = params["stepmul"]) {
-                int value = stepmul.value();
-                if (value < 0) {
-                    throw sol::error("gc.tune: stepmul must be non-negative");
-                }
-                int oldStepmul = lua_gc(L, LUA_GCSETSTEPMUL, value);
-                result["old_stepmul"] = oldStepmul;
-                Log::Info("%s GC stepmul set to %d%% (was %d%%)", logPrefix.c_str(), value, oldStepmul);
-            }
-
-            // Generational GC parameters (Lua 5.4+)
-            if (sol::optional<int> minormul = params["minormul"]) {
-                int value = minormul.value();
-                if (value < 0) {
-                    throw sol::error("gc.tune: minormul must be non-negative");
-                }
-                // minormul: Minor collection multiplier
-                lua_gc(L, LUA_GCGEN, value, 0);
-                Log::Info("%s GC minormul set to %d%%", logPrefix.c_str(), value);
-            }
-
-            if (sol::optional<int> majormul = params["majormul"]) {
-                int value = majormul.value();
-                if (value < 0) {
-                    throw sol::error("gc.tune: majormul must be non-negative");
-                }
-                // majormul: Major collection multiplier
-                lua_gc(L, LUA_GCGEN, 0, value);
-                Log::Info("%s GC majormul set to %d%%", logPrefix.c_str(), value);
-            }
+#if defined(LUA_GCPARAM)
+        const int old = lua_gc(L, LUA_GCPARAM, LUA_GCPSTEPMUL, value);
 #else
-            // Lua 5.3 parameters
-            if (sol::optional<int> pause = params["pause"]) {
-                int value = pause.value();
-                if (value < 0) {
-                    throw sol::error("gc.tune: pause must be non-negative");
-                }
-                int oldPause = lua_gc(L, LUA_GCSETPAUSE, value);
-                result["old_pause"] = oldPause;
-            }
-
-            if (sol::optional<int> stepmul = params["stepmul"]) {
-                int value = stepmul.value();
-                if (value < 0) {
-                    throw sol::error("gc.tune: stepmul must be non-negative");
-                }
-                int oldStepmul = lua_gc(L, LUA_GCSETSTEPMUL, value);
-                result["old_stepmul"] = oldStepmul;
-            }
-
-            // minormul/majormul not available in Lua 5.3
-            if (params["minormul"].valid() || params["majormul"].valid()) {
-                Log::Warn("%s gc.tune: minormul/majormul require Lua 5.4+", logPrefix.c_str());
-            }
+        const int old = lua_gc(L, LUA_GCSETSTEPMUL, value);
 #endif
+        lua_pushinteger(L, old);
+        lua_setfield(L, -3, "old_stepmul");
+    }
+    lua_pop(L, 1);
 
-            return result;
-        } catch (const std::exception &e) {
-            Log::Error("%s Error in gc.tune: %s", logPrefix.c_str(), e.what());
-            throw;
-        }
-    };
+    return 1;
+}
 
-    // --- GC Metrics/Stats APIs ---
+int MemoryKB(lua_State *L) {
+    auto *context = GetContext(L);
+    lua_pushnumber(L, context ? context->GetLuaMemoryKB() : 0.0);
+    return 1;
+}
 
-    // tas.gc.stats() - Get detailed GC statistics
-    gc["stats"] = [context](sol::this_state s) -> sol::table {
-        sol::state_view lua(s);
-        sol::table stats = lua.create_table();
+int MemoryBytes(lua_State *L) {
+    auto *context = GetContext(L);
+    lua_pushinteger(L, context ? static_cast<lua_Integer>(context->GetLuaMemoryBytes()) : 0);
+    return 1;
+}
 
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
-
-            // Memory usage in KB
-            int memKB = lua_gc(L, LUA_GCCOUNT, 0);
-            int memBytes = lua_gc(L, LUA_GCCOUNTB, 0); // Remainder bytes
-
-            stats["memory_kb"] = static_cast<double>(memKB) + (static_cast<double>(memBytes) / 1024.0);
-            stats["memory_bytes"] = (memKB * 1024) + memBytes;
-
-            // GC mode
-            LuaGCMode mode = context->GetGCMode();
-            stats["mode"] = mode == LuaGCMode::Generational ? "generational" : "incremental";
-
-            // Check if GC is running
+int IsRunning(lua_State *L) {
 #if LUA_VERSION_NUM >= 502
-            stats["running"] = lua_gc(L, LUA_GCISRUNNING, 0) != 0;
+    lua_pushboolean(L, lua_gc(L, LUA_GCISRUNNING, 0) != 0);
 #else
-            stats["running"] = true; // Assume running for Lua 5.1
+    lua_pushboolean(L, 1);
 #endif
+    return 1;
+}
 
-            // Context info
-            stats["context_name"] = context->GetName();
-            stats["context_type"] = [type = context->GetType()]() {
-                switch (type) {
-                case ScriptContextType::Global: return "global";
-                case ScriptContextType::Level: return "level";
-                case ScriptContextType::Custom: return "custom";
-                default: return "unknown";
-                }
-            }();
-        } catch (const std::exception &e) {
-            Log::Error("Error in gc.stats: %s", e.what());
-        }
+int Stats(lua_State *L) {
+    auto *context = GetContext(L);
+    const int memoryKB = lua_gc(L, LUA_GCCOUNT, 0);
+    const int memoryBytesRemainder = lua_gc(L, LUA_GCCOUNTB, 0);
 
-        return stats;
-    };
-
-    // tas.gc.get_memory_kb() - Get current memory usage in KB (simple accessor)
-    gc["get_memory_kb"] = [context]() -> double {
-        return context->GetLuaMemoryKB();
-    };
-
-    // tas.gc.get_memory_bytes() - Get current memory usage in bytes
-    gc["get_memory_bytes"] = [context]() -> size_t {
-        return context->GetLuaMemoryBytes();
-    };
-
-    // tas.gc.is_running() - Check if GC is currently running
-    gc["is_running"] = [context]() -> bool {
-        try {
-            lua_State *L = context->GetLuaState().lua_state();
+    lua_newtable(L);
+    lua_pushnumber(L, static_cast<double>(memoryKB) + static_cast<double>(memoryBytesRemainder) / 1024.0);
+    lua_setfield(L, -2, "memory_kb");
+    lua_pushinteger(L, static_cast<lua_Integer>(memoryKB) * 1024 + memoryBytesRemainder);
+    lua_setfield(L, -2, "memory_bytes");
+    lua_pushstring(L, context ? GCModeName(context->GetGCMode()) : "incremental");
+    lua_setfield(L, -2, "mode");
 #if LUA_VERSION_NUM >= 502
-            return lua_gc(L, LUA_GCISRUNNING, 0) != 0;
+    lua_pushboolean(L, lua_gc(L, LUA_GCISRUNNING, 0) != 0);
 #else
-            return true; // Assume running for Lua 5.1
+    lua_pushboolean(L, 1);
 #endif
-        } catch (const std::exception &) {
-            return false;
+    lua_setfield(L, -2, "running");
+    lua_pushstring(L, context ? context->GetName().c_str() : "");
+    lua_setfield(L, -2, "context_name");
+
+    const char *contextType = "unknown";
+    if (context) {
+        switch (context->GetType()) {
+        case ScriptContextType::Global:
+            contextType = "global";
+            break;
+        case ScriptContextType::Level:
+            contextType = "level";
+            break;
+        case ScriptContextType::Custom:
+            contextType = "custom";
+            break;
         }
-    };
+    }
+    lua_pushstring(L, contextType);
+    lua_setfield(L, -2, "context_type");
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterGCApi(lua_State *state, ScriptContext *context) {
+    tas::lua::LuaStackGuard guard(state);
+
+    lua_getglobal(state, "tas");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_setglobal(state, "tas");
+        lua_getglobal(state, "tas");
+    }
+
+    lua_newtable(state);
+    SetGCFunction(state, "collect", Collect, context);
+    SetGCFunction(state, "stop", Stop, context);
+    SetGCFunction(state, "restart", Restart, context);
+    SetGCFunction(state, "step", Step, context);
+    SetGCFunction(state, "set_mode", SetMode, context);
+    SetGCFunction(state, "get_mode", GetMode, context);
+    SetGCFunction(state, "tune", Tune, context);
+    SetGCFunction(state, "stats", Stats, context);
+    SetGCFunction(state, "get_memory_kb", MemoryKB, context);
+    SetGCFunction(state, "get_memory_bytes", MemoryBytes, context);
+    SetGCFunction(state, "is_running", IsRunning, context);
+    lua_setfield(state, -2, "gc");
+
+    lua_pop(state, 1);
 }

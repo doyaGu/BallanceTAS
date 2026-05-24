@@ -2,37 +2,13 @@
 
 #include <string>
 #include <vector>
-#include <sstream>
 
 #include "Recorder.h"
+#include "ScriptInputTransition.h"
 
 // Forward declarations
 class TASEngine;
 class TASProject;
-
-/**
- * @enum KeyTransition
- * @brief Represents a key state transition between frames.
- */
-enum class KeyTransition {
-    NoChange,           // Key state didn't change
-    Pressed,            // Key was just pressed (IDLE -> PRESSED)
-    Released,           // Key was just released (PRESSED -> RELEASED)
-    PressedAndReleased, // Key was pressed and then released in the same frame
-};
-
-/**
- * @struct KeyEvent
- * @brief Represents a key state change at a specific frame.
- */
-struct KeyEvent {
-    size_t frame = 0;
-    std::string key;
-    KeyTransition transition = KeyTransition::NoChange;
-
-    KeyEvent(size_t f, std::string k, KeyTransition t)
-        : frame(f), key(std::move(k)), transition(t) {}
-};
 
 /**
  * @struct InputBlock
@@ -123,6 +99,14 @@ public:
     }
 
 private:
+    struct GenerationStats {
+        size_t totalFrames = 0;
+        size_t totalBlocks = 0;
+        size_t keyEvents = 0;
+        size_t eventsProcessed = 0;
+        double generationTime = 0.0;
+    };
+
     /**
      * @brief Finds an available project name, handling duplicates by adding numeric suffixes.
      * @param baseName The desired base name for the project.
@@ -185,48 +169,6 @@ private:
      */
     void UpdateProgress(float progress);
 
-    /**
-     * @brief Get the string name for a key from the input state.
-     * @param keyIndex Index of the key in the RawInputState structure.
-     * @return String name of the key.
-     */
-    static std::string GetKeyName(int keyIndex);
-
-    /**
-     * @brief Get the keyboard state value for a specific key from RawInputState.
-     * @param state The input state.
-     * @param keyIndex Index of the key.
-     * @return The keyboard state value (KS_IDLE, KS_PRESSED, etc.).
-     */
-    static uint8_t GetKeyState(const RawInputState &state, int keyIndex);
-
-    /**
-     * @brief A helper class to build the Lua script string with proper indentation.
-     */
-    class LuaScriptBuilder {
-    public:
-        explicit LuaScriptBuilder(const GenerationOptions &options);
-
-        void Indent();
-        void Unindent();
-        void AddLine(const std::string &line);
-        void AddComment(const std::string &comment);
-        void AddBlockComment(const std::string &comment);
-        void AddBlankLine();
-        void AddSeparator(const std::string &title = "");
-        void AddMainFunction();
-        void CloseMainFunction();
-
-        std::string GetScript() const;
-
-    private:
-        std::stringstream m_SS;
-        int m_IndentLevel = 0;
-        std::string m_CurrentIndent;
-        const GenerationOptions &m_Options;
-        bool m_InMainFunction = false;
-    };
-
     // Core references
     TASEngine *m_Engine;
 
@@ -235,15 +177,6 @@ private:
     std::function<void(float)> m_ProgressCallback;
 
     // Statistics
-    struct GenerationStats {
-        size_t totalFrames = 0;
-        size_t totalBlocks = 0;
-        size_t keyEvents = 0;
-        size_t eventsProcessed = 0;
-        double generationTime = 0.0;
-    } m_LastStats;
+    GenerationStats m_LastStats;
 
-    // Key constants
-    static const std::vector<std::string> KEY_NAMES;
-    static constexpr int KEY_COUNT = 8;
 };

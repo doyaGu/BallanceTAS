@@ -2,8 +2,10 @@
 
 #include <string>
 #include <chrono>
+#include <memory>
 
-#include <sol/sol.hpp>
+#include "LuaRuntime/LuaThread.h"
+#include "LuaRuntime/LuaValue.h"
 
 // Forward declarations
 class LuaScheduler;
@@ -44,7 +46,7 @@ public:
      * @param coroutine The Lua coroutine to wrap
      * @param context The script context
      */
-    AsyncTask(LuaScheduler *scheduler, sol::coroutine coroutine, ScriptContext *context);
+    AsyncTask(LuaScheduler *scheduler, tas::lua::LuaThread coroutine, ScriptContext *context);
 
     ~AsyncTask() = default;
 
@@ -97,7 +99,7 @@ public:
      * @brief Gets the task result (if completed)
      * @return Result object, or nil if not completed
      */
-    sol::object GetResult() const { return m_Result; }
+    const tas::lua::LuaValue &GetResult() const { return m_Result; }
 
     /**
      * @brief Gets the task error (if failed)
@@ -124,7 +126,7 @@ public:
     /**
      * @brief Sets the result (called when task completes)
      */
-    void SetResult(sol::object result);
+    void SetResult(tas::lua::LuaValue result);
 
     /**
      * @brief Sets the error (called when task fails)
@@ -134,20 +136,26 @@ public:
     /**
      * @brief Gets the underlying coroutine
      */
-    sol::coroutine GetCoroutine() const { return m_Coroutine; }
+    tas::lua::LuaThread &GetCoroutine() { return *m_Coroutine; }
+    const tas::lua::LuaThread &GetCoroutine() const { return *m_Coroutine; }
+    std::shared_ptr<tas::lua::LuaThread> GetThread() const { return m_Coroutine; }
+    LuaScheduler *GetScheduler() const { return m_Scheduler; }
 
     /**
      * @brief Gets the coroutine ID (from scheduler)
      */
     int GetCoroutineId() const { return m_CoroutineId; }
+    bool IsScheduled() const { return m_Scheduled; }
+    void MarkScheduled() { m_Scheduled = true; }
 
 private:
     LuaScheduler *m_Scheduler;
     ScriptContext *m_Context;
-    sol::coroutine m_Coroutine;
+    std::shared_ptr<tas::lua::LuaThread> m_Coroutine;
     int m_CoroutineId = -1;
 
     AsyncTaskState m_State = AsyncTaskState::Pending;
-    sol::object m_Result;
+    tas::lua::LuaValue m_Result;
     std::string m_Error;
+    bool m_Scheduled = false;
 };

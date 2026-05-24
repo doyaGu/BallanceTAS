@@ -1,14 +1,11 @@
 #include "AsyncTask.h"
-#include "LuaScheduler.h"
-#include "ScriptContext.h"
 
-extern "C" {
-#include <lua.h>
-#include <lauxlib.h>
-}
+#include <utility>
 
-AsyncTask::AsyncTask(LuaScheduler *scheduler, sol::coroutine coroutine, ScriptContext *context)
-    : m_Scheduler(scheduler), m_Context(context), m_Coroutine(std::move(coroutine)), m_Result(sol::nil) {}
+AsyncTask::AsyncTask(LuaScheduler *scheduler, tas::lua::LuaThread coroutine, ScriptContext *context)
+    : m_Scheduler(scheduler),
+      m_Context(context),
+      m_Coroutine(std::make_shared<tas::lua::LuaThread>(std::move(coroutine))) {}
 
 void AsyncTask::Start() {
     if (m_State != AsyncTaskState::Pending) {
@@ -16,12 +13,6 @@ void AsyncTask::Start() {
     }
 
     m_State = AsyncTaskState::Running;
-
-    // Start coroutine via scheduler
-    // The scheduler will manage the coroutine's execution during Tick()
-    m_Scheduler->StartCoroutine(m_Coroutine);
-
-    // Store coroutine for tracking (the coroutine itself serves as our ID)
     m_CoroutineId = 1; // Mark as started
 }
 
@@ -43,47 +34,36 @@ bool AsyncTask::Poll() {
         Start();
     }
 
-    // Check coroutine status via Lua C API
-    lua_State *L = m_Coroutine.lua_state();
-    int status = lua_status(L);
-
-    if (status == LUA_OK) {
-        // Coroutine finished successfully
-        if (m_State == AsyncTaskState::Running) {
-            // Try to get return value from coroutine
-            sol::state_view lua(L);
-            // The result should be on top of the stack if any
-            if (lua_gettop(L) > 0) {
-                m_Result = sol::stack::get<sol::object>(L, -1);
-            }
-            m_State = AsyncTaskState::Completed;
-        }
+    if (!m_Coroutine || !m_Coroutine->IsValid()) {
+        SetError("AsyncTask coroutine is invalid");
         return false;
     }
 
-    if (status == LUA_YIELD) {
-        // Still running (yielded), continue polling
+    auto result = m_Coroutine->Resume();
+    if (result.IsError()) {
+        SetError(result.GetError().message);
+        return false;
+    }
+
+    if (m_Coroutine->Status() == tas::lua::LuaThreadStatus::Yielded) {
         return true;
     }
 
-    // Error state - extract error message
     if (m_State == AsyncTaskState::Running) {
-        std::string error_msg = "Coroutine error";
-
-        // Try to get error message from Lua stack
-        if (lua_gettop(L) > 0 && lua_type(L, -1) == LUA_TSTRING) {
-            const char *err = lua_tostring(L, -1);
-            if (err) {
-                error_msg = err;
+            lua_State *L = m_Coroutine->State();
+        if (L && result.Unwrap() > 0) {
+            auto value = tas::lua::LuaValue::FromStack(L, -1);
+            if (value.IsOk()) {
+                m_Result = value.Unwrap();
             }
+            lua_pop(L, result.Unwrap());
         }
-
-        SetError(error_msg);
+        m_State = AsyncTaskState::Completed;
     }
     return false;
 }
 
-void AsyncTask::SetResult(sol::object result) {
+void AsyncTask::SetResult(tas::lua::LuaValue result) {
     m_Result = std::move(result);
     m_State = AsyncTaskState::Completed;
 }

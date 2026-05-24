@@ -1,178 +1,193 @@
 #include "LuaApi.h"
 
-#include <stdexcept>
+#include "../LuaRuntime/LuaFunction.h"
+#include "../LuaRuntime/LuaStackGuard.h"
 
-#include "Logger.h"
-#include "TASEngine.h"
 #include "GameInterface.h"
+#include "Logger.h"
+#ifdef Yield
+#undef Yield
+#endif
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
-// ===================================================================
-// Level Control API Registration (Stub Implementation)
-// ===================================================================
+#include <stdexcept>
 
-void LuaApi::RegisterLevelApi(sol::table &tas, ScriptContext *context) {
+namespace {
+
+ScriptContext *GetContext(lua_State *L) {
+    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+}
+
+LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
+    auto *context = GetContext(L);
+    auto *scheduler = context ? context->GetScheduler() : nullptr;
+    if (!scheduler) {
+        luaL_error(L, "%s: Scheduler not available", functionName);
+    }
+    return scheduler;
+}
+
+void SetLevelFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(L, context);
+    lua_pushcclosure(L, function, 1);
+    lua_setfield(L, -2, name);
+}
+
+int GetCurrent(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    const std::string name = game ? game->GetMapName() : "";
+    lua_pushlstring(L, name.data(), name.size());
+    return 1;
+}
+
+int GetCurrentNumber(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetCurrentLevel() : 0);
+    return 1;
+}
+
+int IsLoaded(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPlaying());
+    return 1;
+}
+
+int IsPaused(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPaused());
+    return 1;
+}
+
+int GetSector(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetCurrentSector() : 0);
+    return 1;
+}
+
+int StubLoad(lua_State *L) {
+    size_t length = 0;
+    const char *levelName = luaL_checklstring(L, 1, &length);
+    Log::Warn("[STUB] level.load('%.*s') - Not yet implemented", static_cast<int>(length), levelName ? levelName : "");
+    Log::Info("  Future implementation: This will trigger level loading through the game engine");
+    return luaL_error(L, "level.load: Not yet implemented - stub function");
+}
+
+int StubRestart(lua_State *L) {
+    Log::Warn("[STUB] level.restart() - Not yet implemented");
+    Log::Info("  Future implementation: This will restart the current level");
+    return luaL_error(L, "level.restart: Not yet implemented - stub function");
+}
+
+int StubExitToMenu(lua_State *L) {
+    Log::Warn("[STUB] level.exit_to_menu() - Not yet implemented");
+    Log::Info("  Future implementation: This will exit to the main menu");
+    return luaL_error(L, "level.exit_to_menu: Not yet implemented - stub function");
+}
+
+int StubNext(lua_State *L) {
+    Log::Warn("[STUB] level.next() - Not yet implemented");
+    Log::Info("  Future implementation: This will load the next level in sequence");
+    return luaL_error(L, "level.next: Not yet implemented - stub function");
+}
+
+int StubPrevious(lua_State *L) {
+    Log::Warn("[STUB] level.previous() - Not yet implemented");
+    Log::Info("  Future implementation: This will load the previous level");
+    return luaL_error(L, "level.previous: Not yet implemented - stub function");
+}
+
+int IsCompleted(lua_State *L) {
+    Log::Warn("[STUB] level.is_completed() - Not yet implemented, returning false");
+    Log::Info("  Future implementation: This will check if the level end was reached");
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
+int IsAtCheckpoint(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    const int sector = static_cast<int>(luaL_checkinteger(L, 1));
+    lua_pushboolean(L, game && game->GetCurrentSector() == sector);
+    return 1;
+}
+
+int IsPlayingPredicate(lua_State *L) {
+    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPlaying());
+    return 1;
+}
+
+int CheckpointPredicate(lua_State *L) {
+    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+    const int targetSector = static_cast<int>(lua_tointeger(L, lua_upvalueindex(2)));
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->GetCurrentSector() >= targetSector);
+    return 1;
+}
+
+int WaitForLoad(lua_State *L) {
+    lua_pushlightuserdata(L, GetContext(L));
+    lua_pushcclosure(L, IsPlayingPredicate, 1);
+    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
+    RequireScheduler(L, "level.wait_for_load")->YieldUntil(std::move(predicate));
+    return lua_yieldk(L, 0, 0, nullptr);
+}
+
+int WaitForComplete(lua_State *L) {
+    RequireScheduler(L, "level.wait_for_complete")->YieldWaitForEvent("level_complete");
+    return lua_yieldk(L, 0, 0, nullptr);
+}
+
+int WaitForCheckpoint(lua_State *L) {
+    const int targetSector = static_cast<int>(luaL_checkinteger(L, 1));
+    lua_pushlightuserdata(L, GetContext(L));
+    lua_pushinteger(L, targetSector);
+    lua_pushcclosure(L, CheckpointPredicate, 2);
+    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
+    RequireScheduler(L, "level.wait_for_checkpoint")->YieldUntil(std::move(predicate));
+    return lua_yieldk(L, 0, 0, nullptr);
+}
+
+} // namespace
+
+void LuaApi::RegisterLevelApi(lua_State *state, ScriptContext *context) {
     if (!context) {
         throw std::runtime_error("LuaApi::RegisterLevelApi requires a valid ScriptContext");
     }
 
-    // Create nested 'level' table
-    sol::table level = tas["level"] = tas.create();
+    tas::lua::LuaStackGuard guard(state);
+    lua_getglobal(state, "tas");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_setglobal(state, "tas");
+        lua_getglobal(state, "tas");
+    }
 
-    // ===================================================================
-    // Level Query Functions (Implemented)
-    // ===================================================================
+    lua_newtable(state);
+    SetLevelFunction(state, "get_current", GetCurrent, context);
+    SetLevelFunction(state, "get_current_number", GetCurrentNumber, context);
+    SetLevelFunction(state, "is_loaded", IsLoaded, context);
+    SetLevelFunction(state, "is_paused", IsPaused, context);
+    SetLevelFunction(state, "get_sector", GetSector, context);
+    SetLevelFunction(state, "load", StubLoad, context);
+    SetLevelFunction(state, "restart", StubRestart, context);
+    SetLevelFunction(state, "exit_to_menu", StubExitToMenu, context);
+    SetLevelFunction(state, "next", StubNext, context);
+    SetLevelFunction(state, "previous", StubPrevious, context);
+    SetLevelFunction(state, "is_completed", IsCompleted, context);
+    SetLevelFunction(state, "is_at_checkpoint", IsAtCheckpoint, context);
+    SetLevelFunction(state, "wait_for_load", WaitForLoad, context);
+    SetLevelFunction(state, "wait_for_complete", WaitForComplete, context);
+    SetLevelFunction(state, "wait_for_checkpoint", WaitForCheckpoint, context);
+    lua_setfield(state, -2, "level");
 
-    // tas.level.get_current() - Get current level name
-    level["get_current"] = [context]() -> std::string {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return "";
-        }
-        return g->GetMapName();
-    };
-
-    // tas.level.get_current_number() - Get current level number (1-13)
-    level["get_current_number"] = [context]() -> int {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-        return g->GetCurrentLevel();
-    };
-
-    // tas.level.is_loaded() - Check if a level is currently loaded
-    level["is_loaded"] = [context]() -> bool {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-        return g->IsPlaying();
-    };
-
-    // tas.level.is_paused() - Check if the level is paused
-    level["is_paused"] = [context]() -> bool {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-        return g->IsPaused();
-    };
-
-    // tas.level.get_sector() - Get current sector/checkpoint
-    level["get_sector"] = [context]() -> int {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return 0;
-        }
-        return g->GetCurrentSector();
-    };
-
-    // ===================================================================
-    // Level Control Functions (Stub Implementation)
-    // ===================================================================
-
-    // tas.level.load(level_name) - Load a specific level
-    level["load"] = [](const std::string &levelName) {
-        Log::Warn("[STUB] level.load('%s') - Not yet implemented", levelName.c_str());
-        Log::Info("  Future implementation: This will trigger level loading through the game engine");
-        throw sol::error("level.load: Not yet implemented - stub function");
-    };
-
-    // tas.level.restart() - Restart the current level
-    level["restart"] = []() {
-        Log::Warn("[STUB] level.restart() - Not yet implemented");
-        Log::Info("  Future implementation: This will restart the current level");
-        throw sol::error("level.restart: Not yet implemented - stub function");
-    };
-
-    // tas.level.exit_to_menu() - Exit to main menu
-    level["exit_to_menu"] = []() {
-        Log::Warn("[STUB] level.exit_to_menu() - Not yet implemented");
-        Log::Info("  Future implementation: This will exit to the main menu");
-        throw sol::error("level.exit_to_menu: Not yet implemented - stub function");
-    };
-
-    // tas.level.next() - Load the next level
-    level["next"] = []() {
-        Log::Warn("[STUB] level.next() - Not yet implemented");
-        Log::Info("  Future implementation: This will load the next level in sequence");
-        throw sol::error("level.next: Not yet implemented - stub function");
-    };
-
-    // tas.level.previous() - Load the previous level
-    level["previous"] = []() {
-        Log::Warn("[STUB] level.previous() - Not yet implemented");
-        Log::Info("  Future implementation: This will load the previous level");
-        throw sol::error("level.previous: Not yet implemented - stub function");
-    };
-
-    // ===================================================================
-    // Level State Query Functions (Stub Implementation)
-    // ===================================================================
-
-    // tas.level.is_completed() - Check if level is completed
-    level["is_completed"] = []() -> bool {
-        Log::Warn("[STUB] level.is_completed() - Not yet implemented, returning false");
-        Log::Info("  Future implementation: This will check if the level end was reached");
-        return false; // stub
-    };
-
-    // tas.level.is_at_checkpoint(sector) - Check if at a specific checkpoint
-    level["is_at_checkpoint"] = [context](int sector) -> bool {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-        int currentSector = g->GetCurrentSector();
-        return currentSector == sector;
-    };
-
-    // ===================================================================
-    // Level Wait Functions (Using Event System)
-    // ===================================================================
-
-    // tas.level.wait_for_load() - Wait until a level is loaded
-    level["wait_for_load"] = sol::yielding([context]() {
-        auto *scheduler = context->GetScheduler();
-        if (!scheduler) {
-            throw sol::error("level.wait_for_load: Scheduler not available");
-        }
-
-        // Wait until level is loaded
-        sol::function predicate = sol::make_object(context->GetLuaState(), [context]() {
-            auto *g = context->GetGameInterface();
-            return g && g->IsPlaying();
-        });
-        scheduler->YieldUntil(predicate);
-    });
-
-    // tas.level.wait_for_complete() - Wait until level is completed
-    level["wait_for_complete"] = sol::yielding([context]() {
-        auto *scheduler = context->GetScheduler();
-        if (!scheduler) {
-            throw sol::error("level.wait_for_complete: Scheduler not available");
-        }
-        // Use event system to wait for level completion
-        scheduler->YieldWaitForEvent("level_complete");
-    });
-
-    // tas.level.wait_for_checkpoint(sector) - Wait until reaching a checkpoint
-    level["wait_for_checkpoint"] = sol::yielding([context](int targetSector) {
-        auto *scheduler = context->GetScheduler();
-        if (!scheduler) {
-            throw sol::error("level.wait_for_checkpoint: Scheduler not available");
-        }
-
-        // Wait until reaching the target sector
-        sol::function predicate = sol::make_object(context->GetLuaState(), [context, targetSector]() {
-            auto *g = context->GetGameInterface();
-            if (!g) {
-                return false;
-            }
-            return g->GetCurrentSector() >= targetSector;
-        });
-        scheduler->YieldUntil(predicate);
-    });
+    lua_pop(state, 1);
 }

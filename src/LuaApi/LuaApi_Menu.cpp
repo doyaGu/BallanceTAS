@@ -1,173 +1,180 @@
 #include "LuaApi.h"
 
-#include <stdexcept>
+#include "../LuaRuntime/LuaFunction.h"
+#include "../LuaRuntime/LuaStackGuard.h"
 
-#include "Logger.h"
-#include "TASEngine.h"
 #include "GameInterface.h"
+#include "Logger.h"
+#ifdef Yield
+#undef Yield
+#endif
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
+#include <stdexcept>
+#include <string>
+
 namespace {
 
-[[noreturn]] void ThrowMenuStubError(const char *functionName) {
+ScriptContext *GetContext(lua_State *L) {
+    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+}
+
+LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
+    auto *context = GetContext(L);
+    auto *scheduler = context ? context->GetScheduler() : nullptr;
+    if (!scheduler) {
+        luaL_error(L, "%s: Scheduler not available for this context", functionName);
+    }
+    return scheduler;
+}
+
+void SetMenuFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(L, context);
+    lua_pushcclosure(L, function, 1);
+    lua_setfield(L, -2, name);
+}
+
+int MenuStubError(lua_State *L, const char *functionName) {
     Log::Warn("[STUB] %s - Not yet implemented", functionName);
-    throw sol::error(std::string(functionName) + ": Not yet implemented - stub function");
+    return luaL_error(L, "%s: Not yet implemented - stub function", functionName);
+}
+
+int IsInMenu(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && !game->IsPlaying());
+    return 1;
+}
+
+int IsInGame(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPlaying());
+    return 1;
+}
+
+int GetCurrent(lua_State *L) {
+    return MenuStubError(L, "menu.get_current");
+}
+
+int IsAt(lua_State *L) {
+    luaL_checkstring(L, 1);
+    return MenuStubError(L, "menu.is_at");
+}
+
+int NavigateTo(lua_State *L) {
+    luaL_checkstring(L, 1);
+    return MenuStubError(L, "menu.navigate_to");
+}
+
+int ClickButton(lua_State *L) {
+    luaL_checkstring(L, 1);
+    return MenuStubError(L, "menu.click_button");
+}
+
+int SelectLevel(lua_State *L) {
+    luaL_checkstring(L, 1);
+    return MenuStubError(L, "menu.select_level");
+}
+
+int GoBack(lua_State *L) {
+    return MenuStubError(L, "menu.go_back");
+}
+
+int GoToMain(lua_State *L) {
+    return MenuStubError(L, "menu.go_to_main");
+}
+
+int SendKey(lua_State *L) {
+    luaL_checkstring(L, 1);
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        luaL_checkinteger(L, 2);
+    }
+    return MenuStubError(L, "menu.send_key");
+}
+
+int PressEnter(lua_State *L) {
+    return MenuStubError(L, "menu.press_enter");
+}
+
+int PressEscape(lua_State *L) {
+    return MenuStubError(L, "menu.press_escape");
+}
+
+int WaitForMenu(lua_State *L) {
+    luaL_checkstring(L, 1);
+    return MenuStubError(L, "menu.wait_for_menu");
+}
+
+int IsPlayingPredicate(lua_State *L) {
+    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsPlaying());
+    return 1;
+}
+
+int IsMenuPredicate(lua_State *L) {
+    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && !game->IsPlaying());
+    return 1;
+}
+
+int WaitForGameStart(lua_State *L) {
+    lua_pushlightuserdata(L, GetContext(L));
+    lua_pushcclosure(L, IsPlayingPredicate, 1);
+    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
+    RequireScheduler(L, "menu.wait_for_game_start")->YieldUntil(std::move(predicate));
+    return lua_yieldk(L, 0, 0, nullptr);
+}
+
+int WaitForMenuEntry(lua_State *L) {
+    lua_pushlightuserdata(L, GetContext(L));
+    lua_pushcclosure(L, IsMenuPredicate, 1);
+    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
+    RequireScheduler(L, "menu.wait_for_menu_entry")->YieldUntil(std::move(predicate));
+    return lua_yieldk(L, 0, 0, nullptr);
+}
+
+int GetAvailableLevels(lua_State *L) {
+    return MenuStubError(L, "menu.get_available_levels");
 }
 
 } // namespace
 
-// ===================================================================
-// Menu Navigation API Registration (Stub Implementation)
-// ===================================================================
-
-void LuaApi::RegisterMenuApi(sol::table &tas, ScriptContext *context) {
+void LuaApi::RegisterMenuApi(lua_State *state, ScriptContext *context) {
     if (!context) {
         throw std::runtime_error("LuaApi::RegisterMenuApi requires a valid ScriptContext");
     }
 
-    // Create nested 'menu' table
-    sol::table menu = tas["menu"] = tas.create();
+    tas::lua::LuaStackGuard guard(state);
+    lua_getglobal(state, "tas");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_setglobal(state, "tas");
+        lua_getglobal(state, "tas");
+    }
 
-    // ===================================================================
-    // Menu Query Functions (Implemented)
-    // ===================================================================
+    lua_newtable(state);
+    SetMenuFunction(state, "is_in_menu", IsInMenu, context);
+    SetMenuFunction(state, "is_in_game", IsInGame, context);
+    SetMenuFunction(state, "get_current", GetCurrent, context);
+    SetMenuFunction(state, "is_at", IsAt, context);
+    SetMenuFunction(state, "navigate_to", NavigateTo, context);
+    SetMenuFunction(state, "click_button", ClickButton, context);
+    SetMenuFunction(state, "select_level", SelectLevel, context);
+    SetMenuFunction(state, "go_back", GoBack, context);
+    SetMenuFunction(state, "go_to_main", GoToMain, context);
+    SetMenuFunction(state, "send_key", SendKey, context);
+    SetMenuFunction(state, "press_enter", PressEnter, context);
+    SetMenuFunction(state, "press_escape", PressEscape, context);
+    SetMenuFunction(state, "wait_for_menu", WaitForMenu, context);
+    SetMenuFunction(state, "wait_for_game_start", WaitForGameStart, context);
+    SetMenuFunction(state, "wait_for_menu_entry", WaitForMenuEntry, context);
+    SetMenuFunction(state, "get_available_levels", GetAvailableLevels, context);
+    lua_setfield(state, -2, "menu");
 
-    // tas.menu.is_in_menu() - Check if currently in menu
-    menu["is_in_menu"] = [context]() -> bool {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-        // If not playing, we're likely in the menu
-        return !g->IsPlaying();
-    };
-
-    // tas.menu.is_in_game() - Check if currently in game
-    menu["is_in_game"] = [context]() -> bool {
-        auto *g = context->GetGameInterface();
-        if (!g) {
-            return false;
-        }
-        return g->IsPlaying();
-    };
-
-    // ===================================================================
-    // Menu State Query Functions (Stub Implementation)
-    // ===================================================================
-
-    // tas.menu.get_current() - Get current menu identifier
-    menu["get_current"] = []() -> std::string {
-        ThrowMenuStubError("menu.get_current");
-    };
-
-    // tas.menu.is_at(menu_name) - Check if at a specific menu
-    menu["is_at"] = [](const std::string &menuName) -> bool {
-        (void) menuName;
-        ThrowMenuStubError("menu.is_at");
-    };
-
-    // ===================================================================
-    // Menu Navigation Functions (Stub Implementation)
-    // ===================================================================
-
-    // tas.menu.navigate_to(menu_path) - Navigate to a menu by path
-    menu["navigate_to"] = [](const std::string &menuPath) {
-        (void) menuPath;
-        ThrowMenuStubError("menu.navigate_to");
-    };
-
-    // tas.menu.click_button(button_name) - Click a button by name
-    menu["click_button"] = [](const std::string &buttonName) {
-        (void) buttonName;
-        ThrowMenuStubError("menu.click_button");
-    };
-
-    // tas.menu.select_level(level_name) - Select a level from menu
-    menu["select_level"] = [](const std::string &levelName) {
-        (void) levelName;
-        ThrowMenuStubError("menu.select_level");
-    };
-
-    // tas.menu.go_back() - Go back to previous menu
-    menu["go_back"] = []() {
-        ThrowMenuStubError("menu.go_back");
-    };
-
-    // tas.menu.go_to_main() - Go to main menu
-    menu["go_to_main"] = []() {
-        ThrowMenuStubError("menu.go_to_main");
-    };
-
-    // ===================================================================
-    // Input Simulation Functions (Stub Implementation)
-    // ===================================================================
-
-    // tas.menu.send_key(key, duration) - Send a key press in menu
-    menu["send_key"] = [](const std::string &key, sol::optional<int> duration) {
-        (void) key;
-        (void) duration;
-        ThrowMenuStubError("menu.send_key");
-    };
-
-    // tas.menu.press_enter() - Press Enter key
-    menu["press_enter"] = []() {
-        ThrowMenuStubError("menu.press_enter");
-    };
-
-    // tas.menu.press_escape() - Press Escape key
-    menu["press_escape"] = []() {
-        ThrowMenuStubError("menu.press_escape");
-    };
-
-    // ===================================================================
-    // Wait Functions (Using Event System and Conditions)
-    // ===================================================================
-
-    // tas.menu.wait_for_menu(menu_name) - Wait until entering a specific menu
-    menu["wait_for_menu"] = sol::yielding([context](const std::string &menuName) {
-        (void) context;
-        (void) menuName;
-        ThrowMenuStubError("menu.wait_for_menu");
-    });
-
-    // tas.menu.wait_for_game_start() - Wait until game starts
-    menu["wait_for_game_start"] = sol::yielding([context]() {
-        auto *scheduler = context->GetScheduler();
-        if (!scheduler) {
-            throw sol::error("menu.wait_for_game_start: Scheduler not available for this context");
-        }
-
-        // Wait until we're in game (implemented)
-        sol::function predicate = sol::make_object(context->GetLuaState(), [context]() {
-            auto *g = context->GetGameInterface();
-            return g && g->IsPlaying();
-        });
-        scheduler->YieldUntil(predicate);
-    });
-
-    // tas.menu.wait_for_menu_entry() - Wait until entering any menu
-    menu["wait_for_menu_entry"] = sol::yielding([context]() {
-        auto *scheduler = context->GetScheduler();
-        if (!scheduler) {
-            throw sol::error("menu.wait_for_menu_entry: Scheduler not available for this context");
-        }
-
-        // Wait until we're in menu (implemented)
-        sol::function predicate = sol::make_object(context->GetLuaState(), [context]() {
-            auto *g = context->GetGameInterface();
-            return g && !g->IsPlaying();
-        });
-        scheduler->YieldUntil(predicate);
-    });
-
-    // ===================================================================
-    // Utility Functions
-    // ===================================================================
-
-    // tas.menu.get_available_levels() - Get list of available levels
-    menu["get_available_levels"] = [context]() -> sol::object {
-        (void) context;
-        ThrowMenuStubError("menu.get_available_levels");
-    };
+    lua_pop(state, 1);
 }

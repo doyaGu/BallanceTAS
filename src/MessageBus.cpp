@@ -9,172 +9,32 @@
 
 #include "Logger.h"
 #include "TASEngine.h"
-#include "ScriptContext.h"
 
-// Thread-local depth counter to detect circular references during serialization
-thread_local int g_SerializationDepth = 0;
-constexpr int MAX_SERIALIZATION_DEPTH = 100;
-
-MessageBus::SerializedTable MessageBus::SerializeTable(const sol::table &table) {
-    // Check recursion depth to prevent stack overflow from circular references
-    if (g_SerializationDepth > MAX_SERIALIZATION_DEPTH) {
-        throw std::runtime_error("MessageBus: Table serialization exceeded maximum depth (possible circular reference)");
-    }
-
-    // RAII depth tracker
-    struct DepthGuard {
-        DepthGuard() { ++g_SerializationDepth; }
-        ~DepthGuard() { --g_SerializationDepth; }
-    } depthGuard;
-
-    SerializedTable result;
-
-    for (const auto &pair : table) {
-        const sol::object &key = pair.first;
-        const sol::object &value = pair.second;
-
-        if (key.get_type() == sol::type::string) {
-            std::string keyStr = key.as<std::string>();
-            result[keyStr] = Message::SerializedValue::FromLuaObject(value);
-        } else {
-            throw std::runtime_error("MessageBus: Table serialization encountered non-string key.");
-        }
-    }
-
-    return result;
+namespace {
+tas::lua::LuaValue MakeStringEntry(const std::string &value) {
+    return tas::lua::LuaValue{value};
 }
 
-sol::table MessageBus::DeserializeTable(sol::state_view lua, const SerializedTable &data) {
-    sol::table table = lua.create_table();
+std::shared_ptr<tas::lua::LuaValue::Table> MakeMessageTable(const MessageBus::Message &msg) {
+    auto table = std::make_shared<tas::lua::LuaValue::Table>();
+    auto add = [&](std::string key, tas::lua::LuaValue value) {
+        table->entries.push_back({
+            tas::lua::LuaValue::Key{std::move(key)},
+            std::make_shared<tas::lua::LuaValue>(std::move(value))
+        });
+    };
 
-    for (const auto &entry : data) {
-        table[entry.first] = entry.second.ToLuaObject(lua);
+    add("sender", MakeStringEntry(msg.senderContext));
+    add("target", MakeStringEntry(msg.targetContext));
+    add("type", MakeStringEntry(msg.messageType));
+    add("data", msg.data.value);
+    if (!msg.correlationId.empty()) {
+        add("correlation_id", MakeStringEntry(msg.correlationId));
     }
-
+    add("is_request", tas::lua::LuaValue{!msg.isResponse && !msg.correlationId.empty()});
     return table;
 }
-
-sol::table MessageBus::DeserializeArray(sol::state_view lua, const SerializedArray &data) {
-    sol::table table = lua.create_table(static_cast<int>(data.size()), 0);
-
-    for (const auto &entry : data) {
-        table[entry.first] = entry.second.ToLuaObject(lua);
-    }
-
-    return table;
-}
-
-sol::object MessageBus::Message::SerializedValue::ToLuaObject(sol::state_view lua) const {
-    switch (type) {
-    case Type::Nil:
-        return sol::make_object(lua, sol::nil);
-    case Type::Boolean:
-        return sol::make_object(lua, std::any_cast<bool>(data));
-    case Type::Number:
-        return sol::make_object(lua, std::any_cast<double>(data));
-    case Type::String:
-        return sol::make_object(lua, std::any_cast<const std::string &>(data));
-    case Type::Array: {
-        const auto &arrayData = std::any_cast<const MessageBus::SerializedArray &>(data);
-        sol::table table = MessageBus::DeserializeArray(lua, arrayData);
-        return sol::make_object(lua, table);
-    }
-    case Type::Table: {
-        const auto &tableData = std::any_cast<const MessageBus::SerializedTable &>(data);
-        sol::table table = MessageBus::DeserializeTable(lua, tableData);
-        return sol::make_object(lua, table);
-    }
-    case Type::SharedBufferRef: {
-        // Return the SharedBuffer as a Lua userdata
-        auto buffer = std::any_cast<std::shared_ptr<SharedBuffer>>(data);
-        return sol::make_object(lua, buffer);
-    }
-    default:
-        return sol::make_object(lua, sol::nil);
-    }
-}
-
-MessageBus::Message::SerializedValue MessageBus::Message::SerializedValue::FromLuaObject(sol::object obj) {
-    sol::type objType = obj.get_type();
-
-    switch (objType) {
-    case sol::type::nil:
-    case sol::type::none:
-        return SerializedValue(Type::Nil, std::any{});
-    case sol::type::boolean:
-        return SerializedValue(Type::Boolean, std::any(obj.as<bool>()));
-    case sol::type::number:
-        return SerializedValue(Type::Number, std::any(obj.as<double>()));
-    case sol::type::string:
-        return SerializedValue(Type::String, std::any(obj.as<std::string>()));
-    case sol::type::table: {
-        sol::table tbl = obj.as<sol::table>();
-
-        bool hasStringKey = false;
-        bool hasNumericKey = false;
-        std::vector<std::pair<size_t, sol::object>> numericEntries;
-
-        for (const auto &entry : tbl) {
-            const sol::object &key = entry.first;
-
-            if (key.get_type() == sol::type::string) {
-                hasStringKey = true;
-                if (hasNumericKey) {
-                    throw std::runtime_error(
-                        "MessageBus: Mixed string and numeric keys are not supported in message payload tables.");
-                }
-            } else if (key.get_type() == sol::type::number) {
-                double rawKey = key.as<double>();
-                if (!std::isfinite(rawKey) || std::floor(rawKey) != rawKey || rawKey < 0) {
-                    throw std::runtime_error(
-                        "MessageBus: Numeric table keys must be non-negative integers for message payloads.");
-                }
-                hasNumericKey = true;
-                if (hasStringKey) {
-                    throw std::runtime_error(
-                        "MessageBus: Mixed string and numeric keys are not supported in message payload tables.");
-                }
-                numericEntries.emplace_back(static_cast<size_t>(rawKey), entry.second);
-            } else {
-                throw std::runtime_error("MessageBus: Unsupported table key type for message payload.");
-            }
-        }
-
-        if (hasNumericKey) {
-            std::sort(numericEntries.begin(), numericEntries.end(),
-                      [](const auto &lhs, const auto &rhs) {
-                          return lhs.first < rhs.first;
-                      });
-
-            MessageBus::SerializedArray arrayData;
-            arrayData.reserve(numericEntries.size());
-            for (const auto &entry : numericEntries) {
-                arrayData.emplace_back(entry.first, SerializedValue::FromLuaObject(entry.second));
-            }
-
-            return SerializedValue(Type::Array, std::any(std::move(arrayData)));
-        }
-
-        auto serialized = MessageBus::SerializeTable(tbl);
-        return SerializedValue(Type::Table, std::any(std::move(serialized)));
-    }
-    case sol::type::function:
-        throw std::runtime_error("MessageBus: Functions cannot be serialized in messages");
-    case sol::type::userdata:
-    case sol::type::lightuserdata: {
-        // Check if this is a SharedBuffer userdata
-        if (obj.is<std::shared_ptr<SharedBuffer>>()) {
-            auto buffer = obj.as<std::shared_ptr<SharedBuffer>>();
-            return SerializedValue::FromSharedBuffer(buffer);
-        }
-        throw std::runtime_error("MessageBus: Userdata cannot be serialized in messages (use SharedBuffer for large data)");
-    }
-    case sol::type::thread:
-        throw std::runtime_error("MessageBus: Threads cannot be serialized in messages");
-    default:
-        throw std::runtime_error("MessageBus: Unsupported Lua type for message payload");
-    }
-}
+} // namespace
 
 MessageBus::MessageBus(TASEngine *engine) : m_Engine(engine), m_MessageQueue(m_QueueConfig.maxQueueSize) {
     if (!m_Engine) {
@@ -235,7 +95,7 @@ void MessageBus::Shutdown() {
 bool MessageBus::SendMessage(const std::string &senderContext,
                              const std::string &targetContext,
                              const std::string &messageType,
-                             sol::object data,
+                             const tas::lua::LuaValue &data,
                              Priority priority) {
     if (messageType.empty()) {
         Log::Warn("[%s] MessageBus: Cannot send message with empty type to '%s'.",
@@ -244,7 +104,7 @@ bool MessageBus::SendMessage(const std::string &senderContext,
     }
 
     try {
-        Message::SerializedValue payload = Message::SerializedValue::FromLuaObject(data);
+        Message::SerializedValue payload(data);
 
         // NEW: Check message size limits (Sprint 2)
         size_t estimatedSize = payload.EstimateSize();
@@ -278,7 +138,7 @@ bool MessageBus::SendMessage(const std::string &senderContext,
 
 bool MessageBus::BroadcastMessage(const std::string &senderContext,
                                   const std::string &messageType,
-                                  sol::object data,
+                                  const tas::lua::LuaValue &data,
                                   Priority priority) {
     return SendMessage(senderContext, "*", messageType, data, priority);
 }
@@ -305,17 +165,20 @@ void MessageBus::RegisterHandler(const std::string &contextName,
 void MessageBus::RegisterLuaHandler(const std::string &contextName,
                                     std::weak_ptr<ScriptContext> contextPtr,
                                     const std::string &messageType,
-                                    sol::function luaHandler) {
-    if (!luaHandler.valid()) {
+                                    tas::lua::LuaFunction luaHandler) {
+    if (!luaHandler.IsValid()) {
         Log::Warn("MessageBus: Cannot register invalid Lua handler.");
         return;
     }
 
+    auto luaHandlerRef = std::make_shared<tas::lua::LuaFunction>(std::move(luaHandler));
+    const bool trackContextLifetime = !contextPtr.expired();
+
     // Wrap Lua function in a C++ handler that validates context lifetime
-    MessageHandler handler = [luaHandler, contextPtr, this, contextName, messageType](const Message &msg) {
+    MessageHandler handler = [luaHandlerRef, contextPtr, trackContextLifetime, contextName, messageType](const Message &msg) {
         // Validate context is still alive before invoking handler
         auto context = contextPtr.lock();
-        if (!context) {
+        if (trackContextLifetime && !context) {
             // Context has been destroyed, skip this handler
             Log::Warn("MessageBus: Handler skipped for destroyed context '%s' (type: %s)",
                       contextName.c_str(), messageType.c_str());
@@ -323,36 +186,12 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
         }
 
         try {
-            // CRITICAL FIX: Get Lua state from the context, not from the captured handler
-            // The captured luaHandler may hold stale references to a destroyed VM
-            sol::state_view lua = context->GetLuaState();
-
-            // Verify the handler's VM matches the context's VM (safety check)
-            if (luaHandler.lua_state() != lua.lua_state()) {
-                Log::Error("MessageBus: Handler VM mismatch for context '%s' (type: %s) - handler not invoked",
-                           contextName.c_str(), messageType.c_str());
-                return;
-            }
-
-            // Create a Lua table with message information
-            sol::table msgTable = lua.create_table();
-            msgTable["sender"] = msg.senderContext;
-            msgTable["target"] = msg.targetContext;
-            msgTable["type"] = msg.messageType;
-            msgTable["data"] = msg.data.ToLuaObject(lua);
-
-            // Include correlation ID and request flag for request/response pattern
-            if (!msg.correlationId.empty()) {
-                msgTable["correlation_id"] = msg.correlationId;
-            }
-            msgTable["is_request"] = !msg.isResponse && !msg.correlationId.empty();
-
-            // Call the Lua handler
-            auto result = luaHandler(msgTable);
-            if (!result.valid()) {
-                sol::error err = result;
+            auto result = luaHandlerRef->Call(1, 0, [&](lua_State *state) {
+                msg.data.value.Push(state);
+            });
+            if (result.IsError()) {
                 Log::Error("MessageBus: Lua handler error (%s, %s): %s",
-                           contextName.c_str(), messageType.c_str(), err.what());
+                           contextName.c_str(), messageType.c_str(), result.GetError().message.c_str());
             }
         } catch (const std::exception &e) {
             Log::Error("MessageBus: Exception in Lua handler (%s, %s): %s",
@@ -429,7 +268,7 @@ bool MessageBus::EnqueueMessage(Message message) {
 bool MessageBus::SendRequestAsync(const std::string &senderContext,
                                   const std::string &targetContext,
                                   const std::string &requestType,
-                                  sol::object data,
+                                  const tas::lua::LuaValue &data,
                                   const std::string &correlationId) {
     if (correlationId.empty()) {
         Log::Error("[%s] MessageBus: Cannot send async request to '%s' with empty correlation ID.",
@@ -438,7 +277,7 @@ bool MessageBus::SendRequestAsync(const std::string &senderContext,
     }
 
     try {
-        Message::SerializedValue payload = Message::SerializedValue::FromLuaObject(data);
+        Message::SerializedValue payload(data);
         Message requestMsg(senderContext, targetContext, requestType, std::move(payload),
                            Priority::High, correlationId, false);
 
@@ -450,53 +289,51 @@ bool MessageBus::SendRequestAsync(const std::string &senderContext,
     }
 }
 
-sol::object MessageBus::SendRequest(const std::string &senderContext,
-                                    const std::string &targetContext,
-                                    const std::string &requestType,
-                                    sol::object data,
-                                    int timeoutMs) {
+tas::lua::LuaValue MessageBus::SendRequest(const std::string &senderContext,
+                                           const std::string &targetContext,
+                                           const std::string &requestType,
+                                           const tas::lua::LuaValue &data,
+                                           int timeoutMs) {
     if (timeoutMs <= 0) {
         timeoutMs = m_QueueConfig.requestTimeoutMs;
     }
-
-    sol::state_view callerState = data.lua_state();
 
     // Generate unique correlation ID
     std::string correlationId = GenerateCorrelationId();
 
     // Send request message with correlation ID
     try {
-        Message::SerializedValue payload = Message::SerializedValue::FromLuaObject(data);
+        Message::SerializedValue payload(data);
         Message requestMsg(senderContext, targetContext, requestType, std::move(payload),
                            Priority::High, correlationId, false);
 
         if (!EnqueueMessage(std::move(requestMsg))) {
             Log::Error("[%s] MessageBus: Failed to enqueue request '%s' to '%s'.",
                        senderContext.c_str(), requestType.c_str(), targetContext.c_str());
-            return sol::make_object(callerState, sol::nil);
+            return tas::lua::LuaValue();
         }
     } catch (const std::exception &e) {
         Log::Error("[%s] MessageBus: Failed to serialize request payload for '%s': %s",
                    senderContext.c_str(), requestType.c_str(), e.what());
-        return sol::make_object(callerState, sol::nil);
+        return tas::lua::LuaValue();
     }
 
     // Wait for response
     auto response = WaitForResponse(correlationId, timeoutMs);
     if (response.has_value()) {
-        return response->data.ToLuaObject(callerState);
+        return response->data.value;
     } else {
         Log::Warn("[%s] MessageBus: Request '%s' to '%s' timeout (correlation: %s)",
                   senderContext.c_str(), requestType.c_str(), targetContext.c_str(),
                   correlationId.c_str());
-        return sol::make_object(callerState, sol::nil);
+        return tas::lua::LuaValue();
     }
 }
 
 bool MessageBus::SendResponse(const std::string &senderContext,
                               const std::string &targetContext,
                               const std::string &correlationId,
-                              sol::object responseData) {
+                              const tas::lua::LuaValue &responseData) {
     if (correlationId.empty()) {
         Log::Warn("[%s] MessageBus: Cannot send response to '%s' with empty correlation ID.",
                   senderContext.c_str(), targetContext.c_str());
@@ -504,7 +341,7 @@ bool MessageBus::SendResponse(const std::string &senderContext,
     }
 
     try {
-        Message::SerializedValue payload = Message::SerializedValue::FromLuaObject(responseData);
+        Message::SerializedValue payload(responseData);
         Message responseMsg(senderContext, targetContext, "response",
                             std::move(payload), Priority::High, correlationId, true);
 
@@ -667,56 +504,6 @@ void MessageBus::InvokeHandlers(const std::string &contextName,
     }
 }
 
-// ============================================================================
-// SharedBuffer Support (Sprint 2)
-// ============================================================================
-
-MessageBus::Message::SerializedValue MessageBus::Message::SerializedValue::FromSharedBuffer(
-    std::shared_ptr<SharedBuffer> buffer) {
-    if (!buffer) {
-        throw std::invalid_argument("MessageBus: Cannot create SerializedValue from null SharedBuffer");
-    }
-    return SerializedValue(Type::SharedBufferRef, std::any(buffer));
-}
-
-std::shared_ptr<SharedBuffer> MessageBus::Message::SerializedValue::AsSharedBuffer() const {
-    if (type != Type::SharedBufferRef) {
-        throw std::runtime_error("MessageBus: SerializedValue is not a SharedBufferRef");
-    }
-    return std::any_cast<std::shared_ptr<SharedBuffer>>(data);
-}
-
 size_t MessageBus::Message::SerializedValue::EstimateSize() const {
-    switch (type) {
-    case Type::Nil:
-        return 1;
-    case Type::Boolean:
-        return 1;
-    case Type::Number:
-        return 8;
-    case Type::String:
-        return std::any_cast<const std::string &>(data).size();
-    case Type::Array: {
-        const auto &arrayData = std::any_cast<const MessageBus::SerializedArray &>(data);
-        size_t total = 0;
-        for (const auto &entry : arrayData) {
-            total += entry.second.EstimateSize();
-        }
-        return total;
-    }
-    case Type::Table: {
-        const auto &tableData = std::any_cast<const MessageBus::SerializedTable &>(data);
-        size_t total = 0;
-        for (const auto &entry : tableData) {
-            total += entry.first.size();          // Key size
-            total += entry.second.EstimateSize(); // Value size
-        }
-        return total;
-    }
-    case Type::SharedBufferRef:
-        // SharedBuffer is reference-counted, only count pointer overhead
-        return sizeof(std::shared_ptr<SharedBuffer>);
-    default:
-        return 0;
-    }
+    return 0;
 }

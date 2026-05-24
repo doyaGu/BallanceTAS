@@ -8,16 +8,16 @@
 #include <optional>
 #include <condition_variable>
 #include <atomic>
-#include <any>
-
-#include <sol/sol.hpp>
+#include <memory>
 
 #include "LockFreeMPSCQueue.h"
-#include "SharedBuffer.h"
+#include "LuaRuntime/LuaFunction.h"
+#include "LuaRuntime/LuaValue.h"
 
 // Forward declarations
 class TASEngine;
 class ScriptContext;
+class SharedBuffer;
 
 /**
  * @class MessageBus
@@ -79,31 +79,11 @@ public:
         std::string targetContext; // Name of the target context ("*" for broadcast)
         std::string messageType;   // Type of message (used to route to handlers)
         struct SerializedValue {
-            enum class Type {
-                Nil,
-                Boolean,
-                Number,
-                String,
-                Array,
-                Table,
-                SharedBufferRef // NEW: Reference to shared buffer (zero-copy)
-            };
-
-            Type type = Type::Nil;
-            std::any data; // For SharedBufferRef: std::shared_ptr<SharedBuffer>
+            tas::lua::LuaValue value;
 
             SerializedValue() = default;
+            explicit SerializedValue(tas::lua::LuaValue payload) : value(std::move(payload)) {}
 
-            SerializedValue(Type t, std::any payload) : type(t), data(std::move(payload)) {}
-
-            sol::object ToLuaObject(sol::state_view lua) const;
-            static SerializedValue FromLuaObject(sol::object obj);
-
-            // NEW: Factory methods for SharedBuffer
-            static SerializedValue FromSharedBuffer(std::shared_ptr<SharedBuffer> buffer);
-            std::shared_ptr<SharedBuffer> AsSharedBuffer() const;
-
-            // NEW: Get estimated size in bytes
             size_t EstimateSize() const;
         } data;
 
@@ -167,7 +147,7 @@ public:
     bool SendMessage(const std::string &senderContext,
                      const std::string &targetContext,
                      const std::string &messageType,
-                     sol::object data,
+                     const tas::lua::LuaValue &data,
                      Priority priority = Priority::Normal);
 
     /**
@@ -180,7 +160,7 @@ public:
      */
     bool BroadcastMessage(const std::string &senderContext,
                           const std::string &messageType,
-                          sol::object data,
+                          const tas::lua::LuaValue &data,
                           Priority priority = Priority::Normal);
 
     /**
@@ -192,11 +172,11 @@ public:
      * @param timeoutMs Timeout in milliseconds (0 = use default).
      * @return Response data if received within timeout, or nil if timeout.
      */
-    sol::object SendRequest(const std::string &senderContext,
-                            const std::string &targetContext,
-                            const std::string &requestType,
-                            sol::object data,
-                            int timeoutMs = 0);
+    tas::lua::LuaValue SendRequest(const std::string &senderContext,
+                                   const std::string &targetContext,
+                                   const std::string &requestType,
+                                   const tas::lua::LuaValue &data,
+                                   int timeoutMs = 0);
 
     /**
      * @brief Sends a request without waiting (async).
@@ -210,7 +190,7 @@ public:
     bool SendRequestAsync(const std::string &senderContext,
                           const std::string &targetContext,
                           const std::string &requestType,
-                          sol::object data,
+                          const tas::lua::LuaValue &data,
                           const std::string &correlationId);
 
     /**
@@ -224,7 +204,7 @@ public:
     bool SendResponse(const std::string &senderContext,
                       const std::string &targetContext,
                       const std::string &correlationId,
-                      sol::object responseData);
+                      const tas::lua::LuaValue &responseData);
 
     /**
      * @brief Registers a message handler for a context.
@@ -246,7 +226,7 @@ public:
     void RegisterLuaHandler(const std::string &contextName,
                             std::weak_ptr<ScriptContext> contextPtr,
                             const std::string &messageType,
-                            sol::function luaHandler);
+                            tas::lua::LuaFunction luaHandler);
 
     /**
      * @brief Removes all message handlers for a specific message type in a context.
@@ -334,13 +314,6 @@ private:
     void InvokeHandlers(const std::string &contextName,
                         const std::vector<HandlerEntry> &handlerEntries,
                         const Message &message);
-
-    using SerializedTable = std::unordered_map<std::string, Message::SerializedValue>;
-    using SerializedArray = std::vector<std::pair<size_t, Message::SerializedValue>>;
-
-    static SerializedTable SerializeTable(const sol::table &table);
-    static sol::table DeserializeTable(sol::state_view lua, const SerializedTable &data);
-    static sol::table DeserializeArray(sol::state_view lua, const SerializedArray &data);
 
     /**
      * @brief Enqueues a message with overflow handling.

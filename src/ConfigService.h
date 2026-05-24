@@ -19,9 +19,9 @@ struct OSDConfig {
 
 /// Startup script configuration snapshot.
 struct StartupConfig {
-    bool enabled = false;
+    bool enabled = true;
     std::string project;
-    bool autoLoad = false;
+    bool autoLoad = true;
 };
 
 /// Owns all BML IProperty* config registrations and provides typed accessors.

@@ -34,16 +34,16 @@ void ConfigService::RegisterProperties(IConfig *config) {
 
     // --- Startup Script ---
     m_StartupScriptEnabled = config->GetProperty("Startup", "Enabled");
-    m_StartupScriptEnabled->SetComment("Enable startup script auto-loading");
-    m_StartupScriptEnabled->SetDefaultBoolean(false);
+    m_StartupScriptEnabled->SetComment("Enable global TAS projects with trigger = startup/menu/level");
+    m_StartupScriptEnabled->SetDefaultBoolean(true);
 
     m_StartupScriptProject = config->GetProperty("Startup", "Project");
-    m_StartupScriptProject->SetComment("Name of the TAS project to load on startup");
+    m_StartupScriptProject->SetComment("Optional TAS project name to run for startup triggers; leave empty to auto-select manifest trigger projects");
     m_StartupScriptProject->SetDefaultString("");
 
     m_AutoLoadStartupScript = config->GetProperty("Startup", "AutoLoad");
-    m_AutoLoadStartupScript->SetComment("Automatically load startup script on game launch");
-    m_AutoLoadStartupScript->SetDefaultBoolean(false);
+    m_AutoLoadStartupScript->SetComment("Automatically run global TAS projects with trigger = startup when the game launches");
+    m_AutoLoadStartupScript->SetDefaultBoolean(true);
 
     // --- OSD ---
     m_ShowOSD = config->GetProperty("OSD", "ShowOSD");

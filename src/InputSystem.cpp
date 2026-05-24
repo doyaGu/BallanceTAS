@@ -241,10 +241,7 @@ void InputSystem::PressKeysOneFrame(const std::string &keyString) {
     for (const auto &key : keys) {
         CKKEYBOARD code = GetKeyCode(key);
         if (IsValidKeyCode(code) && code != 0) {
-            // Generate press event immediately, release will happen next frame
             m_KeyStates[code].ApplyPressEvent(m_CurrentTick);
-
-            // Schedule release for next frame by setting held duration to 1
             m_HeldKeys[code] = 1;
         } else {
             Log::Warn("InputSystem::PressKeysOneFrame: unknown key '%s'.", key.c_str());
@@ -295,75 +292,6 @@ void InputSystem::ReleaseAllKeys() {
     }
 
     m_HeldKeys.clear();
-}
-
-// ===================================================================
-//  Mouse Control Methods
-// ===================================================================
-
-void InputSystem::PressMouseButton(int buttonIndex) {
-    if (buttonIndex < 0 || buttonIndex >= 4) return;
-    m_MouseState.buttons[buttonIndex].ApplyPressEvent(m_CurrentTick);
-}
-
-void InputSystem::PressMouseButtonOneFrame(int buttonIndex) {
-    if (buttonIndex < 0 || buttonIndex >= 4) return;
-    m_MouseState.buttons[buttonIndex].ApplyPressEvent(m_CurrentTick);
-    m_HeldMouseButtons[buttonIndex] = 1;
-}
-
-void InputSystem::HoldMouseButton(int buttonIndex, int durationTicks) {
-    if (buttonIndex < 0 || buttonIndex >= 4 || durationTicks <= 0) return;
-    m_MouseState.buttons[buttonIndex].ApplyPressEvent(m_CurrentTick);
-    m_HeldMouseButtons[buttonIndex] = durationTicks;
-}
-
-void InputSystem::ReleaseMouseButton(int buttonIndex) {
-    if (buttonIndex < 0 || buttonIndex >= 4) return;
-    m_MouseState.buttons[buttonIndex].ApplyReleaseEvent(m_CurrentTick);
-    m_HeldMouseButtons.erase(buttonIndex);
-}
-
-void InputSystem::ReleaseAllMouseButtons() {
-    for (auto &btn : m_MouseState.buttons) {
-        if (btn.pressed) {
-            btn.ApplyReleaseEvent(m_CurrentTick);
-        }
-    }
-    m_HeldMouseButtons.clear();
-}
-
-void InputSystem::SetMousePosition(float x, float y) {
-    m_MouseState.position.x = x;
-    m_MouseState.position.y = y;
-}
-
-void InputSystem::MoveMouseRelative(float dx, float dy) {
-    m_MouseState.position.x += dx;
-    m_MouseState.position.y += dy;
-}
-
-void InputSystem::SetMouseWheel(int delta) {
-    m_MouseState.wheelDelta = delta;
-    m_MouseState.wheelPosition += delta;
-}
-
-bool InputSystem::IsMouseButtonDown(int buttonIndex) const {
-    if (buttonIndex < 0 || buttonIndex >= 4) return false;
-    return m_MouseState.buttons[buttonIndex].pressed;
-}
-
-bool InputSystem::IsMouseButtonUp(int buttonIndex) const {
-    if (buttonIndex < 0 || buttonIndex >= 4) return false;
-    return !m_MouseState.buttons[buttonIndex].pressed;
-}
-
-Vx2DVector InputSystem::GetMousePosition() const {
-    return m_MouseState.position;
-}
-
-int InputSystem::GetMouseWheelDelta() const {
-    return m_MouseState.wheelDelta;
 }
 
 // ===================================================================
@@ -550,14 +478,11 @@ void InputSystem::Reset() {
         keyState.Reset();
     }
 
-    m_MouseState.Reset();
-
     for (auto &pair : m_JoystickStates) {
         pair.second.Reset();
     }
 
     m_HeldKeys.clear();
-    m_HeldMouseButtons.clear();
     m_HeldJoystickButtons.clear();
 }
 
@@ -637,18 +562,6 @@ std::vector<CKKEYBOARD> InputSystem::GetPressedKeys() const {
     return pressedKeys;
 }
 
-std::vector<int> InputSystem::GetPressedMouseButtons() const {
-    std::vector<int> pressedButtons;
-
-    for (size_t i = 0; i < m_MouseState.buttons.size(); ++i) {
-        if (m_MouseState.buttons[i].pressed) {
-            pressedButtons.push_back(static_cast<int>(i));
-        }
-    }
-
-    return pressedButtons;
-}
-
 std::map<int, std::vector<int>> InputSystem::GetPressedJoystickButtons() const {
     std::map<int, std::vector<int>> pressedButtons;
 
@@ -699,36 +612,6 @@ bool InputSystem::HasConflicts(const InputSystem &other,
         }
     }
 
-    // Check mouse button conflicts
-    for (size_t i = 0; i < m_MouseState.buttons.size(); ++i) {
-        if (m_MouseState.buttons[i].pressed && other.m_MouseState.buttons[i].pressed) {
-            hasConflicts = true;
-            if (outConflicts) {
-                std::string buttonName;
-                switch (i) {
-                    case 0: buttonName = "left"; break;
-                    case 1: buttonName = "right"; break;
-                    case 2: buttonName = "middle"; break;
-                    case 3: buttonName = "X1"; break;
-                    default: buttonName = "button_" + std::to_string(i); break;
-                }
-                outConflicts->push_back("Mouse button conflict: " + buttonName);
-            }
-        }
-    }
-
-    // Check mouse position conflicts (if both set positions)
-    if ((m_MouseState.position.x != 0 || m_MouseState.position.y != 0) &&
-        (other.m_MouseState.position.x != 0 || other.m_MouseState.position.y != 0)) {
-        if (m_MouseState.position.x != other.m_MouseState.position.x ||
-            m_MouseState.position.y != other.m_MouseState.position.y) {
-            hasConflicts = true;
-            if (outConflicts) {
-                outConflicts->push_back("Mouse position conflict");
-            }
-        }
-    }
-
     // Check joystick button conflicts
     for (const auto &pair : m_JoystickStates) {
         int joyIndex = pair.first;
@@ -755,24 +638,96 @@ bool InputSystem::HasConflicts(const InputSystem &other,
     return hasConflicts;
 }
 
-void InputSystem::Apply(size_t currentTick, DX8InputManager *inputManager) {
-    if (!inputManager || !m_Enabled) {
+void InputSystem::Apply(size_t currentTick, CKInputManager *inputManager) {
+    if (!inputManager) {
         return;
     }
 
+    ApplyToKeyboardState(currentTick, inputManager->GetKeyboardState());
+}
+
+void InputSystem::ApplyToKeyboardState(size_t currentTick, unsigned char *keyboardState) {
+    if (!keyboardState || !m_Enabled) {
+        return;
+    }
+
+    ApplyMergedToKeyboardState(currentTick, {this}, keyboardState);
+}
+
+InputSystem::ExplicitKeyboardState InputSystem::CaptureExplicitKeyboardState(size_t currentTick) {
+    ExplicitKeyboardState explicitState;
+    if (!m_Enabled) {
+        return explicitState;
+    }
+
+    ProcessHeldInputs(currentTick);
+
+    for (size_t code = 0; code < m_KeyStates.size(); ++code) {
+        const uint8_t state = m_KeyStates[code].currentState;
+        if (state & KS_PRESSED) {
+            explicitState.isSet[code] = true;
+            explicitState.values[code] = state;
+        } else if (state & KS_RELEASED) {
+            explicitState.isSet[code] = true;
+            explicitState.values[code] = KS_RELEASED;
+        }
+    }
+
+    PrepareNextFrame();
+    return explicitState;
+}
+
+void InputSystem::ApplyMergedToKeyboardState(size_t currentTick,
+                                             const std::vector<InputSystem *> &inputsHighToLow,
+                                             unsigned char *keyboardState) {
+    if (!keyboardState) {
+        return;
+    }
+
+    std::array<bool, 256> mergedSet{};
+    std::array<unsigned char, 256> mergedValues{};
+    mergedValues.fill(KS_IDLE);
+
+    for (InputSystem *input : inputsHighToLow) {
+        if (!input) {
+            continue;
+        }
+
+        const ExplicitKeyboardState state = input->CaptureExplicitKeyboardState(currentTick);
+        for (size_t code = 0; code < state.isSet.size(); ++code) {
+            if (state.isSet[code] && !mergedSet[code]) {
+                mergedSet[code] = true;
+                mergedValues[code] = state.values[code];
+            }
+        }
+    }
+
+    for (size_t code = 0; code < mergedValues.size(); ++code) {
+        keyboardState[code] = mergedValues[code];
+    }
+}
+
+void InputSystem::PrepareNextFrame() {
+    for (auto &keyState : m_KeyStates) {
+        keyState.PrepareNextFrame();
+    }
+}
+
+void InputSystem::Reset(unsigned char *keyboardState) {
+    if (!keyboardState) return;
+
+    // Reset all keys to idle state
+    memset(keyboardState, KS_IDLE, 256);
+}
+
+void InputSystem::ProcessHeldInputs(size_t currentTick) {
     m_CurrentTick = currentTick;
 
-    // ===================================================================
-    // Step 1: Process held keys timers and generate press/release events
-    // ===================================================================
-
-    // Process held keyboard keys
     for (auto it = m_HeldKeys.begin(); it != m_HeldKeys.end();) {
         auto key = it->first;
         int &ticks = it->second;
 
         if (ticks == 1) {
-            // This is the last frame - generate release event
             m_KeyStates[key].ApplyReleaseEvent(currentTick);
             it = m_HeldKeys.erase(it);
         } else {
@@ -781,21 +736,6 @@ void InputSystem::Apply(size_t currentTick, DX8InputManager *inputManager) {
         }
     }
 
-    // Process held mouse buttons
-    for (auto it = m_HeldMouseButtons.begin(); it != m_HeldMouseButtons.end();) {
-        int button = it->first;
-        int &ticks = it->second;
-
-        if (ticks == 1) {
-            m_MouseState.buttons[button].ApplyReleaseEvent(currentTick);
-            it = m_HeldMouseButtons.erase(it);
-        } else {
-            --ticks;
-            ++it;
-        }
-    }
-
-    // Process held joystick buttons
     for (auto it = m_HeldJoystickButtons.begin(); it != m_HeldJoystickButtons.end();) {
         int key = it->first;
         int &ticks = it->second;
@@ -813,86 +753,4 @@ void InputSystem::Apply(size_t currentTick, DX8InputManager *inputManager) {
             ++it;
         }
     }
-
-    // ===================================================================
-    // Step 2: Apply keyboard state using DX8InputManager
-    // ===================================================================
-
-    for (int code = 0; code < 256; ++code) {
-        if (m_KeyStates[code].currentState & KS_PRESSED) {
-            inputManager->SetKeyDown(static_cast<CKDWORD>(code));
-        } else if (m_KeyStates[code].currentState == KS_IDLE) {
-            inputManager->SetKeyUp(static_cast<CKDWORD>(code));
-        }
-    }
-
-    // ===================================================================
-    // Step 3: Apply mouse state using DX8InputManager
-    // ===================================================================
-
-    // Apply mouse button states
-    for (size_t i = 0; i < m_MouseState.buttons.size(); ++i) {
-        CK_MOUSEBUTTON button = static_cast<CK_MOUSEBUTTON>(i);
-        if (m_MouseState.buttons[i].pressed) {
-            inputManager->SetMouseButtonDown(button);
-        } else {
-            inputManager->SetMouseButtonUp(button);
-        }
-    }
-
-    // Apply mouse position
-    inputManager->SetMousePosition(m_MouseState.position);
-
-    // Apply mouse wheel
-    if (m_MouseState.wheelDelta != 0) {
-        inputManager->SetMouseWheel(m_MouseState.wheelDelta);
-    }
-
-    // ===================================================================
-    // Step 4: Apply joystick states using DX8InputManager
-    // ===================================================================
-
-    for (const auto &pair : m_JoystickStates) {
-        int joyIndex = pair.first;
-        const JoystickState &joyState = pair.second;
-
-        // Apply joystick button states
-        for (size_t i = 0; i < joyState.buttons.size(); ++i) {
-            if (joyState.buttons[i].pressed) {
-                inputManager->SetJoystickButtonDown(joyIndex, static_cast<int>(i));
-            } else {
-                inputManager->SetJoystickButtonUp(joyIndex, static_cast<int>(i));
-            }
-        }
-
-        // Apply joystick position (X, Y, Z axes)
-        inputManager->SetJoystickPosition(joyIndex, joyState.position);
-
-        // Apply joystick rotation (RX, RY, RZ axes)
-        inputManager->SetJoystickRotation(joyIndex, joyState.rotation);
-
-        // Apply joystick sliders
-        inputManager->SetJoystickSliders(joyIndex, joyState.sliders);
-
-        // Apply joystick POV (point-of-view hat)
-        inputManager->SetJoystickPOV(joyIndex, joyState.pov);
-    }
-
-    // Clear wheel delta after applying (it's a per-frame delta)
-    m_MouseState.wheelDelta = 0;
-
-    PrepareNextFrame();
-}
-
-void InputSystem::PrepareNextFrame() {
-    for (auto &keyState : m_KeyStates) {
-        keyState.PrepareNextFrame();
-    }
-}
-
-void InputSystem::Reset(unsigned char *keyboardState) {
-    if (!keyboardState) return;
-
-    // Reset all keys to idle state
-    memset(keyboardState, KS_IDLE, 256);
 }

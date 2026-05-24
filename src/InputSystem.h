@@ -6,10 +6,7 @@
 #include <vector>
 #include <map>
 
-#include "DX8InputManager.h"
-
-// Forward declarations
-class DX8InputManager;
+#include <CKInputManager.h>
 
 // Exact state representation
 struct KeyState {
@@ -23,7 +20,9 @@ struct KeyState {
     }
 
     void ApplyReleaseEvent(size_t ts) {
-        currentState |= KS_RELEASED;
+        currentState = (currentState & KS_PRESSED)
+            ? static_cast<uint8_t>(KS_PRESSED | KS_RELEASED)
+            : static_cast<uint8_t>(KS_RELEASED);
         timestamp = ts;
     }
 
@@ -39,45 +38,6 @@ struct KeyState {
         }
     }
 
-};
-
-// Mouse button state tracking
-struct MouseButtonState {
-    bool pressed = false;
-    size_t timestamp = 0;
-
-    void ApplyPressEvent(size_t ts) {
-        pressed = true;
-        timestamp = ts;
-    }
-
-    void ApplyReleaseEvent(size_t ts) {
-        pressed = false;
-        timestamp = ts;
-    }
-
-    void Reset() {
-        pressed = false;
-        timestamp = 0;
-    }
-};
-
-// Mouse state tracking
-struct MouseState {
-    std::array<MouseButtonState, 4> buttons; // Left, Right, Middle, X1, X2 (using 4 as per DX8)
-    Vx2DVector position;
-    int wheelDelta = 0;
-    int wheelPosition = 0;
-
-    void Reset() {
-        for (auto &btn : buttons) {
-            btn.Reset();
-        }
-        position.x = 0.0f;
-        position.y = 0.0f;
-        wheelDelta = 0;
-        wheelPosition = 0;
-    }
 };
 
 // Joystick button state tracking
@@ -139,6 +99,13 @@ struct JoystickState {
  */
 class InputSystem {
 public:
+    struct ExplicitKeyboardState {
+        std::array<bool, 256> isSet{};
+        std::array<unsigned char, 256> values{};
+
+        bool Has(size_t keyCode) const { return keyCode < isSet.size() && isSet[keyCode]; }
+    };
+
     InputSystem();
     ~InputSystem() = default;
 
@@ -178,84 +145,6 @@ public:
      * @brief Immediately releases all keys currently pressed by the TAS system.
      */
     void ReleaseAllKeys();
-
-    // --- Mouse Control API ---
-
-    /**
-     * @brief Immediately presses the specified mouse button(s).
-     * @param buttonIndex The mouse button index (0=left, 1=right, 2=middle, 3=X1).
-     */
-    void PressMouseButton(int buttonIndex);
-
-    /**
-     * @brief Presses mouse button for exactly one frame, then automatically releases it.
-     * @param buttonIndex The mouse button index.
-     */
-    void PressMouseButtonOneFrame(int buttonIndex);
-
-    /**
-     * @brief Holds mouse button for a specified number of frames, then automatically releases it.
-     * @param buttonIndex The mouse button index.
-     * @param durationTicks The number of frames to hold the button.
-     */
-    void HoldMouseButton(int buttonIndex, int durationTicks);
-
-    /**
-     * @brief Immediately releases the specified mouse button.
-     * @param buttonIndex The mouse button index.
-     */
-    void ReleaseMouseButton(int buttonIndex);
-
-    /**
-     * @brief Releases all mouse buttons currently pressed by the TAS system.
-     */
-    void ReleaseAllMouseButtons();
-
-    /**
-     * @brief Sets the absolute mouse position.
-     * @param x The X coordinate.
-     * @param y The Y coordinate.
-     */
-    void SetMousePosition(float x, float y);
-
-    /**
-     * @brief Moves the mouse relative to current position.
-     * @param dx The delta X movement.
-     * @param dy The delta Y movement.
-     */
-    void MoveMouseRelative(float dx, float dy);
-
-    /**
-     * @brief Sets the mouse wheel delta for this frame.
-     * @param delta The wheel scroll amount.
-     */
-    void SetMouseWheel(int delta);
-
-    /**
-     * @brief Checks if a mouse button is currently pressed by the TAS system.
-     * @param buttonIndex The mouse button index.
-     * @return True if the button is currently pressed.
-     */
-    bool IsMouseButtonDown(int buttonIndex) const;
-
-    /**
-     * @brief Checks if a mouse button is currently released by the TAS system.
-     * @param buttonIndex The mouse button index.
-     * @return True if the button is currently released.
-     */
-    bool IsMouseButtonUp(int buttonIndex) const;
-
-    /**
-     * @brief Gets the current mouse position.
-     * @return The mouse position as Vx2DVector.
-     */
-    Vx2DVector GetMousePosition() const;
-
-    /**
-     * @brief Gets the current mouse wheel delta.
-     * @return The wheel delta.
-     */
-    int GetMouseWheelDelta() const;
 
     // --- Joystick Control API ---
 
@@ -435,12 +324,6 @@ public:
     const std::array<KeyState, 256> &GetAllKeyStates() const { return m_KeyStates; }
 
     /**
-     * @brief Gets the complete mouse state for diagnostics/merging.
-     * @return Reference to the internal mouse state.
-     */
-    const MouseState &GetAllMouseStates() const { return m_MouseState; }
-
-    /**
      * @brief Gets all joystick states for diagnostics/merging.
      * @return Reference to the internal joystick states map.
      */
@@ -451,12 +334,6 @@ public:
      * @return Vector of CKKEYBOARD codes for all pressed keys.
      */
     std::vector<CKKEYBOARD> GetPressedKeys() const;
-
-    /**
-     * @brief Gets a list of all currently pressed mouse buttons.
-     * @return Vector of button indices for all pressed mouse buttons.
-     */
-    std::vector<int> GetPressedMouseButtons() const;
 
     /**
      * @brief Gets a list of all currently pressed joystick buttons.
@@ -476,12 +353,30 @@ public:
     // --- Core Method for Hooking ---
 
     /**
-     * @brief Applies TAS input using DX8InputManager set methods
-     * This sets keyboard, mouse, and joystick states via the input manager
+     * @brief Applies TAS keyboard input through CKInputManager's keyboard state buffer.
      * @param currentTick The current game tick
-     * @param inputManager Pointer to the DX8InputManager instance
+     * @param inputManager Pointer to the CKInputManager instance
      */
-    void Apply(size_t currentTick, DX8InputManager *inputManager);
+    void Apply(size_t currentTick, CKInputManager *inputManager);
+
+    /**
+     * @brief Applies TAS keyboard input to a raw 256-byte Virtools keyboard state buffer.
+     * @param currentTick The current game tick
+     * @param keyboardState Pointer to the keyboard state buffer returned by CKInputManager.
+     */
+    void ApplyToKeyboardState(size_t currentTick, unsigned char *keyboardState);
+
+    /**
+     * @brief Captures only the keys explicitly controlled by this context for the current tick.
+     */
+    ExplicitKeyboardState CaptureExplicitKeyboardState(size_t currentTick);
+
+    /**
+     * @brief Applies a merged high-to-low priority list of context inputs once to a keyboard buffer.
+     */
+    static void ApplyMergedToKeyboardState(size_t currentTick,
+                                           const std::vector<InputSystem *> &inputsHighToLow,
+                                           unsigned char *keyboardState);
 
     /**
      * @brief Prepares for next frame
@@ -522,14 +417,13 @@ private:
      */
     static bool IsValidKeyCode(CKKEYBOARD keyCode);
 
+    void ProcessHeldInputs(size_t currentTick);
+
     // A map from string key name to its corresponding BML key code.
     std::unordered_map<std::string, CKKEYBOARD> m_Keymap;
 
     // Keyboard state tracking
     std::array<KeyState, 256> m_KeyStates;
-
-    // Mouse state tracking
-    MouseState m_MouseState;
 
     // Joystick state tracking (indexed by joystick ID)
     std::map<int, JoystickState> m_JoystickStates;
@@ -539,9 +433,6 @@ private:
 
     // Keys being held for a specific duration (key -> remaining ticks)
     std::unordered_map<CKKEYBOARD, int> m_HeldKeys;
-
-    // Mouse buttons being held for a specific duration (button -> remaining ticks)
-    std::unordered_map<int, int> m_HeldMouseButtons;
 
     // Joystick buttons being held for a specific duration ((joystick_id << 16 | button) -> remaining ticks)
     std::unordered_map<int, int> m_HeldJoystickButtons;

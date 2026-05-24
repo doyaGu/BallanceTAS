@@ -6,6 +6,8 @@
 
 #include <BML/Bui.h>
 
+#include "TASMenuPresentation.h"
+
 class TASEngine;
 class TASProject;
 class TASMenu;
@@ -13,9 +15,7 @@ class TASMenu;
 class TASMenuPage : public Bui::Page {
 public:
     TASMenuPage(TASMenu *menu, std::string name);
-    ~TASMenuPage() override;
-
-    void OnClose() override;
+    ~TASMenuPage() override = default;
 
 protected:
     TASMenu *m_Menu;
@@ -52,11 +52,16 @@ public:
     // State queries
     bool IsTASActive() const;
     bool IsOpen() const;
+    TASMenuStatePresentation GetStatePresentation() const;
+    const std::string &GetLastActionError() const { return m_LastActionError; }
+    void SetLastActionError(std::string error);
+    void ClearLastActionError();
 
     TASEngine *GetEngine() const { return m_Engine; }
 
 private:
     TASEngine *m_Engine;
+    std::string m_LastActionError;
 };
 
 class TASListPage : public TASMenuPage {
@@ -68,12 +73,13 @@ public:
     void OnDraw() override;
 
 private:
-    bool OnDrawEntry(size_t index, bool *v);
+    bool OnDrawEntry(size_t index, int slotIndex, const TASMenuStatePresentation &state, bool *v);
     void DrawMainButtons();
-    void DrawTASStatus();
+    void DrawPageNavigation();
+    void DrawTASStatus(const TASMenuStatePresentation &state);
 
     int m_Count = 0;
-    static constexpr int MAX_ENTRIES_PER_PAGE = 8;
+    static constexpr int MAX_ENTRIES_PER_PAGE = 7;
 };
 
 class TASDetailsPage : public TASMenuPage {

@@ -301,7 +301,7 @@ void InGameOSD::DrawKeysPanel() {
     arrowX += DrawKeyButton(drawList, ImVec2(arrowX, bottomRowY), padding, minHeight, m_KeyState.keyRight, ">");
 
     // Calculate total width and height for dummy space
-    float totalWidth = std::max({currentX, bottomRowWidth});
+    float totalWidth = (std::max)({currentX, bottomRowWidth});
     float totalHeight = bottomRowY + minHeight - basePos.y;
 
     // Reserve space for the key display
@@ -435,7 +435,7 @@ void InGameOSD::DrawAngularVelocityIndicator() {
     center.y += 30;
 
     float radius = 25.0f;
-    float speed = std::min(m_PhysicsData.angularSpeed / 10.0f, 1.0f);
+    float speed = (std::min)(m_PhysicsData.angularSpeed / 10.0f, 1.0f);
 
     // Background circle
     drawList->AddCircle(center, radius, ImGui::ColorConvertFloat4ToU32(ImVec4(0.3f, 0.3f, 0.3f, 0.5f)), 16, 2.0f);
@@ -555,7 +555,7 @@ PhysicsObject *InGameOSD::GetBallPhysicsObject() {
 
 ImVec4 InGameOSD::GetVelocityColor(float velocity, float maxVel) {
     float absVel = std::abs(velocity);
-    float ratio = std::min(absVel / maxVel, 1.0f);
+    float ratio = (std::min)(absVel / maxVel, 1.0f);
 
     if (ratio < 0.3f) {
         return ImVec4(0.3f, 1.0f, 0.3f, 1.0f); // Green for low
@@ -573,7 +573,7 @@ float InGameOSD::DrawKeyButton(ImDrawList *drawList, const ImVec2 &pos, float pa
     // Calculate button size
     ImVec2 buttonSize = ImVec2(
         (textSize.x + padding * 2) * m_Scale,
-        std::max(textSize.y + padding * 2, minHeight) * m_Scale
+        (std::max)(textSize.y + padding * 2, minHeight) * m_Scale
     );
 
     // Colors for pressed/unpressed states
@@ -622,12 +622,12 @@ void InGameOSD::SetPanelVisible(OSDPanel panel, bool visible) {
 }
 
 void InGameOSD::SetPosition(float x, float y) {
-    m_PosX = std::max(0.0f, std::min(1.0f, x));
-    m_PosY = std::max(0.0f, std::min(1.0f, y));
+    m_PosX = (std::max)(0.0f, (std::min)(1.0f, x));
+    m_PosY = (std::max)(0.0f, (std::min)(1.0f, y));
 }
 
 void InGameOSD::SetGraphTimeRange(float seconds) {
-    m_GraphTimeRange = std::max(1.0f, std::min(30.0f, seconds));
+    m_GraphTimeRange = (std::max)(1.0f, (std::min)(30.0f, seconds));
     // Update max history based on time range
     size_t newMaxHistory = static_cast<size_t>(m_GraphTimeRange * 60.0f); // 60 FPS
     PhysicsHistory::s_MaxHistory = newMaxHistory;

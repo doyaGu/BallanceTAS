@@ -2,27 +2,101 @@
 
 #include "Logger.h"
 #include "GameInterface.h"
+#include "Recorder.h"
 #include "TASEngine.h"
 #include "ProjectManager.h"
 #include "ScriptGenerator.h"
+#include "ServiceContainer.h"
 #include "TASProject.h"
 #include "UIManager.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <utility>
+
+namespace {
+
+constexpr float kMenuTextX = 0.300f;
+constexpr float kMenuButtonX = 0.4031f;
+constexpr float kMenuWidthFraction = 0.40f;
+
+float ViewportWidth() {
+    return ImGui::GetMainViewport()->Size.x;
+}
+
+float MenuWidth(float fraction = 0.4f) {
+    return ViewportWidth() * fraction;
+}
+
+void TextBlock(float x, float y, const char *text, float width = 0.4f, float scale = 1.0f) {
+    Bui::At(x, y, [&]() {
+        Bui::WrappedText(text, MenuWidth(width), ImGui::GetCursorPosX(), scale);
+    });
+}
+
+void TextBlock(float x, float y, const std::string &text, float width = 0.4f, float scale = 1.0f) {
+    TextBlock(x, y, text.c_str(), width, scale);
+}
+
+ImVec4 TextColorForTone(TASMenuTone tone) {
+    switch (tone) {
+    case TASMenuTone::Good:
+        return ImVec4(0.55f, 1.0f, 0.55f, 1.0f);
+    case TASMenuTone::Warning:
+        return ImVec4(1.0f, 0.72f, 0.28f, 1.0f);
+    case TASMenuTone::Error:
+        return ImVec4(1.0f, 0.45f, 0.45f, 1.0f);
+    case TASMenuTone::Active:
+        return ImVec4(0.3f, 0.85f, 1.0f, 1.0f);
+    case TASMenuTone::Muted:
+        return ImVec4(0.72f, 0.72f, 0.72f, 1.0f);
+    case TASMenuTone::Normal:
+    default:
+        return ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+    }
+}
+
+void ToneText(float x, float y, const std::string &text, TASMenuTone tone, float width = 0.4f, float scale = 1.0f) {
+    ImGui::PushStyleColor(ImGuiCol_Text, TextColorForTone(tone));
+    TextBlock(x, y, text, width, scale);
+    ImGui::PopStyleColor();
+}
+
+template <typename Draw>
+void MenuItemAt(float x, float y, Draw &&draw) {
+    Bui::At(x, y, std::forward<Draw>(draw));
+}
+
+void DrawStateLine(float y, const TASMenuStatePresentation &state) {
+    if (state.label == "Idle" && state.failureReason.empty()) {
+        return;
+    }
+
+    std::string detail;
+    if (state.label == "Pending Playback") {
+        detail = state.detail.empty() ? "Waiting for playback" : state.detail;
+    } else if (state.label == "Running Playback") {
+        detail = state.detail.empty() ? "Playback running" : "Running: " + state.detail;
+    } else if (state.label == "Pending Recording") {
+        detail = state.detail.empty() ? "Waiting to record" : state.detail;
+    } else if (state.label == "Pending Translation") {
+        detail = state.detail.empty() ? "Preparing translation" : state.detail;
+    } else {
+        detail = state.detail.empty() ? state.label : state.label + ": " + state.detail;
+    }
+
+    ToneText(kMenuTextX, y, TruncateMenuLabel(detail, 36), state.tone, kMenuWidthFraction, 0.68f);
+    if (!state.failureReason.empty() && state.failureReason != state.detail) {
+        ToneText(kMenuTextX, y + 0.028f, "Error: " + state.failureReason, TASMenuTone::Error, kMenuWidthFraction, 0.70f);
+    }
+}
+
+} // namespace
 
 // TASMenuPage Implementation
 TASMenuPage::TASMenuPage(TASMenu *menu, std::string name) : Page(std::move(name)), m_Menu(menu) {
     // Page registration is now handled by the menu using CreatePage
-}
-
-TASMenuPage::~TASMenuPage() {
-    if (m_Menu) {
-        m_Menu->RemovePage(GetName());
-    }
-}
-
-void TASMenuPage::OnClose() {
-    if (m_Menu) {
-        m_Menu->OpenPrevPage();
-    }
 }
 
 // TASMenu Implementation
@@ -62,14 +136,65 @@ bool TASMenu::IsOpen() const {
     return m_CurrentPage != nullptr && m_CurrentPage->IsVisible();
 }
 
+void TASMenu::SetLastActionError(std::string error) {
+    m_LastActionError = std::move(error);
+}
+
+void TASMenu::ClearLastActionError() {
+    m_LastActionError.clear();
+}
+
+TASMenuStatePresentation TASMenu::GetStatePresentation() const {
+    TASMenuRuntimeSnapshot snapshot;
+    snapshot.pendingPlayback = m_Engine->IsPendingPlay();
+    snapshot.runningPlayback = m_Engine->IsPlaying();
+    snapshot.pendingRecording = m_Engine->IsPendingRecord();
+    snapshot.recording = m_Engine->IsRecording();
+    snapshot.pendingTranslation = m_Engine->IsPendingTranslate();
+    snapshot.translating = m_Engine->IsTranslating();
+    snapshot.currentTick = m_Engine->GetCurrentTick();
+    snapshot.lastError = m_LastActionError;
+    snapshot.lastInfo = m_Engine->GetLastTranslationResultMessage();
+    snapshot.playbackCompleted = !m_Engine->GetLastCompletedPlaybackProjectName().empty();
+
+    if (auto *project = GetCurrentProject()) {
+        snapshot.activeProjectName = project->GetName();
+        snapshot.activeProjectKey = project->GetPath();
+        snapshot.activeProjectIsRecord = project->IsRecordProject();
+        if (snapshot.pendingPlayback) {
+            if (!project->GetTargetLevel().empty()) {
+                snapshot.activityDetail = "Waiting for " + project->GetTargetLevel();
+            }
+        } else if (snapshot.runningPlayback) {
+            if (project->IsRecordProject()) {
+                snapshot.frameCount = project->GetRecordFrameCount();
+            }
+        } else if (snapshot.pendingTranslation || snapshot.translating) {
+            snapshot.activityDetail = project->IsRecordProject()
+                ? "Translating to script: " + project->GetName()
+                : "Translating to record: " + project->GetName();
+        }
+    } else if (snapshot.playbackCompleted) {
+        snapshot.activeProjectName = m_Engine->GetLastCompletedPlaybackProjectName();
+    }
+
+    if (snapshot.pendingRecording && snapshot.activityDetail.empty()) {
+        snapshot.activityDetail = "Waiting for target level";
+    }
+    if (snapshot.recording) {
+        snapshot.frameCount = m_Engine->GetRecordingFrameCount();
+    }
+
+    return BuildMenuStatePresentation(snapshot);
+}
+
 void TASMenu::OnOpen() {
     auto *inputManager = m_Engine->GetGameInterface()->GetInputManager();
     if (inputManager) {
         inputManager->Block(CK_INPUT_DEVICE_KEYBOARD);
     }
 
-    if (!GetCurrentProject())
-        RefreshProjects();
+    RefreshProjects();
 }
 
 void TASMenu::OnClose() {
@@ -77,20 +202,22 @@ void TASMenu::OnClose() {
 }
 
 void TASMenu::RefreshProjects() {
-    m_Engine->GetProjectManager()->RefreshProjects();
+    m_Engine->GetServiceProvider().Resolve<ProjectManager>()->RefreshProjects();
+    ClearLastActionError();
 }
 
 TASProject *TASMenu::GetCurrentProject() const {
-    return m_Engine->GetProjectManager()->GetCurrentProject();
+    return m_Engine->GetServiceProvider().Resolve<ProjectManager>()->GetCurrentProject();
 }
 
 void TASMenu::SetCurrentProject(TASProject *project) {
-    m_Engine->GetProjectManager()->SetCurrentProject(project);
+    m_Engine->GetServiceProvider().Resolve<ProjectManager>()->SetCurrentProject(project);
 }
 
 void TASMenu::PlayProject(TASProject *project) {
     if (!project || !project->IsValid()) {
         Log::Error("Cannot play invalid project.");
+        SetLastActionError(project ? project->GetValidationMessage() : "No project selected");
         return;
     }
 
@@ -105,9 +232,11 @@ void TASMenu::PlayProject(TASProject *project) {
     SetCurrentProject(project);
 
     if (m_Engine->StartReplay()) {
+        ClearLastActionError();
         Close(); // Close menu so user can load a level
     } else {
         Log::Error("Failed to start replay from menu.");
+        SetLastActionError("Failed to start playback");
         // Reset project selection on failure
         SetCurrentProject(nullptr);
     }
@@ -155,9 +284,11 @@ void TASMenu::StartRecording() {
 
     if (m_Engine->StartRecording()) {
         Log::Info("Recording setup from menu.");
+        ClearLastActionError();
         Close(); // Close menu so user can load a level
     } else {
         Log::Error("Failed to setup recording from menu.");
+        SetLastActionError("Failed to setup recording");
     }
 }
 
@@ -173,15 +304,22 @@ void TASMenu::StopRecording() {
 }
 
 void TASMenu::TranslateProject(TASProject *project) {
-    if (!project || !project->IsRecordProject() || !project->IsValid()) {
-        Log::Error("Cannot translate: invalid record project.");
+    if (!project || !project->IsValid()) {
+        Log::Error("Cannot translate: invalid project.");
+        SetLastActionError(project ? project->GetValidationMessage() : "No project selected");
         return;
     }
 
-    // Check if record can be accurately translated
-    if (!project->CanBeTranslated()) {
+    if (project->IsRecordProject() && !project->CanBeTranslated()) {
         Log::Error("Cannot translate record: %s",
                                      project->GetTranslationCompatibilityMessage().c_str());
+        SetLastActionError(project->GetTranslationCompatibilityMessage());
+        return;
+    }
+    if (project->IsScriptProject() && !project->CanTranslateToRecord()) {
+        Log::Error("Cannot translate script to record: %s",
+                   project->GetScriptToRecordCompatibilityMessage().c_str());
+        SetLastActionError(project->GetScriptToRecordCompatibilityMessage());
         return;
     }
 
@@ -190,16 +328,20 @@ void TASMenu::TranslateProject(TASProject *project) {
         StopTAS();
     }
 
-    Log::Info("Translating record to script: %s (%.1f Hz, constant timing)",
-                                project->GetName().c_str(), project->GetUpdateRate());
+    Log::Info("Translating %s: %s (%.1f Hz)",
+              project->IsRecordProject() ? "record to script" : "script to record",
+              project->GetName().c_str(),
+              project->GetUpdateRate());
 
     // Set the current project and start translation via TASEngine
     SetCurrentProject(project);
 
     if (m_Engine->StartTranslation()) {
+        ClearLastActionError();
         Close(); // Close menu so user can load a level
     } else {
         Log::Error("Failed to start translation from menu.");
+        SetLastActionError("Failed to start translation");
         // Reset project selection on failure
         SetCurrentProject(nullptr);
     }
@@ -231,42 +373,32 @@ void TASListPage::OnPostBegin() {
     if (!IsVisible() || !m_Menu || !m_Menu->GetEngine())
         return;
 
-    Bui::Title(m_Title.c_str());
+    Bui::Title(m_Title.c_str(), 0.095f, 1.25f);
 
-    auto *projectManager = m_Menu->GetEngine()->GetProjectManager();
+    auto *projectManager = m_Menu->GetEngine()->GetServiceProvider().Resolve<ProjectManager>();
     const auto &projects = projectManager->GetProjects();
 
     m_Count = static_cast<int>(projects.size());
     SetPageCount(m_Count % MAX_ENTRIES_PER_PAGE == 0 ? m_Count / MAX_ENTRIES_PER_PAGE : m_Count / MAX_ENTRIES_PER_PAGE + 1);
-
-    if (m_PageIndex > 0 &&
-        Bui::LeftButton("PrevPage")) {
-        PrevPage();
-    }
-
-    if (m_PageCount > 1 && m_PageIndex < m_PageCount - 1 &&
-        Bui::RightButton("NextPage")) {
-        NextPage();
-    }
 }
 
 void TASListPage::OnDraw() {
+    const auto state = m_Menu ? m_Menu->GetStatePresentation() : TASMenuStatePresentation{};
+
     // Draw main action buttons
     DrawMainButtons();
+    DrawStateLine(0.255f, state);
 
     if (m_Count == 0) {
-        // No projects message using standard positioning
-        const auto menuPos = Bui::GetMenuPos();
-        const auto menuSize = Bui::GetMenuSize();
-
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.2f)));
-
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-        Bui::WrappedText("No TAS projects found.", menuSize.x, 1.0f);
-        ImGui::PopStyleColor();
-
+        ToneText(kMenuTextX, 0.36f, "No TAS projects found", TASMenuTone::Warning);
+        if (m_Menu && m_Menu->GetEngine()) {
+            TextBlock(kMenuTextX, 0.41f, "TAS path: " + m_Menu->GetEngine()->GetPath(), kMenuWidthFraction, 0.72f);
+        }
+        MenuItemAt(kMenuButtonX, 0.52f, [&]() {
+            if (Bui::LevelButton("Refresh")) {
+                m_Menu->RefreshProjects();
+            }
+        });
         return;
     }
 
@@ -276,73 +408,52 @@ void TASListPage::OnDraw() {
     Bui::Entries([
         &entryToggle,
         this,
-        baseIndex
+        baseIndex,
+        &state
     ](int slotIndex) {
         const int projectIndex = baseIndex + slotIndex;
         if (projectIndex >= m_Count) {
             return false;
         }
 
-        return OnDrawEntry(static_cast<size_t>(projectIndex), &entryToggle);
-    }, 0.4031f, 0.24f, 0.06f, MAX_ENTRIES_PER_PAGE);
+        return OnDrawEntry(static_cast<size_t>(projectIndex), slotIndex, state, &entryToggle);
+    }, kMenuButtonX, 0.305f, 0.058f, MAX_ENTRIES_PER_PAGE);
+
+    DrawPageNavigation();
 
     // Show TAS status if active
-    if (m_Menu && m_Menu->IsTASActive()) {
-        DrawTASStatus();
+    if (m_Menu && (m_Menu->IsTASActive() || !state.failureReason.empty())) {
+        DrawTASStatus(state);
     }
 }
 
-void TASListPage::DrawTASStatus() {
+void TASListPage::DrawTASStatus(const TASMenuStatePresentation &state) {
     if (!m_Menu || !m_Menu->GetEngine()) return;
 
-    auto *engine = m_Menu->GetEngine();
-    const auto menuPos = Bui::GetMenuPos();
-
-    ImGui::SetCursorPosX(menuPos.x * 1.3f);
-    ImGui::SetCursorPosY(Bui::CoordToPixel(ImVec2(0.0f, 0.76f)).y);
-
-    if (engine->IsPlaying() || engine->IsPendingPlay()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
-        ImGui::Text("[PLAYING]");
-        ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-        if (Bui::SmallButton("Stop")) {
-            m_Menu->StopTAS();
-        }
-    } else if (engine->IsTranslating() || engine->IsPendingTranslate()) {
-        // Animated effect for translation
-        static float animTimer = 0.0f;
-        animTimer += ImGui::GetIO().DeltaTime;
-        float alpha = 0.6f + 0.4f * sin(animTimer * 3.0f); // Pulsing effect
-
-        ImVec4 translateColor = ImVec4(0.2f, 0.8f, 1.0f, alpha);
-        ImGui::PushStyleColor(ImGuiCol_Text, translateColor);
-        ImGui::Text("[TRANSLATING]");
-        ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-        if (Bui::SmallButton("Stop")) {
-            m_Menu->StopTranslation();
-        }
-    } else if (engine->IsRecording() || engine->IsPendingRecord()) {
-        // Blinking effect for recording
-        static float blinkTimer = 0.0f;
-        blinkTimer += ImGui::GetIO().DeltaTime;
-        bool blink = fmod(blinkTimer, 1.0f) < 0.5f;
-
-        ImVec4 recordColor = blink ? ImVec4(1.0f, 0.2f, 0.2f, 1.0f) : ImVec4(0.8f, 0.4f, 0.4f, 1.0f);
-        ImGui::PushStyleColor(ImGuiCol_Text, recordColor);
-        ImGui::Text("[RECORDING]");
-        ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-        if (Bui::SmallButton("Stop")) {
-            m_Menu->StopRecording();
-        }
+    if (!state.failureReason.empty() && !state.stopAction.enabled) {
+        MenuItemAt(kMenuButtonX, 0.780f, [&]() {
+            if (Bui::LevelButton(state.refreshAction.label.c_str())) {
+                m_Menu->RefreshProjects();
+            }
+        });
+        return;
     }
 
-    ImGui::NewLine();
+    if (!state.stopAction.enabled) {
+        return;
+    }
+
+    MenuItemAt(kMenuButtonX, 0.780f, [&]() {
+        if (Bui::LevelButton(state.stopAction.label.c_str())) {
+            if (state.label == "Translating" || state.label == "Pending Translation") {
+                m_Menu->StopTranslation();
+            } else if (state.label == "Recording" || state.label == "Pending Recording") {
+                m_Menu->StopRecording();
+            } else {
+                m_Menu->StopTAS();
+            }
+        }
+    });
 }
 
 void TASListPage::DrawMainButtons() {
@@ -350,47 +461,64 @@ void TASListPage::DrawMainButtons() {
 
     auto *engine = m_Menu->GetEngine();
     bool canRecord = engine && !engine->IsPlaying() && !engine->IsRecording() &&
-        !engine->IsPendingPlay() && !engine->IsPendingRecord();
+        !engine->IsPendingPlay() && !engine->IsPendingRecord() &&
+        !engine->IsTranslating() && !engine->IsPendingTranslate();
 
-    // Record TAS button
-    ImGui::SetCursorScreenPos(Bui::CoordToPixel(ImVec2(0.4031f, 0.18f)));
+    MenuItemAt(kMenuButtonX, 0.205f, [&]() {
+        if (!canRecord) {
+            ImGui::BeginDisabled();
+        }
 
-    if (!canRecord) {
-        ImGui::BeginDisabled();
-    }
+        if (Bui::LevelButton("Record TAS")) {
+            m_Menu->OpenPage("Record New TAS");
+        }
 
-    if (Bui::LevelButton("Record TAS")) {
-        m_Menu->OpenPage("Record New TAS");
-    }
-
-    if (!canRecord) {
-        ImGui::EndDisabled();
-    }
-
-    ImGui::NewLine();
+        if (!canRecord) {
+            ImGui::EndDisabled();
+        }
+    });
 }
 
-bool TASListPage::OnDrawEntry(size_t index, bool *v) {
+void TASListPage::DrawPageNavigation() {
+    if (m_PageCount <= 1) {
+        return;
+    }
+
+    if (m_PageIndex > 0 && Bui::NavLeft(0.360f, 0.430f)) {
+        PrevPage();
+    }
+
+    char pageText[32] = {};
+    std::snprintf(pageText, sizeof(pageText), "%d/%d", m_PageIndex + 1, m_PageCount);
+    TextBlock(0.486f, 0.708f, pageText, 0.04f, 0.70f);
+
+    if (m_PageIndex < m_PageCount - 1 && Bui::NavRight(0.624f, 0.430f)) {
+        NextPage();
+    }
+}
+
+bool TASListPage::OnDrawEntry(size_t index, int slotIndex, const TASMenuStatePresentation &state, bool *v) {
     if (!m_Menu) return false;
 
     auto *engine = m_Menu->GetEngine();
-    if (!engine || !engine->GetProjectManager())
+    auto *projectManager = engine ? engine->GetServiceProvider().Resolve<ProjectManager>() : nullptr;
+    if (!engine || !projectManager)
         return false;
-
-    auto *projectManager = engine->GetProjectManager();
     const auto &projects = projectManager->GetProjects();
 
     if (index >= projects.size())
         return false;
 
     auto &project = projects[index];
+    const auto presentation = BuildProjectPresentation(*project, state);
 
-    bool isInvalid = !project->IsValid();
-
-    // Visual indicator for invalid projects
-    if (isInvalid) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.5f, 0.5f, 1.0f));
+    // Visual indicator for project kind and state
+    if (!project->IsValid()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, TextColorForTone(TASMenuTone::Error));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5f, 0.2f, 0.2f, 0.6f));
+    } else if (presentation.rowStatusLabel == "RUN" || presentation.rowStatusLabel == "WAIT") {
+        ImGui::PushStyleColor(ImGuiCol_Text, TextColorForTone(presentation.rowTone));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.45f, 0.55f, 0.7f));
     } else if (project->IsRecordProject()) {
         // Record projects - purple/magenta
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 1.0f, 1.0f));
@@ -405,14 +533,18 @@ bool TASListPage::OnDrawEntry(size_t index, bool *v) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 0.6f));
     }
 
-    const std::string &displayName = project->GetName();
-    bool clicked = Bui::LevelButton(displayName.c_str(), v);
+    ImGui::PushID(static_cast<int>(index));
+    const std::string buttonLabel = presentation.displayName + "##tas_project_" + std::to_string(index);
+    bool clicked = Bui::LevelButton(buttonLabel.c_str(), v);
+    ImGui::PopID();
 
     ImGui::PopStyleColor(2);
 
+    const float statusY = 0.312f + static_cast<float>(slotIndex) * 0.058f;
+    ToneText(0.585f, statusY, presentation.rowBadgeLabel, presentation.rowTone, 0.035f, 0.62f);
+
     if (clicked) {
         m_Menu->SetCurrentProject(project.get());
-        SetPage(0);
         m_Menu->OpenPage("TAS Details");
     }
 
@@ -430,18 +562,12 @@ void TASDetailsPage::OnPostBegin() {
 
     auto *project = m_Menu->GetCurrentProject();
     if (!project) {
-        m_Menu->OpenPrevPage();
+        m_Menu->SetLastActionError("Current project is no longer available");
+        m_Menu->OpenPage("TAS Projects");
         return;
     }
 
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.05f)));
-
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(project->GetName().c_str(), menuSize.x, 1.2f);
+    Bui::Title(TruncateMenuLabel(project->GetName(), 28).c_str(), 0.095f, 1.20f);
 }
 
 void TASDetailsPage::OnDraw() {
@@ -461,65 +587,40 @@ void TASDetailsPage::DrawProjectInfo() {
     auto *project = m_Menu->GetCurrentProject();
     if (!project) return;
 
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
+    const auto state = m_Menu->GetStatePresentation();
+    const auto presentation = BuildProjectPresentation(*project, state);
+    float y = 0.165f;
 
-    // Author
-    if (!project->GetAuthor().empty()) {
-        snprintf(m_TextBuf, sizeof(m_TextBuf), "By %s", project->GetAuthor().c_str());
-        ImGui::SetCursorPosX(menuPos.x);
-        Bui::WrappedText(m_TextBuf, menuSize.x);
+    auto line = [&](const std::string &text, TASMenuTone tone = TASMenuTone::Normal, float scale = 0.88f) {
+        ToneText(kMenuTextX, y, text, tone, kMenuWidthFraction, scale);
+        y += 0.031f;
+    };
+
+    if (presentation.displayName != presentation.fullName) {
+        line("Name: " + presentation.fullName, TASMenuTone::Normal, 0.78f);
+    }
+    line("Type: " + presentation.typeLabel);
+    line("Scope: " + presentation.scopeLabel, project->IsGlobalProject() ? TASMenuTone::Good : TASMenuTone::Normal);
+    line("Trigger: " + presentation.triggerLabel);
+    line("Level: " + presentation.levelLabel);
+    if (project->IsScriptProject()) {
+        line("Entry: " + presentation.entryLabel);
+    }
+    line("Rate: " + presentation.updateRateLabel);
+
+    if (project->IsRecordProject() || project->IsScriptProject()) {
+        line("Frames: " + presentation.recordInfoLabel,
+             project->GetRecordFrameCount() == 0 ? TASMenuTone::Error : TASMenuTone::Normal);
+        line("Timing: " + presentation.translationLabel,
+             project->CanBeTranslated() ? TASMenuTone::Good : TASMenuTone::Warning);
     }
 
-    // Project type indicator
-    ImGui::SetCursorPosX(menuPos.x);
-    if (project->IsRecordProject()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 1.0f, 1.0f));
-        Bui::WrappedText("Type: Record (.tas)", menuSize.x);
-        ImGui::PopStyleColor();
-    } else if (project->IsZipProject()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.9f, 1.0f, 1.0f));
-        Bui::WrappedText("Type: Script (Archive)", menuSize.x);
-        ImGui::PopStyleColor();
-    } else {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-        Bui::WrappedText("Type: Script (Directory)", menuSize.x);
-        ImGui::PopStyleColor();
-    }
+    line("Status: " + presentation.validityLabel,
+         project->IsValid() ? TASMenuTone::Good : TASMenuTone::Error,
+         0.82f);
 
-    // Target Level
-    if (!project->GetTargetLevel().empty()) {
-        snprintf(m_TextBuf, sizeof(m_TextBuf), "Target Level: %s", project->GetTargetLevel().c_str());
-        ImGui::SetCursorPosX(menuPos.x);
-        Bui::WrappedText(m_TextBuf, menuSize.x);
-    }
-
-    // Technical info
-    snprintf(m_TextBuf, sizeof(m_TextBuf), "Update Rate: %.0f Hz", project->GetUpdateRate());
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(m_TextBuf, menuSize.x);
-
-    ImGui::NewLine();
-
-    // Description
-    ImGui::SetCursorPosX(menuPos.x);
-    Bui::WrappedText(project->GetDescription().c_str(), menuSize.x);
-
-    // Validation status
-    if (!project->IsValid()) {
-        ImGui::NewLine();
-
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.6f, 0.6f, 1.0f));
-        Bui::WrappedText("Warning: This project has validation issues.", menuSize.x);
-        ImGui::PopStyleColor();
-    } else if (project->IsZipProject()) {
-        ImGui::NewLine();
-
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
-        Bui::WrappedText("Note: Zip projects will be extracted to a temporary directory.", menuSize.x, 0.9f);
-        ImGui::PopStyleColor();
+    if (!state.failureReason.empty()) {
+        line("Last error: " + state.failureReason, TASMenuTone::Error, 0.78f);
     }
 }
 
@@ -527,145 +628,64 @@ void TASDetailsPage::DrawActionButtons() {
     if (!m_Menu || !m_Menu->GetEngine()) return;
 
     auto *project = m_Menu->GetCurrentProject();
-    auto *engine = m_Menu->GetEngine();
+    const auto state = m_Menu->GetStatePresentation();
+    const auto presentation = BuildProjectPresentation(*project, state);
 
-    // Check current TAS state
-    bool isTASActive = m_Menu->IsTASActive();
-    bool canPlay = project->IsValid() && !isTASActive;
-    bool canTranslate = project->CanBeTranslated() && !isTASActive;
+    if (state.stopAction.enabled) {
+        DrawStateLine(0.575f, state);
+        MenuItemAt(kMenuButtonX, 0.655f, [&]() {
+            if (Bui::LevelButton(state.stopAction.label.c_str())) {
+                if (state.label == "Translating" || state.label == "Pending Translation") {
+                    m_Menu->StopTranslation();
+                } else if (state.label == "Recording" || state.label == "Pending Recording") {
+                    m_Menu->StopRecording();
+                } else {
+                    m_Menu->StopTAS();
+                }
+            }
+        });
+        return;
+    }
 
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
-
-    ImGui::NewLine();
-
-    if (isTASActive) {
-        // Show stop button if any TAS is active
-        const ImVec2 buttonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
-        ImGui::SetCursorPosX(buttonPos.x);
-
-        if (Bui::MainButton("Stop TAS")) {
-            m_Menu->StopTAS();
+    MenuItemAt(kMenuButtonX, 0.625f, [&]() {
+        if (!presentation.playAction.enabled) {
+            ImGui::BeginDisabled();
         }
 
-        ImGui::NewLine();
-
-        ImGui::SetCursorPosX(menuPos.x);
-
-        // Show status based on what's active
-        if (engine->IsTranslating() || engine->IsPendingTranslate()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 0.8f, 1.0f, 1.0f));
-            Bui::WrappedText("Translation in progress", menuSize.x);
-            ImGui::PopStyleColor();
-        } else if (engine->IsPlaying() || engine->IsPendingPlay()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.2f, 1.0f, 0.2f, 1.0f));
-            Bui::WrappedText("TAS is currently playing", menuSize.x);
-            ImGui::PopStyleColor();
-        } else if (engine->IsRecording() || engine->IsPendingRecord()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
-            Bui::WrappedText("Recording in progress", menuSize.x);
-            ImGui::PopStyleColor();
+        if (Bui::LevelButton(presentation.playAction.label.c_str())) {
+            m_Menu->PlayProject(project);
         }
-    } else {
-        // Show action buttons when idle
-        if (project->IsRecordProject()) {
-            // For record projects, show both Play and Translate options
 
-            // Play button
-            const ImVec2 playButtonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
-            ImGui::SetCursorPosX(playButtonPos.x);
+        if (!presentation.playAction.enabled) {
+            ImGui::EndDisabled();
+        }
+    });
 
-            if (!canPlay) {
+    if (project->IsRecordProject()) {
+        MenuItemAt(kMenuButtonX, 0.705f, [&]() {
+            if (!presentation.translateAction.enabled) {
                 ImGui::BeginDisabled();
             }
 
-            if (Bui::MainButton("Play Record")) {
-                m_Menu->PlayProject(project);
-            }
-
-            if (!canPlay) {
-                ImGui::EndDisabled();
-            }
-
-            ImGui::NewLine();
-
-            // Translate button (below play button)
-            ImGui::SetCursorPosX(playButtonPos.x);
-
-            if (!canTranslate) {
-                ImGui::BeginDisabled();
-            }
-
-            if (Bui::MainButton("Translate to Script")) {
+            if (Bui::LevelButton(presentation.translateAction.label.c_str())) {
                 m_Menu->TranslateProject(project);
             }
 
-            if (!canTranslate) {
+            if (!presentation.translateAction.enabled) {
                 ImGui::EndDisabled();
             }
+        });
+    }
 
-            ImGui::NewLine();
-
-            // Status information
-            ImGui::SetCursorPosX(menuPos.x);
-
-            if (!project->IsValid()) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
-                Bui::WrappedText("Cannot use: Project has validation issues", menuSize.x);
-                ImGui::PopStyleColor();
-            } else if (!project->CanBeTranslated()) {
-                // Show translation compatibility issue
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.3f, 1.0f));
-                std::string compatMsg = "Translation not recommended: " + project->GetTranslationCompatibilityMessage();
-                Bui::WrappedText(compatMsg.c_str(), menuSize.x);
-                ImGui::PopStyleColor();
-
-                ImGui::SetCursorPosX(menuPos.x * 1.05f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.8f, 0.8f, 1.0f));
-                Bui::WrappedText("Playing the record is still possible for viewing", menuSize.x, 0.9f);
-                ImGui::PopStyleColor();
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
-                Bui::WrappedText("Ready - Load a level after clicking an option", menuSize.x);
-                ImGui::PopStyleColor();
-
-                ImGui::SetCursorPosX(menuPos.x * 1.05f);
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.8f, 0.9f, 1.0f, 1.0f));
-                Bui::WrappedText("Translate converts .tas records to script format", menuSize.x, 0.9f);
-                ImGui::PopStyleColor();
-            }
-        } else {
-            // For script projects, show only Play button (existing behavior)
-            const ImVec2 buttonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
-            ImGui::SetCursorPosX(buttonPos.x);
-
-            if (!canPlay) {
-                ImGui::BeginDisabled();
-            }
-
-            if (Bui::MainButton("Play TAS")) {
-                m_Menu->PlayProject(project);
-            }
-
-            if (!canPlay) {
-                ImGui::EndDisabled();
-            }
-
-            ImGui::NewLine();
-
-            // Show status information
-            ImGui::SetCursorPosX(menuPos.x);
-
-            if (!project->IsValid()) {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
-                Bui::WrappedText("Cannot play: Project has validation issues", menuSize.x);
-                ImGui::PopStyleColor();
-            } else {
-                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 1.0f, 0.7f, 1.0f));
-                Bui::WrappedText("Ready - Load a level after clicking Play TAS", menuSize.x);
-                ImGui::PopStyleColor();
-            }
-        }
+    float reasonY = 0.795f;
+    if (!presentation.playAction.enabled) {
+        ToneText(kMenuTextX, reasonY, "Cannot play: " + presentation.playAction.disabledReason,
+                 TASMenuTone::Error, kMenuWidthFraction, 0.72f);
+    } else if (!presentation.translateAction.enabled) {
+        ToneText(kMenuTextX, reasonY, "Cannot translate: " + presentation.translateAction.disabledReason,
+                 TASMenuTone::Warning, kMenuWidthFraction, 0.72f);
+    } else {
+        ToneText(kMenuTextX, reasonY, "Ready", TASMenuTone::Good, kMenuWidthFraction, 0.78f);
     }
 }
 
@@ -695,7 +715,7 @@ TASRecordingPage::TASRecordingPage(TASMenu *menu) : TASMenuPage(menu, "Record Ne
 void TASRecordingPage::OnPostBegin() {
     if (!IsVisible()) return;
 
-    Bui::Title("Record New TAS", 0.07f, 1.5f);
+    Bui::Title("Record New TAS", 0.095f, 1.25f);
 }
 
 void TASRecordingPage::OnDraw() {
@@ -704,104 +724,79 @@ void TASRecordingPage::OnDraw() {
     auto *engine = m_Menu->GetEngine();
     if (!engine) return;
 
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
-
     // Check if we can record
     bool canRecord = !engine->IsPlaying() && !engine->IsRecording() &&
-        !engine->IsPendingPlay() && !engine->IsPendingRecord();
+        !engine->IsPendingPlay() && !engine->IsPendingRecord() &&
+        !engine->IsTranslating() && !engine->IsPendingTranslate();
 
     if (!canRecord) {
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::Dummy(Bui::CoordToPixel(ImVec2(0.375f, 0.1f)));
+        const auto state = m_Menu->GetStatePresentation();
+        DrawStateLine(0.240f, state);
 
-        ImGui::SetCursorPosX(menuPos.x);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.7f, 0.7f, 1.0f));
-
-        if (engine->IsPlaying() || engine->IsPendingPlay()) {
-            Bui::WrappedText("Cannot record while TAS is playing.", menuSize.x);
+        if (engine->IsPlaying() || engine->IsPendingPlay() ||
+            engine->IsTranslating() || engine->IsPendingTranslate()) {
+            ToneText(kMenuTextX, 0.315f, "Cannot record: Stop current TAS first", TASMenuTone::Error);
         } else if (engine->IsRecording() || engine->IsPendingRecord()) {
-            Bui::WrappedText("Recording in progress or pending.", menuSize.x);
+            ToneText(kMenuTextX, 0.315f, "Recording in progress or pending", TASMenuTone::Warning);
+            MenuItemAt(kMenuButtonX, 0.420f, [&]() {
+                if (Bui::LevelButton("Stop Recording")) {
+                    StopRecording();
+                }
+            });
         }
-
-        ImGui::PopStyleColor();
         return;
     }
 
-    ImGui::Dummy(Bui::CoordToPixel(ImVec2(menuSize.x, 0.24f)));
-
     DrawRecordingControls();
     DrawGenerationOptions();
-
-    ImGui::NewLine();
-
     DrawStartButton();
 }
 
 void TASRecordingPage::DrawRecordingControls() {
     if (!m_Menu) return;
 
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
+    TextBlock(kMenuTextX, 0.165f, "Project Settings", kMenuWidthFraction, 0.90f);
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Text("Project Settings:");
+    MenuItemAt(0.355f, 0.225f, [&]() {
+        Bui::InputTextButton("Name", m_ProjectName, sizeof(m_ProjectName));
+    });
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Text("Name:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(menuSize.x * 0.6f);
-    ImGui::InputText("##ProjectName", m_ProjectName, sizeof(m_ProjectName));
+    MenuItemAt(0.355f, 0.315f, [&]() {
+        Bui::InputTextButton("Author", m_AuthorName, sizeof(m_AuthorName));
+    });
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Text("Author:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(menuSize.x * 0.6f);
-    ImGui::InputText("##AuthorName", m_AuthorName, sizeof(m_AuthorName));
+    MenuItemAt(0.355f, 0.405f, [&]() {
+        Bui::RadioButton("Level", &m_TargetLevelIndex, LEVEL_OPTIONS, LEVEL_COUNT);
+    });
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Text("Level:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(menuSize.x * 0.4f);
-    ImGui::Combo("##TargetLevel", &m_TargetLevelIndex, LEVEL_OPTIONS, LEVEL_COUNT);
+    MenuItemAt(0.355f, 0.495f, [&]() {
+        Bui::InputFloatButton("Rate", &m_UpdateRate, 0.0f, 0.0f, "%.3f");
+    });
 
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Text("Update Rate:");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(menuSize.x * 0.4f);
-    ImGui::InputFloat("##UpdateRate", &m_UpdateRate);
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::Text("Description:");
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::SetNextItemWidth(menuSize.x);
-    ImGui::InputTextMultiline("##Description", m_Description, sizeof(m_Description),
-                              ImVec2(menuSize.x, ImGui::GetTextLineHeight() * 3));
+    MenuItemAt(0.355f, 0.585f, [&]() {
+        Bui::InputTextButton("Description", m_Description, sizeof(m_Description));
+    });
 }
 
 void TASRecordingPage::DrawGenerationOptions() {
     if (!m_Menu) return;
 
-    const auto menuPos = Bui::GetMenuPos();
-    const auto menuSize = Bui::GetMenuSize();
-
-    ImGui::SetCursorPosX(menuPos.x);
-    ImGui::SetNextItemWidth(menuSize.x * 0.6f);
-    ImGui::Checkbox("Add frame comments", &m_AddFrameComments);
-    if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("Include frame numbers in generated comments");
-    }
+    MenuItemAt(0.355f, 0.675f, [&]() {
+        Bui::YesNoButton("Frame Comments", &m_AddFrameComments);
+    });
 }
 
 void TASRecordingPage::DrawStartButton() {
     if (!m_Menu) return;
 
-    const ImVec2 buttonPos = Bui::CoordToPixel(ImVec2(0.35f, 0.0f));
+    const std::string output = std::string("Output: ") + m_ProjectName;
+    ToneText(kMenuTextX, 0.745f, output, TASMenuTone::Muted, kMenuWidthFraction, 0.68f);
 
-    ImGui::SetCursorPosX(buttonPos.x);
-    if (Bui::MainButton("Start Recording")) {
-        StartRecording();
-    }
+    MenuItemAt(kMenuButtonX, 0.785f, [&]() {
+        if (Bui::LevelButton("Start Recording")) {
+            StartRecording();
+        }
+    });
 }
 
 void TASRecordingPage::StartRecording() {
@@ -835,7 +830,7 @@ void TASRecordingPage::StartRecording() {
     }
 
     // Configure recorder with settings from UI
-    if (auto *recorder = engine->GetRecorder()) {
+    if (auto *recorder = engine->GetServiceProvider().Resolve<Recorder>()) {
         // Create generation options from UI settings
         GenerationOptions options;
         options.projectName = projectName;
@@ -861,6 +856,7 @@ void TASRecordingPage::StartRecording() {
         m_Menu->Close();
     } else {
         Log::Error("Failed to setup recording.");
+        m_Menu->SetLastActionError("Failed to setup recording");
     }
 }
 

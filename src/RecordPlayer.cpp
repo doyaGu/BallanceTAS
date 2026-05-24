@@ -30,8 +30,8 @@ void ClampPlaybackCursor(size_t &currentFrame, size_t totalFrames) {
 }
 
 bool CanUseLegacyPackSize(size_t byteCount) {
-    return byteCount <= static_cast<size_t>(std::numeric_limits<int>::max())
-        && byteCount <= static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+    return byteCount <= static_cast<size_t>((std::numeric_limits<int>::max)())
+        && byteCount <= static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
 }
 
 } // namespace
@@ -43,8 +43,9 @@ RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
 }
 
 bool RecordPlayer::LoadAndPlay(const TASProject *project) {
-    if (!project || !project->IsRecordProject() || !project->IsValid()) {
-        Log::Error("Invalid record project provided.");
+    if (!project || !project->IsRecordProject() || !project->CanPlayRecord()) {
+        Log::Error("Invalid record project provided: %s",
+                   project ? project->GetValidationMessage().c_str() : "null project");
         return false;
     }
 
@@ -173,7 +174,7 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
         return;
     }
 
-    if (m_Frames.size() <= m_CurrentFrame + 1) {
+    if (m_Frames.size() <= m_CurrentFrame) {
         Log::Error("Record playback frame storage is corrupt (frame=%zu total=%zu size=%zu).",
                    m_CurrentFrame, m_TotalFrames, m_Frames.size());
         Stop();
@@ -181,8 +182,12 @@ void RecordPlayer::Tick(size_t currentTick, unsigned char *keyboardState) {
         return;
     }
 
+    const RecordFrameData idleFrame{};
+    const RecordFrameData &nextFrame =
+        (m_CurrentFrame + 1 < m_TotalFrames) ? m_Frames[m_CurrentFrame + 1] : idleFrame;
+
     // Apply input for the current frame
-    ApplyFrameInput(m_Frames[m_CurrentFrame], m_Frames[m_CurrentFrame + 1], keyboardState);
+    ApplyFrameInput(m_Frames[m_CurrentFrame], nextFrame, keyboardState);
 
     // Advance to next frame
     m_CurrentFrame++;
@@ -215,10 +220,10 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         }
 
         if (uncompressedSize == 0) {
-            Log::Warn("Record file is empty.");
+            Log::Error("Record has no frames.");
             m_TotalFrames = 0;
             m_Frames.clear();
-            return true; // Empty recording is technically valid
+            return false;
         }
 
         // The uncompressed data must be a multiple of the FrameData size.
@@ -294,11 +299,9 @@ void RecordPlayer::ApplyFrameInput(const RecordFrameData &currentFrame,
         return;
     }
 
-    // We directly set the keyboard state bytes based on the key state bits
     const RecordKeyState &current = currentFrame.keyState;
     const RecordKeyState &next = nextFrame.keyState;
 
-    // Set keyboard state
     keyboardState[m_KeyUp] = ConvertKeyState(current.key_up, next.key_up);
     keyboardState[m_KeyDown] = ConvertKeyState(current.key_down, next.key_down);
     keyboardState[m_KeyLeft] = ConvertKeyState(current.key_left, next.key_left);
@@ -309,12 +312,12 @@ void RecordPlayer::ApplyFrameInput(const RecordFrameData &currentFrame,
     keyboardState[CKKEY_ESCAPE] = ConvertKeyState(current.key_esc, next.key_esc);
 }
 
-int RecordPlayer::ConvertKeyState(bool current, bool next) {
-    int state = KS_IDLE; // Default to idle state
-    if (current != KS_IDLE) {
-        state |= KS_PRESSED; // Key is currently pressed
-        if (next == KS_IDLE) {
-            state |= KS_RELEASED; // Key was just released
+unsigned char RecordPlayer::ConvertKeyState(bool current, bool next) {
+    unsigned char state = KS_IDLE;
+    if (current) {
+        state |= KS_PRESSED;
+        if (!next) {
+            state |= KS_RELEASED;
         }
     }
     return state;
@@ -431,7 +434,7 @@ bool RecordPlayer::DeleteFrames(size_t startFrame, size_t count) {
         return false;
     }
 
-    size_t actualCount = std::min(count, m_TotalFrames - startFrame);
+    size_t actualCount = (std::min)(count, m_TotalFrames - startFrame);
     m_Frames.erase(m_Frames.begin() + startFrame, m_Frames.begin() + startFrame + actualCount);
     m_TotalFrames -= actualCount;
     EnsureFrameSentinel(m_Frames, m_TotalFrames);
@@ -459,7 +462,7 @@ bool RecordPlayer::CopyFrames(size_t srcStart, size_t destStart, size_t count) {
         return false;
     }
 
-    size_t actualCount = std::min(count, m_TotalFrames - srcStart);
+    size_t actualCount = (std::min)(count, m_TotalFrames - srcStart);
 
     // Copy the frame range
     std::vector<RecordFrameData> copiedFrames(m_Frames.begin() + srcStart, m_Frames.begin() + srcStart + actualCount);
@@ -1385,15 +1388,15 @@ std::unordered_map<std::string, float> RecordPlayer::GetStatistics(size_t startF
 
     // Calculate statistics
     float totalTime = 0.0f;
-    float minDelta = std::numeric_limits<float>::max();
+    float minDelta = (std::numeric_limits<float>::max)();
     float maxDelta = 0.0f;
     std::unordered_map<std::string, size_t> inputCounts;
 
     for (size_t i = startFrame; i <= endFrame; ++i) {
         const auto &frame = m_Frames[i];
         totalTime += frame.deltaTime;
-        minDelta = std::min(minDelta, frame.deltaTime);
-        maxDelta = std::max(maxDelta, frame.deltaTime);
+        minDelta = (std::min)(minDelta, frame.deltaTime);
+        maxDelta = (std::max)(maxDelta, frame.deltaTime);
 
         // Count inputs
         if (frame.keyState.key_up) inputCounts["up"]++;

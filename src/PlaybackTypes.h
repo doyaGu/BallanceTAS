@@ -6,7 +6,7 @@
  *
  * Extracted from TASControllers.h so that TASEngine.h (and other headers)
  * can reference PlaybackType without pulling in the full controller /
- * strategy / project / sol2 header chain.
+ * strategy / project / Lua runtime header chain.
  */
 
 /**

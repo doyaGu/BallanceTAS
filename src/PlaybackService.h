@@ -5,6 +5,8 @@
 #include "EventBus.h"
 #include "PlaybackTypes.h"
 
+#include <string>
+
 // Forward declarations
 class ServiceProvider;
 class TASProject;
@@ -12,11 +14,10 @@ class ScriptContextManager;
 class RecordPlayer;
 class Recorder;
 class InputSystem;
-class GameInterface;
+class IGameControl;
+class IInputAccess;
 class ProjectManager;
-class DX8InputManager;
 class CKInputManager;
-struct StartLevelEvent;
 #ifdef ENABLE_REPL
 class LuaREPLServer;
 #endif
@@ -41,9 +42,6 @@ public:
     PlaybackService(const PlaybackService &) = delete;
     PlaybackService &operator=(const PlaybackService &) = delete;
 
-    void SetEventBus(EventBus *bus);
-    void SetHookManager(HookManager *hookMgr);
-
     /**
      * @brief Begin a playback session (deferred until level loads).
      * @param project  The TAS project to play.
@@ -52,7 +50,7 @@ public:
     Result<void> PreparePlayback(TASProject *project, PlaybackType type);
 
     /**
-     * @brief Activate deferred playback once the level is loaded.
+     * @brief Activate deferred playback when level loading starts.
      */
     Result<void> ActivatePlayback();
 
@@ -94,22 +92,24 @@ private:
     void RemoveHookCallbacks();
 
     // Input merging (script playback — multi-context priority system)
-    void ApplyMergedContextInputs(DX8InputManager *inputManager);
+    void ApplyMergedContextInputs(CKInputManager *inputManager);
 
     // Input system management
     void SetupInputSystem();
     void CleanupInputSystem();
 
-    ServiceProvider *m_ServiceProvider;
+    ServiceProvider *m_ServiceProvider = nullptr;
     EventBus *m_EventBus = nullptr;
     HookManager *m_HookManager = nullptr;
-
-    // Cached subsystems
     ScriptContextManager *m_ScriptManager = nullptr;
     RecordPlayer *m_RecordPlayer = nullptr;
     Recorder *m_Recorder = nullptr;
     InputSystem *m_InputSystem = nullptr;
-    GameInterface *m_GameInterface = nullptr;
+    IGameControl *m_GameControl = nullptr;
+    IInputAccess *m_InputAccess = nullptr;
+#ifdef ENABLE_REPL
+    LuaREPLServer *m_REPLServer = nullptr;
+#endif
 
     // State
     TASProject *m_CurrentProject = nullptr;
@@ -119,6 +119,7 @@ private:
     bool m_IsPaused = false;
     bool m_CompletionSignaled = false;
     size_t m_CurrentTick = 0;
+    std::string m_PlaybackContextName;
 
     // RAII hook guards
     ScopedCallback m_PostTickGuard;

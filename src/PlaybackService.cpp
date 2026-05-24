@@ -5,15 +5,16 @@
 
 #include "PlaybackService.h"
 
-#include "GameEvents.h"
 #include "ServiceContainer.h"
+#include "GameInterface.h"
+#include "GameEvents.h"
+#include "IGameControl.h"
+#include "IInputAccess.h"
 #include "ScriptContextManager.h"
 #include "ScriptContext.h"
 #include "RecordPlayer.h"
 #include "Recorder.h"
 #include "InputSystem.h"
-#include "DX8InputManager.h"
-#include "GameInterface.h"
 #include "Logger.h"
 #include "TASProject.h"
 
@@ -27,16 +28,15 @@
 
 namespace {
 
-std::string ResolvePlaybackLevelName(const TASProject *project) {
+std::string ResolvePlaybackLevelName(const TASProject *project, GameInterface *game) {
     if (!project) {
         return {};
     }
 
-    if (!project->GetTargetLevel().empty()) {
-        return project->GetTargetLevel();
-    }
-
-    return project->GetName();
+    return ScriptContextManager::ResolveLevelKey(
+        project->GetTargetLevel(),
+        game ? game->GetMapName() : "",
+        game ? game->GetCurrentLevel() : 0);
 }
 
 } // namespace
@@ -47,25 +47,23 @@ PlaybackService::PlaybackService(ServiceProvider *provider)
         throw std::invalid_argument("ServiceProvider cannot be null");
     }
 
+    m_EventBus = m_ServiceProvider->Resolve<EventBus>();
+    m_HookManager = m_ServiceProvider->Resolve<HookManager>();
     m_ScriptManager = m_ServiceProvider->Resolve<ScriptContextManager>();
     m_RecordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
     m_Recorder = m_ServiceProvider->Resolve<Recorder>();
     m_InputSystem = m_ServiceProvider->Resolve<InputSystem>();
-    m_GameInterface = m_ServiceProvider->Resolve<GameInterface>();
+    m_GameControl = m_ServiceProvider->Resolve<IGameControl>();
+    m_InputAccess = m_ServiceProvider->Resolve<IInputAccess>();
+#ifdef ENABLE_REPL
+    m_REPLServer = m_ServiceProvider->Resolve<LuaREPLServer>();
+#endif
 }
 
 PlaybackService::~PlaybackService() {
     if (m_IsPlaying) {
         StopPlaybackImmediate();
     }
-}
-
-void PlaybackService::SetEventBus(EventBus *bus) {
-    m_EventBus = bus;
-}
-
-void PlaybackService::SetHookManager(HookManager *hookMgr) {
-    m_HookManager = hookMgr;
 }
 
 Result<void> PlaybackService::PreparePlayback(TASProject *project, PlaybackType type) {
@@ -81,12 +79,24 @@ Result<void> PlaybackService::PreparePlayback(TASProject *project, PlaybackType 
     if (type == PlaybackType::None) {
         return Result<void>::Error("Invalid playback type", "playback_service");
     }
+    if (type == PlaybackType::Record) {
+        if (!project->IsRecordProject()) {
+            return Result<void>::Error("Project is not a record", "playback_service");
+        }
+        if (!project->CanPlayRecord()) {
+            std::string reason = project->GetValidationMessage().empty()
+                                     ? "Record has no frames"
+                                     : project->GetValidationMessage();
+            return Result<void>::Error(reason, "playback_service");
+        }
+    }
 
     m_CurrentProject = project;
     m_Type = type;
     m_IsPrepared = true;
     m_CurrentTick = 0;
     m_CompletionSignaled = false;
+    m_PlaybackContextName.clear();
 
     Log::Info("PlaybackService: %s playback prepared for '%s'.",
               type == PlaybackType::Script ? "Script" : "Record",
@@ -102,9 +112,7 @@ Result<void> PlaybackService::ActivatePlayback() {
         return Result<void>::Error("Playback is not prepared", "playback_service");
     }
 
-    if (m_GameInterface) {
-        m_GameInterface->AcquireKeyBindings();
-    }
+    m_GameControl->AcquireKeyBindings();
 
     Result<void> result = (m_Type == PlaybackType::Script)
         ? ActivateScriptPlayback()
@@ -138,6 +146,7 @@ Result<void> PlaybackService::StopPlaybackGraceful(bool clearProject) {
         if (clearProject) {
             m_CurrentProject = nullptr;
         }
+        m_PlaybackContextName.clear();
         m_Type = PlaybackType::None;
         Log::Info("PlaybackService: Cancelled prepared playback.");
         return Result<void>::Ok();
@@ -146,27 +155,19 @@ Result<void> PlaybackService::StopPlaybackGraceful(bool clearProject) {
     RemoveHookCallbacks();
 
     if (m_Type == PlaybackType::Script) {
-        if (m_ScriptManager) {
-            auto contexts = m_ScriptManager->GetContextsByPriority();
-            for (const auto &ctx : contexts) {
-                if (ctx && ctx->IsExecuting()) {
-                    ctx->Stop();
-                }
-            }
+        auto ctx = m_ScriptManager->GetContext(m_PlaybackContextName);
+        if (ctx && ctx->IsExecuting()) {
+            ctx->Stop();
         }
     } else if (m_Type == PlaybackType::Record) {
-        if (m_RecordPlayer) {
-            m_RecordPlayer->Stop();
-        }
+        m_RecordPlayer->Stop();
     }
 
     CleanupInputSystem();
 
-    if (m_GameInterface) {
-        auto *im = m_GameInterface->GetInputManager();
-        if (im) {
-            memset(im->GetKeyboardState(), KS_IDLE, 256);
-        }
+    auto *im = m_InputAccess->GetInputManager();
+    if (im) {
+        memset(im->GetKeyboardState(), KS_IDLE, 256);
     }
 
     m_IsPlaying = false;
@@ -176,6 +177,7 @@ Result<void> PlaybackService::StopPlaybackGraceful(bool clearProject) {
     if (clearProject) {
         m_CurrentProject = nullptr;
     }
+    m_PlaybackContextName.clear();
     m_Type = PlaybackType::None;
 
     Log::Info("PlaybackService: Stopped playback.");
@@ -185,24 +187,20 @@ Result<void> PlaybackService::StopPlaybackGraceful(bool clearProject) {
 void PlaybackService::StopPlaybackImmediate() {
     RemoveHookCallbacks();
 
-    if (m_Type == PlaybackType::Script && m_ScriptManager) {
-        auto contexts = m_ScriptManager->GetContextsByPriority();
-        for (const auto &ctx : contexts) {
-            if (ctx && ctx->IsExecuting()) {
-                ctx->Stop();
-            }
+    if (m_Type == PlaybackType::Script) {
+        auto ctx = m_ScriptManager->GetContext(m_PlaybackContextName);
+        if (ctx && ctx->IsExecuting()) {
+            ctx->Stop();
         }
-    } else if (m_Type == PlaybackType::Record && m_RecordPlayer) {
+    } else if (m_Type == PlaybackType::Record) {
         m_RecordPlayer->Stop();
     }
 
     CleanupInputSystem();
 
-    if (m_GameInterface) {
-        auto *im = m_GameInterface->GetInputManager();
-        if (im) {
-            memset(im->GetKeyboardState(), KS_IDLE, 256);
-        }
+    auto *im = m_InputAccess->GetInputManager();
+    if (im) {
+        memset(im->GetKeyboardState(), KS_IDLE, 256);
     }
 
     m_IsPlaying = false;
@@ -210,6 +208,7 @@ void PlaybackService::StopPlaybackImmediate() {
     m_IsPrepared = false;
     m_CompletionSignaled = false;
     m_CurrentProject = nullptr;
+    m_PlaybackContextName.clear();
     m_Type = PlaybackType::None;
 }
 
@@ -218,14 +217,12 @@ void PlaybackService::Pause() {
         return;
     }
 
-    if (m_Type == PlaybackType::Script && m_ScriptManager) {
-        auto contexts = m_ScriptManager->GetContextsByPriority();
-        for (const auto &ctx : contexts) {
-            if (ctx && ctx->IsExecuting()) {
-                ctx->Pause();
-            }
+    if (m_Type == PlaybackType::Script) {
+        auto ctx = m_ScriptManager->GetContext(m_PlaybackContextName);
+        if (ctx && ctx->IsExecuting()) {
+            ctx->Pause();
         }
-    } else if (m_Type == PlaybackType::Record && m_RecordPlayer) {
+    } else if (m_Type == PlaybackType::Record) {
         m_RecordPlayer->Pause();
     }
 
@@ -238,14 +235,12 @@ void PlaybackService::Resume() {
         return;
     }
 
-    if (m_Type == PlaybackType::Script && m_ScriptManager) {
-        auto contexts = m_ScriptManager->GetContextsByPriority();
-        for (const auto &ctx : contexts) {
-            if (ctx && ctx->IsExecuting()) {
-                ctx->Resume();
-            }
+    if (m_Type == PlaybackType::Script) {
+        auto ctx = m_ScriptManager->GetContext(m_PlaybackContextName);
+        if (ctx && ctx->IsExecuting()) {
+            ctx->Resume();
         }
-    } else if (m_Type == PlaybackType::Record && m_RecordPlayer) {
+    } else if (m_Type == PlaybackType::Record) {
         m_RecordPlayer->Resume();
     }
 
@@ -258,7 +253,7 @@ float PlaybackService::GetProgress() const {
         return 0.0f;
     }
 
-    if (m_Type == PlaybackType::Record && m_RecordPlayer) {
+    if (m_Type == PlaybackType::Record) {
         size_t total = m_RecordPlayer->GetTotalFrames();
         return total > 0 ? static_cast<float>(m_RecordPlayer->GetCurrentFrame()) / total : 0.0f;
     }
@@ -267,17 +262,15 @@ float PlaybackService::GetProgress() const {
 }
 
 Result<void> PlaybackService::ActivateScriptPlayback() {
-    if (!m_ScriptManager) {
-        return Result<void>::Error("ScriptContextManager not available", "playback_service");
-    }
     if (!m_CurrentProject) {
         return Result<void>::Error("No project set", "playback_service");
     }
 
     const bool isGlobal = m_CurrentProject->IsGlobalProject();
+    auto *game = m_ServiceProvider->Resolve<GameInterface>();
     auto ctx = isGlobal
                    ? m_ScriptManager->GetOrCreateGlobalContext()
-                   : m_ScriptManager->GetOrCreateLevelContext(ResolvePlaybackLevelName(m_CurrentProject));
+                   : m_ScriptManager->GetOrCreateLevelContext(ResolvePlaybackLevelName(m_CurrentProject, game));
 
     if (!ctx) {
         return Result<void>::Error("Failed to create script context", "playback_service");
@@ -287,42 +280,41 @@ Result<void> PlaybackService::ActivateScriptPlayback() {
         return Result<void>::Error("Failed to load and execute script", "playback_service");
     }
 
-    if (m_InputSystem) {
-        m_InputSystem->SetEnabled(true);
-        m_InputSystem->Reset();
-    }
+    m_PlaybackContextName = ctx->GetName();
+    m_InputSystem->SetEnabled(true);
+    m_InputSystem->Reset();
 
     InstallScriptCallbacks();
     return Result<void>::Ok();
 }
 
 Result<void> PlaybackService::ActivateRecordPlayback() {
-    if (!m_RecordPlayer) {
-        return Result<void>::Error("RecordPlayer not available", "playback_service");
-    }
     if (!m_CurrentProject) {
         return Result<void>::Error("No project set", "playback_service");
     }
 
-    if (!m_RecordPlayer->LoadAndPlay(m_CurrentProject)) {
-        return Result<void>::Error("Failed to load record for playback", "playback_service");
+    if (!m_CurrentProject->CanPlayRecord()) {
+        std::string reason = m_CurrentProject->GetValidationMessage().empty()
+                                 ? "Record has no frames"
+                                 : m_CurrentProject->GetValidationMessage();
+        return Result<void>::Error(reason, "playback_service");
     }
 
-    if (m_InputSystem) {
-        m_InputSystem->SetEnabled(false);
-        m_InputSystem->Reset();
+    if (!m_RecordPlayer->LoadAndPlay(m_CurrentProject)) {
+        std::string reason = m_CurrentProject->GetValidationMessage().empty()
+                                 ? "Failed to load record for playback"
+                                 : m_CurrentProject->GetValidationMessage();
+        return Result<void>::Error(reason, "playback_service");
     }
+
+    m_InputSystem->SetEnabled(false);
+    m_InputSystem->Reset();
 
     InstallRecordCallbacks();
     return Result<void>::Ok();
 }
 
 void PlaybackService::InstallScriptCallbacks() {
-    if (!m_HookManager) {
-        Log::Warn("PlaybackService: No HookManager - callbacks not installed.");
-        return;
-    }
-
     m_PostTickGuard = m_HookManager->RegisterPostTickCallback(
         [this](CKTimeManager *tm) {
             if (!m_IsPlaying || m_IsPaused) {
@@ -341,55 +333,50 @@ void PlaybackService::InstallScriptCallbacks() {
             }
 
 #ifdef ENABLE_REPL
-            auto replServer = m_ServiceProvider->Resolve<LuaREPLServer>();
-            if (replServer && replServer->IsRunning()) {
-                replServer->OnTickStart(m_CurrentTick);
-                replServer->ProcessImmediateCommands();
+            if (m_REPLServer && m_REPLServer->IsRunning()) {
+                m_REPLServer->OnTickStart(m_CurrentTick);
+                m_REPLServer->ProcessImmediateCommands();
             }
 #endif
 
-            if (m_ScriptManager) {
-                m_ScriptManager->TickAll();
-            }
+            m_ScriptManager->TickAll();
 
-            ApplyMergedContextInputs(static_cast<DX8InputManager *>(im));
+            ApplyMergedContextInputs(im);
 
-            if (m_Recorder && m_Recorder->IsRecording()) {
+            if (m_Recorder->IsRecording()) {
                 m_Recorder->Tick(m_CurrentTick, im->GetKeyboardState());
             }
 
             ++m_CurrentTick;
 
-            if (!m_CompletionSignaled && m_ScriptManager && !m_ScriptManager->IsAnyContextExecuting()) {
+            auto playbackContext = m_ScriptManager->GetContext(m_PlaybackContextName);
+            const bool playbackRunning = playbackContext && playbackContext->IsExecuting();
+            if (!m_CompletionSignaled && !playbackRunning) {
                 m_CompletionSignaled = true;
-                if (m_EventBus) {
-                    m_EventBus->Publish(PlaybackCompletedEvent{static_cast<int>(PlaybackType::Script)});
-                }
+                m_EventBus->Publish(PlaybackCompletedEvent{static_cast<int>(PlaybackType::Script)});
                 if (m_CompletionCallback) {
                     m_CompletionCallback();
+                }
+                if (m_IsPlaying && m_Type == PlaybackType::Script) {
+                    StopPlaybackGraceful(false);
                 }
             }
 
 #ifdef ENABLE_REPL
-            if (replServer && replServer->IsRunning()) {
-                replServer->OnTickEnd(m_CurrentTick);
+            if (m_REPLServer && m_REPLServer->IsRunning()) {
+                m_REPLServer->OnTickEnd(m_CurrentTick);
             }
 #endif
         });
 }
 
 void PlaybackService::InstallRecordCallbacks() {
-    if (!m_HookManager) {
-        Log::Warn("PlaybackService: No HookManager - callbacks not installed.");
-        return;
-    }
-
     m_PostTickGuard = m_HookManager->RegisterPostTickCallback(
         [this](CKTimeManager *tm) {
             if (!m_IsPlaying || m_IsPaused) {
                 return;
             }
-            if (m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
+            if (m_RecordPlayer->IsPlaying()) {
                 tm->SetLastDeltaTime(m_RecordPlayer->GetFrameDeltaTime(m_CurrentTick));
             }
         });
@@ -400,19 +387,20 @@ void PlaybackService::InstallRecordCallbacks() {
                 return;
             }
 
-            if (m_RecordPlayer && m_RecordPlayer->IsPlaying()) {
+            if (m_RecordPlayer->IsPlaying()) {
                 m_RecordPlayer->Tick(m_CurrentTick, im->GetKeyboardState());
                 ++m_CurrentTick;
             }
 
-            if (!m_CompletionSignaled && m_RecordPlayer && !m_RecordPlayer->IsPlaying()) {
+            if (!m_CompletionSignaled && !m_RecordPlayer->IsPlaying()) {
                 m_CompletionSignaled = true;
                 Log::Info("PlaybackService: Record playback completed naturally.");
-                if (m_EventBus) {
-                    m_EventBus->Publish(PlaybackCompletedEvent{static_cast<int>(PlaybackType::Record)});
-                }
+                m_EventBus->Publish(PlaybackCompletedEvent{static_cast<int>(PlaybackType::Record)});
                 if (m_CompletionCallback) {
                     m_CompletionCallback();
+                }
+                if (m_IsPlaying && m_Type == PlaybackType::Record) {
+                    StopPlaybackGraceful(false);
                 }
             }
         });
@@ -423,8 +411,8 @@ void PlaybackService::RemoveHookCallbacks() {
     m_PostInputGuard.Reset();
 }
 
-void PlaybackService::ApplyMergedContextInputs(DX8InputManager *inputManager) {
-    if (!inputManager || !m_ScriptManager) {
+void PlaybackService::ApplyMergedContextInputs(CKInputManager *inputManager) {
+    if (!inputManager) {
         return;
     }
 
@@ -446,20 +434,14 @@ void PlaybackService::ApplyMergedContextInputs(DX8InputManager *inputManager) {
         return;
     }
 
-    for (size_t i = activeInputs.size(); i > 0; --i) {
-        activeInputs[i - 1]->Apply(m_CurrentTick, inputManager);
-    }
+    InputSystem::ApplyMergedToKeyboardState(m_CurrentTick, activeInputs, inputManager->GetKeyboardState());
 }
 
 void PlaybackService::SetupInputSystem() {
-    if (m_InputSystem) {
-        m_InputSystem->Reset();
-    }
+    m_InputSystem->Reset();
 }
 
 void PlaybackService::CleanupInputSystem() {
-    if (m_InputSystem) {
-        m_InputSystem->Reset();
-        m_InputSystem->SetEnabled(false);
-    }
+    m_InputSystem->Reset();
+    m_InputSystem->SetEnabled(false);
 }

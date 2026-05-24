@@ -1,24 +1,40 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
+#include <CKBeObject.h>
 #include <CKSceneObject.h>
-#include <CKScene.h>
 
-void LuaApi::RegisterCKSceneObject(sol::state_view lua) {
-    // ===================================================================
-    //  CKSceneObject - Base class for objects which can be referenced in a scene
-    // ===================================================================
-    auto ckSceneObjectType = lua.new_usertype<CKSceneObject>(
-        "CKSceneObject",
-        sol::no_constructor,
-        sol::base_classes, sol::bases<CKObject>(),
+namespace {
 
-        // Scene activity
-        // "is_active_in_scene", [](CKSceneObject *obj, CKScene *scene) -> bool { return obj->IsActiveInScene(scene); },
-        "is_active_in_current_scene", sol::readonly_property([](CKSceneObject *obj) -> bool { return obj->IsActiveInCurrentScene(); })
+constexpr const char *kCKSceneObjectMt = "BallanceTAS.CKSceneObject";
 
-        // Scene presence
-        // "is_in_scene", [](CKSceneObject *obj, CKScene *scene) -> bool { return obj->IsInScene(scene); },
-        // "get_scene_in_count", &CKSceneObject::GetSceneInCount,
-        // "get_scene_in", &CKSceneObject::GetSceneIn
-    );
+CKSceneObject *CheckCKSceneObject(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<CKSceneObject>(L, index, kCKSceneObjectMt);
+}
+
+int IsActiveInCurrentScene(lua_State *L) {
+    auto *object = CheckCKSceneObject(L, 1);
+    lua_pushboolean(L, object && object->IsActiveInCurrentScene());
+    return 1;
+}
+
+int ToString(lua_State *L) {
+    auto *object = CheckCKSceneObject(L, 1);
+    lua_pushfstring(L, "CKSceneObject(id=%d, name=%s)",
+                    object ? object->GetID() : 0,
+                    object && object->GetName() ? object->GetName() : "");
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterCKSceneObject(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+
+    tas::lua::LuaUserdataRegistry<CKSceneObject>(state, kCKSceneObjectMt)
+        .Base<CKBeObject>("BallanceTAS.CKBeObject")
+        .ReadonlyProperty("is_active_in_current_scene", IsActiveInCurrentScene)
+        .MetaMethod("__tostring", ToString);
 }

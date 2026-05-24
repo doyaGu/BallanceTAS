@@ -1,102 +1,100 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+
 #include <CKDefines.h>
 #include <CKObject.h>
 
-void LuaApi::RegisterCKEnums(sol::state_view lua) {
-    // ===================================================================
-    //  CK_OBJECT_FLAGS - General object flags
-    // ===================================================================
-    lua.new_enum<CK_OBJECT_FLAGS>(
-        "CK_OBJECT_FLAGS", {
-            // Basic object flags
-            {"INTERFACEOBJ", CK_OBJECT_INTERFACEOBJ},
-            {"PRIVATE", CK_OBJECT_PRIVATE},
-            {"INTERFACEMARK", CK_OBJECT_INTERFACEMARK},
-            {"FREEID", CK_OBJECT_FREEID},
-            {"TOBEDELETED", CK_OBJECT_TOBEDELETED},
-            {"NOTTOBESAVED", CK_OBJECT_NOTTOBESAVED},
-            {"VISIBLE", CK_OBJECT_VISIBLE},
-            {"NAMESHARED", CK_OBJECT_NAMESHARED},
-            {"DYNAMIC", CK_OBJECT_DYNAMIC},
-            {"HIERACHICALHIDE", CK_OBJECT_HIERACHICALHIDE},
-            {"UPTODATE", CK_OBJECT_UPTODATE},
-            {"TEMPMARKER", CK_OBJECT_TEMPMARKER},
-            {"ONLYFORFILEREFERENCE", CK_OBJECT_ONLYFORFILEREFERENCE},
-            {"NOTTOBEDELETED", CK_OBJECT_NOTTOBEDELETED},
-            {"APPDATA", CK_OBJECT_APPDATA},
-            {"SINGLEACTIVITY", CK_OBJECT_SINGLEACTIVITY},
-            {"LOADSKIPBEOBJECT", CK_OBJECT_LOADSKIPBEOBJECT},
+namespace {
 
-            // Combination flags
-            {"NOTTOBELISTEDANDSAVED", CK_OBJECT_NOTTOBELISTEDANDSAVED},
+void SetEnumValue(lua_State *L, const char *name, int value) {
+    lua_pushinteger(L, value);
+    lua_setfield(L, -2, name);
+}
 
-            // Parameter-specific flags
-            {"PARAMETEROUT_SETTINGS", CK_PARAMETEROUT_SETTINGS},
-            {"PARAMETEROUT_PARAMOP", CK_PARAMETEROUT_PARAMOP},
-            {"PARAMETERIN_DISABLED", CK_PARAMETERIN_DISABLED},
-            {"PARAMETERIN_THIS", CK_PARAMETERIN_THIS},
-            {"PARAMETERIN_SHARED", CK_PARAMETERIN_SHARED},
-            {"PARAMETEROUT_DELETEAFTERUSE", CK_PARAMETEROUT_DELETEAFTERUSE},
-            {"PARAMMASK", CK_OBJECT_PARAMMASK},
+void RegisterObjectFlags(lua_State *L) {
+    lua_newtable(L);
+    SetEnumValue(L, "INTERFACEOBJ", CK_OBJECT_INTERFACEOBJ);
+    SetEnumValue(L, "PRIVATE", CK_OBJECT_PRIVATE);
+    SetEnumValue(L, "INTERFACEMARK", CK_OBJECT_INTERFACEMARK);
+    SetEnumValue(L, "FREEID", CK_OBJECT_FREEID);
+    SetEnumValue(L, "TOBEDELETED", CK_OBJECT_TOBEDELETED);
+    SetEnumValue(L, "NOTTOBESAVED", CK_OBJECT_NOTTOBESAVED);
+    SetEnumValue(L, "VISIBLE", CK_OBJECT_VISIBLE);
+    SetEnumValue(L, "NAMESHARED", CK_OBJECT_NAMESHARED);
+    SetEnumValue(L, "DYNAMIC", CK_OBJECT_DYNAMIC);
+    SetEnumValue(L, "HIERACHICALHIDE", CK_OBJECT_HIERACHICALHIDE);
+    SetEnumValue(L, "UPTODATE", CK_OBJECT_UPTODATE);
+    SetEnumValue(L, "TEMPMARKER", CK_OBJECT_TEMPMARKER);
+    SetEnumValue(L, "ONLYFORFILEREFERENCE", CK_OBJECT_ONLYFORFILEREFERENCE);
+    SetEnumValue(L, "NOTTOBEDELETED", CK_OBJECT_NOTTOBEDELETED);
+    SetEnumValue(L, "APPDATA", CK_OBJECT_APPDATA);
+    SetEnumValue(L, "SINGLEACTIVITY", CK_OBJECT_SINGLEACTIVITY);
+    SetEnumValue(L, "LOADSKIPBEOBJECT", CK_OBJECT_LOADSKIPBEOBJECT);
+    SetEnumValue(L, "NOTTOBELISTEDANDSAVED", CK_OBJECT_NOTTOBELISTEDANDSAVED);
+    SetEnumValue(L, "PARAMETEROUT_SETTINGS", CK_PARAMETEROUT_SETTINGS);
+    SetEnumValue(L, "PARAMETEROUT_PARAMOP", CK_PARAMETEROUT_PARAMOP);
+    SetEnumValue(L, "PARAMETERIN_DISABLED", CK_PARAMETERIN_DISABLED);
+    SetEnumValue(L, "PARAMETERIN_THIS", CK_PARAMETERIN_THIS);
+    SetEnumValue(L, "PARAMETERIN_SHARED", CK_PARAMETERIN_SHARED);
+    SetEnumValue(L, "PARAMETEROUT_DELETEAFTERUSE", CK_PARAMETEROUT_DELETEAFTERUSE);
+    SetEnumValue(L, "PARAMMASK", CK_OBJECT_PARAMMASK);
+    SetEnumValue(L, "BEHAVIORIO_IN", CK_BEHAVIORIO_IN);
+    SetEnumValue(L, "BEHAVIORIO_OUT", CK_BEHAVIORIO_OUT);
+    SetEnumValue(L, "BEHAVIORIO_ACTIVE", CK_BEHAVIORIO_ACTIVE);
+    SetEnumValue(L, "IOTYPEMASK", CK_OBJECT_IOTYPEMASK);
+    SetEnumValue(L, "IOMASK", CK_OBJECT_IOMASK);
+    SetEnumValue(L, "BEHAVIORLINK_RESERVED", CKBEHAVIORLINK_RESERVED);
+    SetEnumValue(L, "BEHAVIORLINK_ACTIVATEDLASTFRAME", CKBEHAVIORLINK_ACTIVATEDLASTFRAME);
+    SetEnumValue(L, "BEHAVIORLINKMASK", CK_OBJECT_BEHAVIORLINKMASK);
+    lua_setglobal(L, "CK_OBJECT_FLAGS");
+}
 
-            // Behavior IO flags
-            {"BEHAVIORIO_IN", CK_BEHAVIORIO_IN},
-            {"BEHAVIORIO_OUT", CK_BEHAVIORIO_OUT},
-            {"BEHAVIORIO_ACTIVE", CK_BEHAVIORIO_ACTIVE},
-            {"IOTYPEMASK", CK_OBJECT_IOTYPEMASK},
-            {"IOMASK", CK_OBJECT_IOMASK},
+void RegisterShowOptions(lua_State *L) {
+    lua_newtable(L);
+    SetEnumValue(L, "CKHIDE", CKHIDE);
+    SetEnumValue(L, "CKSHOW", CKSHOW);
+    SetEnumValue(L, "CKHIERARCHICALHIDE", CKHIERARCHICALHIDE);
+    lua_setglobal(L, "CK_OBJECT_SHOWOPTION");
+}
 
-            // Behavior link flags
-            {"BEHAVIORLINK_RESERVED", CKBEHAVIORLINK_RESERVED},
-            {"BEHAVIORLINK_ACTIVATEDLASTFRAME", CKBEHAVIORLINK_ACTIVATEDLASTFRAME},
-            {"BEHAVIORLINKMASK", CK_OBJECT_BEHAVIORLINKMASK}
-        });
+void Register3dEntityFlags(lua_State *L) {
+    lua_newtable(L);
+    SetEnumValue(L, "DUMMY", CK_3DENTITY_DUMMY);
+    SetEnumValue(L, "FRAME", CK_3DENTITY_FRAME);
+    SetEnumValue(L, "RESERVED0", CK_3DENTITY_RESERVED0);
+    SetEnumValue(L, "TARGETLIGHT", CK_3DENTITY_TARGETLIGHT);
+    SetEnumValue(L, "TARGETCAMERA", CK_3DENTITY_TARGETCAMERA);
+    SetEnumValue(L, "IGNOREANIMATION", CK_3DENTITY_IGNOREANIMATION);
+    SetEnumValue(L, "HIERARCHICALOBSTACLE", CK_3DENTITY_HIERARCHICALOBSTACLE);
+    SetEnumValue(L, "UPDATELASTFRAME", CK_3DENTITY_UPDATELASTFRAME);
+    SetEnumValue(L, "CAMERAIGNOREASPECT", CK_3DENTITY_CAMERAIGNOREASPECT);
+    SetEnumValue(L, "DISABLESKINPROCESS", CK_3DENTITY_DISABLESKINPROCESS);
+    SetEnumValue(L, "ENABLESKINOFFSET", CK_3DENTITY_ENABLESKINOFFSET);
+    SetEnumValue(L, "PLACEVALID", CK_3DENTITY_PLACEVALID);
+    SetEnumValue(L, "PARENTVALID", CK_3DENTITY_PARENTVALID);
+    SetEnumValue(L, "IKJOINTVALID", CK_3DENTITY_IKJOINTVALID);
+    SetEnumValue(L, "PORTAL", CK_3DENTITY_PORTAL);
+    SetEnumValue(L, "ZORDERVALID", CK_3DENTITY_ZORDERVALID);
+    SetEnumValue(L, "CHARACTERDOPROCESS", CK_3DENTITY_CHARACTERDOPROCESS);
+    lua_setglobal(L, "CK_3DENTITY_FLAGS");
+}
 
-    // ===================================================================
-    //  CK_OBJECT_SHOWOPTION - Options for showing/hiding objects
-    // ===================================================================
-    lua.new_enum<CK_OBJECT_SHOWOPTION>(
-        "CK_OBJECT_SHOWOPTION",
-        {
-            {"CKHIDE", CKHIDE},
-            {"CKSHOW", CKSHOW},
-            {"CKHIERARCHICALHIDE", CKHIERARCHICALHIDE},
-        }
-    );
+void RegisterRayIntersection(lua_State *L) {
+    lua_newtable(L);
+    SetEnumValue(L, "DEFAULT", CKRAYINTERSECTION_DEFAULT);
+    SetEnumValue(L, "SEGMENT", CKRAYINTERSECTION_SEGMENT);
+    SetEnumValue(L, "IGNOREALPHA", CKRAYINTERSECTION_IGNOREALPHA);
+    SetEnumValue(L, "FIRSTCONTACT", CKRAYINTERSECTION_FIRSTCONTACT);
+    lua_setglobal(L, "CK_RAYINTERSECTION");
+}
 
-    // ===================================================================
-    //  CK_3DENTITY_FLAGS - 3D Entity specific flags
-    // ===================================================================
-    lua.new_enum<CK_3DENTITY_FLAGS>(
-        "CK_3DENTITY_FLAGS", {
-            {"DUMMY", CK_3DENTITY_DUMMY},
-            {"FRAME", CK_3DENTITY_FRAME},
-            {"RESERVED0", CK_3DENTITY_RESERVED0},
-            {"TARGETLIGHT", CK_3DENTITY_TARGETLIGHT},
-            {"TARGETCAMERA", CK_3DENTITY_TARGETCAMERA},
-            {"IGNOREANIMATION", CK_3DENTITY_IGNOREANIMATION},
-            {"HIERARCHICALOBSTACLE", CK_3DENTITY_HIERARCHICALOBSTACLE},
-            {"UPDATELASTFRAME", CK_3DENTITY_UPDATELASTFRAME},
-            {"CAMERAIGNOREASPECT", CK_3DENTITY_CAMERAIGNOREASPECT},
-            {"DISABLESKINPROCESS", CK_3DENTITY_DISABLESKINPROCESS},
-            {"ENABLESKINOFFSET", CK_3DENTITY_ENABLESKINOFFSET},
-            {"PLACEVALID", CK_3DENTITY_PLACEVALID},
-            {"PARENTVALID", CK_3DENTITY_PARENTVALID},
-            {"IKJOINTVALID", CK_3DENTITY_IKJOINTVALID},
-            {"PORTAL", CK_3DENTITY_PORTAL},
-            {"ZORDERVALID", CK_3DENTITY_ZORDERVALID},
-            {"CHARACTERDOPROCESS", CK_3DENTITY_CHARACTERDOPROCESS}
-        });
+} // namespace
 
-    // ===================================================================
-    //  CK_RAYINTERSECTION - Ray intersection options
-    // ===================================================================
-    lua.new_enum<CK_RAYINTERSECTION>(
-        "CK_RAYINTERSECTION", {
-            {"DEFAULT", CKRAYINTERSECTION_DEFAULT},
-            {"SEGMENT", CKRAYINTERSECTION_SEGMENT},
-            {"IGNOREALPHA", CKRAYINTERSECTION_IGNOREALPHA},
-            {"FIRSTCONTACT", CKRAYINTERSECTION_FIRSTCONTACT}
-        });
+void LuaApi::RegisterCKEnums(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+    RegisterObjectFlags(state);
+    RegisterShowOptions(state);
+    Register3dEntityFlags(state);
+    RegisterRayIntersection(state);
 }

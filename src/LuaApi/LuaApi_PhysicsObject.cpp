@@ -1,127 +1,223 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
 #include "physics_RT.h"
 
-#include <VxVector.h>
-#include <VxMatrix.h>
+#include <string>
 
-void LuaApi::RegisterPhysicsObject(sol::state_view lua) {
-    // ===================================================================
-    //  PhysicsObject - Physics simulation object
-    // ===================================================================
-    auto physicsObjectType = lua.new_usertype<PhysicsObject>(
-        "PhysicsObject",
-        sol::no_constructor, // Objects are likely created by the physics system
+namespace {
 
-        // Basic properties
-        "name", sol::readonly_property(&PhysicsObject::GetName),
-        "entity", sol::readonly_property(&PhysicsObject::GetEntity),
+constexpr const char *kPhysicsObjectMt = "BallanceTAS.PhysicsObject";
+constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
+constexpr const char *kVxMatrixMt = "BallanceTAS.VxMatrix";
+constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
 
-        // Physics state
-        "wake", &PhysicsObject::Wake,
-        "is_static", sol::readonly_property(&PhysicsObject::IsStatic),
+PhysicsObject *CheckPhysicsObject(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<PhysicsObject>(L, index, kPhysicsObjectMt);
+}
 
-        // Mass properties
-        "mass", sol::readonly_property(&PhysicsObject::GetMass),
-        "inv_mass", sol::readonly_property(&PhysicsObject::GetInvMass),
+VxVector *CheckVxVector(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<VxVector>(L, index, kVxVectorMt);
+}
 
-        // Inertia properties
-        "get_inertia", [](PhysicsObject *obj) {
-            VxVector inertia;
-            obj->GetInertia(inertia);
-            return inertia;
-        },
-        "get_inv_inertia", [](PhysicsObject *obj) {
-            VxVector inertia;
-            obj->GetInvInertia(inertia);
-            return inertia;
-        },
+void PushVxVector(lua_State *L, const VxVector &value) {
+    lua_getglobal(L, "VxVector");
+    lua_pushnumber(L, value.x);
+    lua_pushnumber(L, value.y);
+    lua_pushnumber(L, value.z);
+    lua_call(L, 3, 1);
+}
 
-        // Damping properties
-        "get_damping", [](PhysicsObject *obj) {
-            float speed, rotation;
-            obj->GetDamping(&speed, &rotation);
-            return std::make_tuple(speed, rotation);
-        },
-        "get_damping_speed", [](PhysicsObject *obj) {
-            float speed;
-            obj->GetDamping(&speed, nullptr);
-            return speed;
-        },
-        "get_damping_rotation", [](PhysicsObject *obj) {
-            float rotation;
-            obj->GetDamping(nullptr, &rotation);
-            return rotation;
-        },
+void PushVxMatrix(lua_State *L, const VxMatrix &value) {
+    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, value);
+}
 
-        // Position and orientation
-        "get_position", [](PhysicsObject *obj) {
-            VxVector position;
-            obj->GetPosition(&position, nullptr);
-            return position;
-        },
-        "get_angles", [](PhysicsObject *obj) {
-            VxVector angles;
-            obj->GetPosition(nullptr, &angles);
-            return angles;
-        },
+void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
+    if (!entity) {
+        lua_pushnil(L);
+        return;
+    }
+    tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
+}
 
-        // Position matrix
-        "get_position_matrix", [](PhysicsObject *obj) {
-            VxMatrix matrix;
-            obj->GetPositionMatrix(matrix);
-            return matrix;
-        },
+int Name(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    lua_pushstring(L, object && object->GetName() ? object->GetName() : "");
+    return 1;
+}
 
-        // Velocity
-        "get_velocity", [](PhysicsObject *obj) {
-            VxVector velocity, angularVelocity;
-            obj->GetVelocity(&velocity, &angularVelocity);
-            return std::make_tuple(velocity, angularVelocity);
-        },
-        "get_linear_velocity", [](PhysicsObject *obj) {
-            VxVector velocity;
-            obj->GetVelocity(&velocity, nullptr);
-            return velocity;
-        },
-        "get_angular_velocity", [](PhysicsObject *obj) {
-            VxVector angularVelocity;
-            obj->GetVelocity(nullptr, &angularVelocity);
-            return angularVelocity;
-        },
+int Entity(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    PushCK3dEntity(L, object ? object->GetEntity() : nullptr);
+    return 1;
+}
 
-        // Set velocity (support multiple call patterns)
-        "set_velocity", sol::overload(
-            // Set both linear and angular velocity
-            [](PhysicsObject *obj, const VxVector &linear, const VxVector &angular) {
-                obj->SetVelocity(&linear, &angular);
-            },
-            // Set only linear velocity
-            [](PhysicsObject *obj, const VxVector &linear) {
-                obj->SetVelocity(&linear, nullptr);
-            }
-        ),
+int Wake(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    if (object) {
+        object->Wake();
+    }
+    return 0;
+}
 
-        "set_linear_velocity", [](PhysicsObject *obj, const VxVector &linear) {
-            obj->SetVelocity(&linear, nullptr);
-        },
+int IsStatic(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    lua_pushboolean(L, object && object->IsStatic());
+    return 1;
+}
 
-        "set_angular_velocity", [](PhysicsObject *obj, const VxVector &angular) {
-            obj->SetVelocity(nullptr, &angular);
-        },
+int Mass(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    lua_pushnumber(L, object ? object->GetMass() : 0.0f);
+    return 1;
+}
 
-        // Access to internal physics data
-        // "behavior", sol::readonly_property([](PhysicsObject *obj) {
-        //     return obj->m_Behavior;
-        // }),
-        "friction_count", sol::readonly_property([](PhysicsObject *obj) {
-            return obj->m_FrictionCount;
-        }),
+int InvMass(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    lua_pushnumber(L, object ? object->GetInvMass() : 0.0f);
+    return 1;
+}
 
-        // String representation for debugging
-        sol::meta_function::to_string, [](PhysicsObject *obj) {
-            std::string name = obj->GetName() ? obj->GetName() : "unnamed";
-            return "PhysicsObject('" + name + "')";
-        }
-    );
+int GetInertia(lua_State *L) {
+    VxVector inertia;
+    CheckPhysicsObject(L, 1)->GetInertia(inertia);
+    PushVxVector(L, inertia);
+    return 1;
+}
+
+int GetInvInertia(lua_State *L) {
+    VxVector inertia;
+    CheckPhysicsObject(L, 1)->GetInvInertia(inertia);
+    PushVxVector(L, inertia);
+    return 1;
+}
+
+int GetDamping(lua_State *L) {
+    float speed = 0.0f;
+    float rotation = 0.0f;
+    CheckPhysicsObject(L, 1)->GetDamping(&speed, &rotation);
+    lua_pushnumber(L, speed);
+    lua_pushnumber(L, rotation);
+    return 2;
+}
+
+int GetDampingSpeed(lua_State *L) {
+    float speed = 0.0f;
+    CheckPhysicsObject(L, 1)->GetDamping(&speed, nullptr);
+    lua_pushnumber(L, speed);
+    return 1;
+}
+
+int GetDampingRotation(lua_State *L) {
+    float rotation = 0.0f;
+    CheckPhysicsObject(L, 1)->GetDamping(nullptr, &rotation);
+    lua_pushnumber(L, rotation);
+    return 1;
+}
+
+int GetPosition(lua_State *L) {
+    VxVector position;
+    CheckPhysicsObject(L, 1)->GetPosition(&position, nullptr);
+    PushVxVector(L, position);
+    return 1;
+}
+
+int GetAngles(lua_State *L) {
+    VxVector angles;
+    CheckPhysicsObject(L, 1)->GetPosition(nullptr, &angles);
+    PushVxVector(L, angles);
+    return 1;
+}
+
+int GetPositionMatrix(lua_State *L) {
+    VxMatrix matrix;
+    CheckPhysicsObject(L, 1)->GetPositionMatrix(matrix);
+    PushVxMatrix(L, matrix);
+    return 1;
+}
+
+int GetVelocity(lua_State *L) {
+    VxVector velocity;
+    VxVector angularVelocity;
+    CheckPhysicsObject(L, 1)->GetVelocity(&velocity, &angularVelocity);
+    PushVxVector(L, velocity);
+    PushVxVector(L, angularVelocity);
+    return 2;
+}
+
+int GetLinearVelocity(lua_State *L) {
+    VxVector velocity;
+    CheckPhysicsObject(L, 1)->GetVelocity(&velocity, nullptr);
+    PushVxVector(L, velocity);
+    return 1;
+}
+
+int GetAngularVelocity(lua_State *L) {
+    VxVector angularVelocity;
+    CheckPhysicsObject(L, 1)->GetVelocity(nullptr, &angularVelocity);
+    PushVxVector(L, angularVelocity);
+    return 1;
+}
+
+int SetVelocity(lua_State *L) {
+    auto *linear = CheckVxVector(L, 2);
+    auto *angular = lua_isnoneornil(L, 3) ? nullptr : CheckVxVector(L, 3);
+    CheckPhysicsObject(L, 1)->SetVelocity(linear, angular);
+    return 0;
+}
+
+int SetLinearVelocity(lua_State *L) {
+    CheckPhysicsObject(L, 1)->SetVelocity(CheckVxVector(L, 2), nullptr);
+    return 0;
+}
+
+int SetAngularVelocity(lua_State *L) {
+    CheckPhysicsObject(L, 1)->SetVelocity(nullptr, CheckVxVector(L, 2));
+    return 0;
+}
+
+int FrictionCount(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    lua_pushinteger(L, object ? static_cast<lua_Integer>(object->m_FrictionCount) : 0);
+    return 1;
+}
+
+int ToString(lua_State *L) {
+    auto *object = CheckPhysicsObject(L, 1);
+    std::string name = object && object->GetName() ? object->GetName() : "unnamed";
+    const std::string text = "PhysicsObject('" + name + "')";
+    lua_pushlstring(L, text.data(), text.size());
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterPhysicsObject(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+
+    tas::lua::LuaUserdataRegistry<PhysicsObject>(state, kPhysicsObjectMt)
+        .ReadonlyProperty("name", Name)
+        .ReadonlyProperty("entity", Entity)
+        .Method("wake", Wake)
+        .ReadonlyProperty("is_static", IsStatic)
+        .ReadonlyProperty("mass", Mass)
+        .ReadonlyProperty("inv_mass", InvMass)
+        .Method("get_inertia", GetInertia)
+        .Method("get_inv_inertia", GetInvInertia)
+        .Method("get_damping", GetDamping)
+        .Method("get_damping_speed", GetDampingSpeed)
+        .Method("get_damping_rotation", GetDampingRotation)
+        .Method("get_position", GetPosition)
+        .Method("get_angles", GetAngles)
+        .Method("get_position_matrix", GetPositionMatrix)
+        .Method("get_velocity", GetVelocity)
+        .Method("get_linear_velocity", GetLinearVelocity)
+        .Method("get_angular_velocity", GetAngularVelocity)
+        .Method("set_velocity", SetVelocity)
+        .Method("set_linear_velocity", SetLinearVelocity)
+        .Method("set_angular_velocity", SetAngularVelocity)
+        .ReadonlyProperty("friction_count", FrictionCount)
+        .MetaMethod("__tostring", ToString);
 }

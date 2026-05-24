@@ -1,47 +1,89 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
 #include <CKObject.h>
+#include <cstdio>
 
-void LuaApi::RegisterCKObject(sol::state_view lua) {
-    // ===================================================================
-    //  CKObject - Base class for most CK objects
-    // ===================================================================
-    auto ckObjectType = lua.new_usertype<CKObject>(
-        "CKObject",
-        sol::no_constructor, // Objects are created through CKContext, not directly
+namespace {
 
-        // Basic properties
-        "name", sol::property(&CKObject::GetName, &CKObject::SetName),
-        "id", sol::readonly_property(&CKObject::GetID),
-        "class_id", sol::readonly_property(&CKObject::GetClassID),
-        "object_flags", sol::readonly_property(&CKObject::GetObjectFlags),
+constexpr const char *kCKObjectMt = "BallanceTAS.CKObject";
 
-        // Status checks
-        "is_dynamic", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsDynamic(); }),
-        "is_to_be_deleted", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsToBeDeleted(); }),
-        "is_visible", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsVisible(); }),
-        "is_hierarchically_hidden", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsHierarchicallyHide(); }),
-        "is_up_to_date", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsUpToDate(); }),
-        "is_private", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsPrivate(); }),
-        "is_not_to_be_saved", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsNotToBeSaved(); }),
-        "is_interface_obj", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsInterfaceObj(); }),
+CKObject *CheckCKObject(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<CKObject>(L, index, kCKObjectMt);
+}
 
-        // Visibility control
-        "show", sol::overload(
-            [](CKObject *obj) { obj->Show(); },
-            [](CKObject *obj, CK_OBJECT_SHOWOPTION option) { obj->Show(option); }
-        ),
-        "is_hidden_by_parent", sol::readonly_property([](CKObject *obj) -> bool { return obj->IsHiddenByParent(); }),
-        "can_be_hide", sol::readonly_property([](CKObject *obj) -> bool { return obj->CanBeHide(); }),
+int CKObjectName(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    lua_pushstring(L, object && object->GetName() ? object->GetName() : "");
+    return 1;
+}
 
-        // App data
-        // "get_app_data", &CKObject::GetAppData,
-        // "set_app_data", &CKObject::SetAppData,
+int CKObjectSetName(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    const char *name = luaL_checkstring(L, 2);
+    if (!object) {
+        return luaL_error(L, "CKObject is null");
+    }
+    object->SetName(const_cast<char *>(name));
+    return 0;
+}
 
-        // Context access
-        // "context", sol::readonly_property(&CKObject::GetCKContext),
+int CKObjectId(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    lua_pushinteger(L, object ? object->GetID() : 0);
+    return 1;
+}
 
-        // Object manipulation
-        "modify_object_flags", &CKObject::ModifyObjectFlags
-    );
+int CKObjectClassId(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    lua_pushinteger(L, object ? object->GetClassID() : 0);
+    return 1;
+}
+
+int CKObjectFlags(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    lua_pushinteger(L, object ? object->GetObjectFlags() : 0);
+    return 1;
+}
+
+int CKObjectIsDynamic(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    lua_pushboolean(L, object && object->IsDynamic());
+    return 1;
+}
+
+int CKObjectIsVisible(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    lua_pushboolean(L, object && object->IsVisible());
+    return 1;
+}
+
+int CKObjectToString(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    char buffer[160];
+    std::snprintf(buffer,
+                  sizeof(buffer),
+                  "CKObject(id=%d, class_id=%d, name=%s)",
+                  object ? object->GetID() : 0,
+                  object ? object->GetClassID() : 0,
+                  object && object->GetName() ? object->GetName() : "");
+    lua_pushstring(L, buffer);
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterCKObject(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+
+    tas::lua::LuaUserdataRegistry<CKObject>(state, kCKObjectMt)
+        .Property("name", CKObjectName, CKObjectSetName)
+        .ReadonlyProperty("id", CKObjectId)
+        .ReadonlyProperty("class_id", CKObjectClassId)
+        .ReadonlyProperty("object_flags", CKObjectFlags)
+        .ReadonlyProperty("is_dynamic", CKObjectIsDynamic)
+        .ReadonlyProperty("is_visible", CKObjectIsVisible)
+        .MetaMethod("__tostring", CKObjectToString);
 }

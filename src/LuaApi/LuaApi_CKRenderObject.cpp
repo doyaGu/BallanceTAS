@@ -1,46 +1,70 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
 #include <CKRenderObject.h>
+#include <CKSceneObject.h>
 
-void LuaApi::RegisterCKRenderObject(sol::state_view lua) {
-    // ===================================================================
-    //  CKRenderObject - Base class for objects that can be rendered
-    // ===================================================================
-    auto ckRenderObjectType = lua.new_usertype<CKRenderObject>(
-        "CKRenderObject",
-        sol::no_constructor,
-        sol::base_classes, sol::bases<CKBeObject, CKSceneObject, CKObject>(),
+namespace {
 
-        // Render context queries
-        // "is_in_render_context", [](CKRenderObject *obj, CKRenderContext *context) -> bool {
-        //     return obj->IsInRenderContext(context);
-        // },
-        "is_root_object", sol::readonly_property([](CKRenderObject *obj) -> bool { return obj->IsRootObject(); }),
-        "is_to_be_rendered", sol::readonly_property([](CKRenderObject *obj) -> bool { return obj->IsToBeRendered(); }),
-        "is_to_be_rendered_last", sol::readonly_property([](CKRenderObject *obj) -> bool { return obj->IsToBeRenderedLast(); }),
+constexpr const char *kCKRenderObjectMt = "BallanceTAS.CKRenderObject";
 
-        // Z order
-        "z_order", sol::property(&CKRenderObject::GetZOrder, &CKRenderObject::SetZOrder)
+CKRenderObject *CheckCKRenderObject(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<CKRenderObject>(L, index, kCKRenderObjectMt);
+}
 
-        // Render callbacks - Note: These might need special handling due to function pointers
-        // "add_pre_render_callback", [](CKRenderObject *obj, sol::function func, bool temp = false) {
-        //     // This would need a wrapper to convert sol::function to CK_RENDEROBJECT_CALLBACK
-        //     // Implementation depends on how you want to handle Lua callbacks
-        //     throw sol::error("Render callbacks from Lua not yet implemented");
-        // },
-        // "remove_pre_render_callback", [](CKRenderObject *obj) {
-        //     throw sol::error("Render callbacks from Lua not yet implemented");
-        // },
-        // "set_render_callback", [](CKRenderObject *obj, sol::function func) {
-        //     throw sol::error("Render callbacks from Lua not yet implemented");
-        // },
-        // "remove_render_callback", &CKRenderObject::RemoveRenderCallBack,
-        // "add_post_render_callback", [](CKRenderObject *obj, sol::function func, bool temp = false) {
-        //     throw sol::error("Render callbacks from Lua not yet implemented");
-        // },
-        // "remove_post_render_callback", [](CKRenderObject *obj) {
-        //     throw sol::error("Render callbacks from Lua not yet implemented");
-        // },
-        // "remove_all_callbacks", &CKRenderObject::RemoveAllCallbacks
-    );
+int IsRootObject(lua_State *L) {
+    auto *object = CheckCKRenderObject(L, 1);
+    lua_pushboolean(L, object && object->IsRootObject());
+    return 1;
+}
+
+int IsToBeRendered(lua_State *L) {
+    auto *object = CheckCKRenderObject(L, 1);
+    lua_pushboolean(L, object && object->IsToBeRendered());
+    return 1;
+}
+
+int IsToBeRenderedLast(lua_State *L) {
+    auto *object = CheckCKRenderObject(L, 1);
+    lua_pushboolean(L, object && object->IsToBeRenderedLast());
+    return 1;
+}
+
+int ZOrder(lua_State *L) {
+    auto *object = CheckCKRenderObject(L, 1);
+    lua_pushinteger(L, object ? object->GetZOrder() : 0);
+    return 1;
+}
+
+int SetZOrder(lua_State *L) {
+    auto *object = CheckCKRenderObject(L, 1);
+    if (!object) {
+        return luaL_error(L, "CKRenderObject is null");
+    }
+    object->SetZOrder(static_cast<int>(luaL_checkinteger(L, 2)));
+    return 0;
+}
+
+int ToString(lua_State *L) {
+    auto *object = CheckCKRenderObject(L, 1);
+    lua_pushfstring(L, "CKRenderObject(id=%d, name=%s)",
+                    object ? object->GetID() : 0,
+                    object && object->GetName() ? object->GetName() : "");
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterCKRenderObject(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+
+    tas::lua::LuaUserdataRegistry<CKRenderObject>(state, kCKRenderObjectMt)
+        .Base<CKSceneObject>("BallanceTAS.CKSceneObject")
+        .ReadonlyProperty("is_root_object", IsRootObject)
+        .ReadonlyProperty("is_to_be_rendered", IsToBeRendered)
+        .ReadonlyProperty("is_to_be_rendered_last", IsToBeRenderedLast)
+        .Property("z_order", ZOrder, SetZOrder)
+        .MetaMethod("__tostring", ToString);
 }

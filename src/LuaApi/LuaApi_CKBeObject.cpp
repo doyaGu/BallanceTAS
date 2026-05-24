@@ -1,58 +1,56 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
 #include <CKBeObject.h>
-#include <CKBehavior.h>
-#include <CKParameterOut.h>
-#include <CKMessage.h>
+#include <CKObject.h>
 
-void LuaApi::RegisterCKBeObject(sol::state_view lua) {
-    // ===================================================================
-    //  CKBeObject - Base class for objects with behaviors
-    // ===================================================================
-    auto ckBeObjectType = lua.new_usertype<CKBeObject>(
-        "CKBeObject",
-        sol::no_constructor,
-        sol::base_classes, sol::bases<CKSceneObject, CKObject>(),
+namespace {
 
-        // Group functions
-        // "is_in_group", [](CKBeObject *obj, CKGroup *group) -> bool { return obj->IsInGroup(group); },
+constexpr const char *kCKBeObjectMt = "BallanceTAS.CKBeObject";
 
-        // Attribute functions
-        // "has_attribute", &CKBeObject::HasAttribute,
-        // "set_attribute", sol::overload(
-        //     [](CKBeObject *obj, CKAttributeType type) { return obj->SetAttribute(type); },
-        //     [](CKBeObject *obj, CKAttributeType type, CK_ID param) { return obj->SetAttribute(type, param); }
-        // ),
-        // "remove_attribute", &CKBeObject::RemoveAttribute,
-        // "get_attribute_parameter", &CKBeObject::GetAttributeParameter,
-        // "get_attribute_count", &CKBeObject::GetAttributeCount,
-        // "get_attribute_type", &CKBeObject::GetAttributeType,
-        // "get_attribute_parameter_by_index", &CKBeObject::GetAttributeParameterByIndex,
-        // "remove_all_attributes", &CKBeObject::RemoveAllAttributes,
+CKBeObject *CheckCKBeObject(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<CKBeObject>(L, index, kCKBeObjectMt);
+}
 
-        // Script functions
-        // "add_script", &CKBeObject::AddScript,
-        // "remove_script", sol::overload(
-        //     [](CKBeObject *obj, CK_ID id) { return obj->RemoveScript(id); },
-        //     [](CKBeObject *obj, int pos) { return obj->RemoveScript(pos); }
-        // ),
-        // "remove_all_scripts", &CKBeObject::RemoveAllScripts,
-        // "get_script", &CKBeObject::GetScript,
-        // "get_script_count", &CKBeObject::GetScriptCount,
+int Priority(lua_State *L) {
+    auto *object = CheckCKBeObject(L, 1);
+    lua_pushinteger(L, object ? object->GetPriority() : 0);
+    return 1;
+}
 
-        // Priority
-        "priority", sol::property(&CKBeObject::GetPriority, &CKBeObject::SetPriority),
+int SetPriority(lua_State *L) {
+    auto *object = CheckCKBeObject(L, 1);
+    if (!object) {
+        return luaL_error(L, "CKBeObject is null");
+    }
+    object->SetPriority(static_cast<int>(luaL_checkinteger(L, 2)));
+    return 0;
+}
 
-        // Messages
-        // "get_last_frame_message_count", &CKBeObject::GetLastFrameMessageCount,
-        // "get_last_frame_message", &CKBeObject::GetLastFrameMessage,
-        // "set_as_waiting_for_messages", sol::overload(
-        //     [](CKBeObject *obj) { obj->SetAsWaitingForMessages(); },
-        //     [](CKBeObject *obj, bool wait) { obj->SetAsWaitingForMessages(wait); }
-        // ),
-        // "is_waiting_for_messages", [](CKBeObject *obj) -> bool { return obj->IsWaitingForMessages(); },
+int LastExecutionTime(lua_State *L) {
+    auto *object = CheckCKBeObject(L, 1);
+    lua_pushnumber(L, object ? object->GetLastExecutionTime() : 0.0);
+    return 1;
+}
 
-        // Profiling
-        "last_execution_time", sol::readonly_property(&CKBeObject::GetLastExecutionTime)
-    );
+int ToString(lua_State *L) {
+    auto *object = CheckCKBeObject(L, 1);
+    lua_pushfstring(L, "CKBeObject(id=%d, name=%s)",
+                    object ? object->GetID() : 0,
+                    object && object->GetName() ? object->GetName() : "");
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterCKBeObject(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+
+    tas::lua::LuaUserdataRegistry<CKBeObject>(state, kCKBeObjectMt)
+        .Base<CKObject>("BallanceTAS.CKObject")
+        .Property("priority", Priority, SetPriority)
+        .ReadonlyProperty("last_execution_time", LastExecutionTime)
+        .MetaMethod("__tostring", ToString);
 }

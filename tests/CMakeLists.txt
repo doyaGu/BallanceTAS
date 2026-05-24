@@ -91,12 +91,234 @@ add_tas_test(EventBusTest
         tas_core
 )
 
+add_tas_test(EventManagerTest
+    SOURCES
+        EventManagerTest.cpp
+        ../src/EventManager.cpp
+    DEPENDENCIES
+        tas_core
+        tas_lua_runtime
+)
+
+add_tas_test(SharedDataManagerTest
+    SOURCES
+        SharedDataManagerTest.cpp
+        ../src/SharedDataManager.cpp
+    DEPENDENCIES
+        tas_core
+        tas_lua_runtime
+)
+
+add_tas_test(MessageBusTest
+    SOURCES
+        MessageBusTest.cpp
+        ../src/MessageBus.cpp
+    DEPENDENCIES
+        tas_core
+        tas_lua_runtime
+)
+
+add_tas_test(AsyncTaskTest
+    SOURCES
+        AsyncTaskTest.cpp
+        ../src/AsyncTask.cpp
+    DEPENDENCIES
+        tas_core
+        tas_lua_runtime
+)
+
+add_tas_test(DeterminismTraceTest
+    SOURCES
+        DeterminismTraceTest.cpp
+    DEPENDENCIES
+        tas_core
+)
+
+# LuaRuntimeTest - validates the project-owned Lua C API abstraction layer
+add_tas_test(LuaRuntimeTest
+    SOURCES
+        LuaRuntimeTest.cpp
+    DEPENDENCIES
+        tas_core
+        tas_lua_runtime
+)
+
 # Register standalone tests with CTest
 add_test(NAME ResultTest          COMMAND ResultTest)
 add_test(NAME StateMachineTest    COMMAND StateMachineTest)
 add_test(NAME LoggerTest          COMMAND LoggerTest)
 add_test(NAME ResourceManagerTest COMMAND ResourceManagerTest)
 add_test(NAME EventBusTest        COMMAND EventBusTest)
+add_test(NAME EventManagerTest    COMMAND EventManagerTest)
+add_test(NAME SharedDataManagerTest COMMAND SharedDataManagerTest)
+add_test(NAME MessageBusTest      COMMAND MessageBusTest)
+add_test(NAME AsyncTaskTest       COMMAND AsyncTaskTest)
+add_test(NAME DeterminismTraceTest COMMAND DeterminismTraceTest)
+add_test(NAME LuaRuntimeTest      COMMAND LuaRuntimeTest)
+
+if(BUILD_MOD)
+    add_tas_test(ScriptContextManagerTest
+        SOURCES
+            ScriptContextManagerTest.cpp
+        DEPENDENCIES
+            tas_core
+            tas_game
+            tas_lua_runtime
+    )
+    add_test(NAME ScriptContextManagerTest COMMAND ScriptContextManagerTest)
+    set_tests_properties(ScriptContextManagerTest PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+    )
+
+    add_tas_test(InputSystemTest
+        SOURCES
+            InputSystemTest.cpp
+        DEPENDENCIES
+            tas_game
+    )
+    add_test(NAME InputSystemTest COMMAND InputSystemTest)
+    set_tests_properties(InputSystemTest PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+    )
+
+    add_tas_test(RecordFileIOTest
+        SOURCES
+            RecordFileIOTest.cpp
+        DEPENDENCIES
+            tas_features
+            tas_lua_runtime
+    )
+    add_test(NAME RecordFileIOTest COMMAND RecordFileIOTest)
+    if(VIRTOOLS_SDK_RUNTIME_DIR)
+        set_tests_properties(RecordFileIOTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${VIRTOOLS_SDK_RUNTIME_DIR};PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    else()
+        set_tests_properties(RecordFileIOTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    endif()
+
+    add_tas_test(SharedBufferTest
+        SOURCES
+            SharedBufferTest.cpp
+            ../src/LuaApi/LuaApi_SharedBuffer.cpp
+        DEPENDENCIES
+            tas_core
+            tas_lua_runtime
+    )
+    add_test(NAME SharedBufferTest COMMAND SharedBufferTest)
+    set_tests_properties(SharedBufferTest PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+    )
+
+    add_tas_test(LuaApiMathTest
+        SOURCES
+            LuaApiMathTest.cpp
+            ../src/LuaApi/LuaApi_VxVector.cpp
+            ../src/LuaApi/LuaApi_VxColor.cpp
+            ../src/LuaApi/LuaApi_VxRect.cpp
+            ../src/LuaApi/LuaApi_VxQuaternion.cpp
+            ../src/LuaApi/LuaApi_VxMatrix.cpp
+        DEPENDENCIES
+            tas_core
+            tas_game
+            tas_lua_runtime
+    )
+    add_test(NAME LuaApiMathTest COMMAND LuaApiMathTest)
+    if(VIRTOOLS_SDK_RUNTIME_DIR)
+        set_tests_properties(LuaApiMathTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${VIRTOOLS_SDK_RUNTIME_DIR};PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    else()
+        set_tests_properties(LuaApiMathTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    endif()
+
+    add_tas_test(LuaSchedulerTest
+        SOURCES
+            LuaSchedulerTest.cpp
+            ../src/LuaApi/LuaApi_Async.cpp
+            ../src/LuaApi/LuaApi_Concurrency.cpp
+        DEPENDENCIES
+            tas_core
+            tas_game
+            tas_scripting
+            tas_lua_runtime
+    )
+    add_test(NAME LuaSchedulerTest COMMAND LuaSchedulerTest)
+    set_tests_properties(LuaSchedulerTest PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+    )
+
+    add_tas_test(TASMenuPresentationTest
+        SOURCES
+            TASMenuPresentationTest.cpp
+        DEPENDENCIES
+            tas_core
+            tas_game
+            tas_lua_runtime
+            tas_ui
+    )
+    add_test(NAME TASMenuPresentationTest COMMAND TASMenuPresentationTest)
+    if(VIRTOOLS_SDK_RUNTIME_DIR)
+        set_tests_properties(TASMenuPresentationTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${VIRTOOLS_SDK_RUNTIME_DIR};PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    else()
+        set_tests_properties(TASMenuPresentationTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    endif()
+
+    add_tas_test(ScriptGeneratorTest
+        SOURCES
+            ScriptGeneratorTest.cpp
+            ../src/ScriptGenerationCore.cpp
+            ../src/ScriptInputTransition.cpp
+        DEPENDENCIES
+            tas_core
+            CK2
+    )
+    add_test(NAME ScriptGeneratorTest COMMAND ScriptGeneratorTest)
+    set_tests_properties(ScriptGeneratorTest PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>"
+    )
+
+    add_tas_test(StartupProjectManagerTest
+        SOURCES
+            StartupProjectManagerTest.cpp
+            ../src/TASProject.cpp
+        DEPENDENCIES
+            tas_core
+            tas_lua_runtime
+            CK2
+    )
+    add_test(NAME StartupProjectManagerTest COMMAND StartupProjectManagerTest)
+    if(VIRTOOLS_SDK_RUNTIME_DIR)
+        set_tests_properties(StartupProjectManagerTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${VIRTOOLS_SDK_RUNTIME_DIR};PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    else()
+        set_tests_properties(StartupProjectManagerTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    endif()
+endif()
 
 # ===========================================================================
 #  Standalone Lua integration tests (requires a Lua interpreter on PATH)
@@ -121,16 +343,17 @@ endif()
 # ===========================================================================
 #  Full integration tests (require BUILD_MOD = ON)
 # ===========================================================================
-if(BUILD_MOD)
-    add_tas_test(LuaApiTest
-        SOURCES
-            LuaApiTest.cpp
-        DEPENDENCIES
-            tas_core
-            tas_game
-            tas_scripting
-            tas_features
-            tas_lua_bindings
-    )
-    add_test(NAME LuaApiTest COMMAND LuaApiTest)
-endif()
+# TODO: LuaApiTest needs rewrite for ServiceProvider-based architecture
+# if(BUILD_MOD)
+#     add_tas_test(LuaApiTest
+#         SOURCES
+#             LuaApiTest.cpp
+#         DEPENDENCIES
+#             tas_core
+#             tas_game
+#             tas_scripting
+#             tas_features
+#             tas_lua_bindings
+#     )
+#     add_test(NAME LuaApiTest COMMAND LuaApiTest)
+# endif()

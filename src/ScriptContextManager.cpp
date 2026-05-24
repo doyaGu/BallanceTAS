@@ -1,14 +1,18 @@
 #include "ScriptContextManager.h"
 
+#include <algorithm>
+
 #include "Logger.h"
 #include "TASEngine.h"
 #include "ScriptContext.h"
+#include "ServiceContainer.h"
 #include "SharedDataManager.h"
 #include "MessageBus.h"
 #include "GameInterface.h"
 
 namespace {
     constexpr const char *kGlobalCustomContextKey = "__global__";
+
 }
 
 ScriptContextManager::ScriptContextManager(TASEngine *engine) : m_Engine(engine) {
@@ -66,6 +70,7 @@ void ScriptContextManager::Shutdown() {
         m_CustomContextLevelMap.clear();
         m_CustomContextMemoryLimits.clear();
         m_CustomContextCount = 0;
+        m_GameEventSubscriptions.clear();
 
         // Shutdown message bus
         if (m_MessageBus) {
@@ -152,7 +157,7 @@ bool ScriptContextManager::DestroyContext(const std::string &name) {
 
     try {
         // Clean up event subscriptions for this context
-        UnsubscribeFromAllEvents(name);
+        UnsubscribeFromAllGameEvents(name);
 
         // Decrement custom context count if it's a custom context
         if (it->second && it->second->GetType() == ScriptContextType::Custom) {
@@ -199,15 +204,14 @@ void ScriptContextManager::DestroyContextsByType(ScriptContextType type) {
 }
 
 std::shared_ptr<ScriptContext> ScriptContextManager::GetOrCreateGlobalContext() {
-    static const std::string globalContextName = "global";
     static const int globalContextPriority = 0; // Lower priority than level contexts
 
-    auto context = GetContext(globalContextName);
+    auto context = GetContext(GlobalContextName());
     if (context) {
         return context;
     }
 
-    return CreateContext(globalContextName, ScriptContextType::Global, globalContextPriority);
+    return CreateContext(GlobalContextName(), ScriptContextType::Global, globalContextPriority);
 }
 
 std::shared_ptr<ScriptContext> ScriptContextManager::GetLevelContext(const std::string &levelName) {
@@ -329,7 +333,7 @@ std::vector<std::shared_ptr<const ScriptContext>> ScriptContextManager::GetConte
 }
 
 std::string ScriptContextManager::GenerateLevelContextName(const std::string &levelName) {
-    return "level_" + levelName;
+    return MakeLevelContextName(levelName);
 }
 
 std::string ScriptContextManager::GetCurrentLevelKey() const {
@@ -337,17 +341,17 @@ std::string ScriptContextManager::GetCurrentLevelKey() const {
         return std::string(kGlobalCustomContextKey);
     }
 
-    auto *gameInterface = m_Engine->GetGameInterface();
+    auto *gameInterface = m_Engine->GetServiceProvider().Resolve<GameInterface>();
     if (!gameInterface) {
         return std::string(kGlobalCustomContextKey);
     }
 
-    const std::string &mapName = gameInterface->GetMapName();
-    if (mapName.empty()) {
+    const std::string levelKey = ResolveLevelKey("", gameInterface->GetMapName(), gameInterface->GetCurrentLevel());
+    if (levelKey.empty()) {
         return std::string(kGlobalCustomContextKey);
     }
 
-    return mapName;
+    return levelKey;
 }
 
 void ScriptContextManager::RegisterCustomContext(const std::string &name, const std::string &levelKey, size_t memoryLimitBytes) {
@@ -394,65 +398,68 @@ void ScriptContextManager::UnregisterCustomContext(const std::string &name) {
     m_CustomContextMemoryLimits.erase(name);
 }
 
-// ============================================================================
-// Event Subscription Management
-// ============================================================================
-
-void ScriptContextManager::SubscribeToEvent(const std::string &contextName, const std::string &eventName) {
-    if (contextName.empty() || eventName.empty()) {
-        Log::Warn("Cannot subscribe with empty context or event name.");
+void ScriptContextManager::SubscribeToGameEvent(const std::string &contextName, GameEventType eventType) {
+    if (contextName.empty()) {
+        Log::Warn("Cannot subscribe with empty context name.");
         return;
     }
 
-    // Check if context exists
     if (!GetContext(contextName)) {
         Log::Warn("Cannot subscribe: context '%s' does not exist.", contextName.c_str());
         return;
     }
 
-    // Add to subscription list (avoid duplicates)
-    auto &subscribers = m_EventSubscriptions[eventName];
+    auto &subscribers = m_GameEventSubscriptions[eventType];
     if (std::find(subscribers.begin(), subscribers.end(), contextName) == subscribers.end()) {
         subscribers.push_back(contextName);
-        Log::Info("Context '%s' subscribed to event '%s'.",
-                  contextName.c_str(), eventName.c_str());
+        Log::Info("Context '%s' subscribed to game event type %d.",
+                  contextName.c_str(), static_cast<int>(eventType));
     }
 }
 
-void ScriptContextManager::UnsubscribeFromEvent(const std::string &contextName, const std::string &eventName) {
-    auto it = m_EventSubscriptions.find(eventName);
-    if (it != m_EventSubscriptions.end()) {
-        auto &subscribers = it->second;
-        subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName), subscribers.end());
+void ScriptContextManager::UnsubscribeFromGameEvent(const std::string &contextName, GameEventType eventType) {
+    auto it = m_GameEventSubscriptions.find(eventType);
+    if (it == m_GameEventSubscriptions.end()) {
+        return;
+    }
 
-        // Clean up empty subscription lists
-        if (subscribers.empty()) {
-            m_EventSubscriptions.erase(it);
-        }
+    auto &subscribers = it->second;
+    subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName), subscribers.end());
+    if (subscribers.empty()) {
+        m_GameEventSubscriptions.erase(it);
     }
 }
 
-void ScriptContextManager::UnsubscribeFromAllEvents(const std::string &contextName) {
-    for (auto it = m_EventSubscriptions.begin(); it != m_EventSubscriptions.end();) {
+void ScriptContextManager::UnsubscribeFromAllGameEvents(const std::string &contextName) {
+    for (auto it = m_GameEventSubscriptions.begin(); it != m_GameEventSubscriptions.end();) {
         auto &subscribers = it->second;
         subscribers.erase(std::remove(subscribers.begin(), subscribers.end(), contextName), subscribers.end());
-
-        // Clean up empty subscription lists
         if (subscribers.empty()) {
-            it = m_EventSubscriptions.erase(it);
+            it = m_GameEventSubscriptions.erase(it);
         } else {
             ++it;
         }
     }
 }
 
-bool ScriptContextManager::IsSubscribedToEvent(const std::string &contextName, const std::string &eventName) const {
-    auto it = m_EventSubscriptions.find(eventName);
-    if (it != m_EventSubscriptions.end()) {
-        const auto &subscribers = it->second;
-        return std::find(subscribers.begin(), subscribers.end(), contextName) != subscribers.end();
+bool ScriptContextManager::IsSubscribedToGameEvent(const std::string &contextName, GameEventType eventType) const {
+    auto it = m_GameEventSubscriptions.find(eventType);
+    return it != m_GameEventSubscriptions.end()
+        && std::find(it->second.begin(), it->second.end(), contextName) != it->second.end();
+}
+
+void ScriptContextManager::DispatchGameEvent(const LuaGameEvent &event) {
+    auto it = m_GameEventSubscriptions.find(event.type);
+    if (it == m_GameEventSubscriptions.end()) {
+        return;
     }
-    return false;
+
+    for (const auto &contextName : it->second) {
+        auto context = GetContext(contextName);
+        if (context && context->IsExecuting()) {
+            context->DispatchGameEvent(event);
+        }
+    }
 }
 
 // ============================================================================
@@ -521,6 +528,7 @@ bool ScriptContextManager::ReleaseOrPoolContext(ScriptContext *context) {
         if (context->GetType() == ScriptContextType::Custom && m_CustomContextCount > 0) {
             m_CustomContextCount--;
         }
+        UnsubscribeFromAllGameEvents(contextName);
         UnregisterCustomContext(contextName);
 
         // Move to pool

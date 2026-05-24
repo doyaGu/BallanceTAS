@@ -6,7 +6,10 @@
 #include <vector>
 #include <unordered_map>
 
+#include "ContextIdentity.h"
+#include "GameEvents.h"
 #include "ScriptContext.h"
+#include "TASConstants.h"
 
 // Forward declarations
 class TASEngine;
@@ -17,8 +20,8 @@ class MessageBus;
  * @brief Configuration for context pool
  */
 struct ContextPoolConfig {
-    size_t maxPoolSize = 4;           // Maximum contexts in pool
-    bool enablePooling = true;        // Enable pooling feature
+    size_t maxPoolSize = TASConstants::DefaultMaxPoolSize;
+    bool enablePooling = false;       // Disabled until Lua VM reset is fully auditable.
     int hibernateFrameThreshold = 60; // Frames of inactivity before hibernation
 };
 
@@ -28,7 +31,7 @@ struct ContextPoolConfig {
 struct CustomContextLimits {
     size_t maxTotalCustomContexts = 10;         // Max total custom contexts
     size_t maxCustomContextsPerLevel = 5;       // Max custom contexts per level
-    size_t memoryLimitBytes = 10 * 1024 * 1024; // 10MB per custom context
+    size_t memoryLimitBytes = TASConstants::DefaultCustomContextMemoryLimit;
 };
 
 /**
@@ -177,6 +180,12 @@ public:
      */
     MessageBus *GetMessageBus() const { return m_MessageBus.get(); }
 
+    static std::string GlobalContextName();
+    static std::string ResolveLevelKey(const std::string &manifestLevel,
+                                       const std::string &mapName,
+                                       int levelNumber);
+    static std::string MakeLevelContextName(const std::string &levelKey);
+
     /**
      * @brief Gets the number of active contexts.
      * @return Number of contexts.
@@ -242,52 +251,11 @@ public:
      */
     const CustomContextLimits &GetCustomContextLimits() const { return m_CustomLimits; }
 
-    // --- Event Subscription ---
-
-    /**
-     * @brief Subscribes a context to a game event.
-     * @param contextName Name of the context to subscribe.
-     * @param eventName Name of the event to subscribe to.
-     */
-    void SubscribeToEvent(const std::string &contextName, const std::string &eventName);
-
-    /**
-     * @brief Unsubscribes a context from a game event.
-     * @param contextName Name of the context to unsubscribe.
-     * @param eventName Name of the event to unsubscribe from.
-     */
-    void UnsubscribeFromEvent(const std::string &contextName, const std::string &eventName);
-
-    /**
-     * @brief Unsubscribes a context from all events.
-     * @param contextName Name of the context.
-     */
-    void UnsubscribeFromAllEvents(const std::string &contextName);
-
-    /**
-     * @brief Checks if a context is subscribed to an event.
-     * @param contextName Name of the context.
-     * @param eventName Name of the event.
-     * @return True if the context is subscribed to the event.
-     */
-    bool IsSubscribedToEvent(const std::string &contextName, const std::string &eventName) const;
-
-    /**
-     * @brief Fires a game event to all contexts.
-     * @param eventName The name of the event.
-     * @param args Optional arguments to pass to event handlers.
-     */
-    template <typename... Args>
-    void FireGameEventToAll(const std::string &eventName, Args... args);
-
-    /**
-     * @brief Fires a game event to a specific context.
-     * @param contextName Name of the context to fire the event to.
-     * @param eventName The name of the event.
-     * @param args Optional arguments to pass to event handlers.
-     */
-    template <typename... Args>
-    void FireGameEventToContext(const std::string &contextName, const std::string &eventName, Args... args);
+    void SubscribeToGameEvent(const std::string &contextName, GameEventType eventType);
+    void UnsubscribeFromGameEvent(const std::string &contextName, GameEventType eventType);
+    void UnsubscribeFromAllGameEvents(const std::string &contextName);
+    bool IsSubscribedToGameEvent(const std::string &contextName, GameEventType eventType) const;
+    void DispatchGameEvent(const LuaGameEvent &event);
 
 private:
     /**
@@ -328,32 +296,24 @@ private:
     std::unordered_map<std::string, std::string> m_CustomContextLevelMap;
     std::unordered_map<std::string, size_t> m_CustomContextMemoryLimits;
 
-    // Event subscriptions (eventName -> set of contextNames)
-    std::map<std::string, std::vector<std::string>> m_EventSubscriptions;
+    // Runtime game event subscriptions (typed event -> set of context names)
+    std::map<GameEventType, std::vector<std::string>> m_GameEventSubscriptions;
 
     // Initialization state
     bool m_IsInitialized = false;
 };
 
-// Template implementations
-template <typename... Args>
-void ScriptContextManager::FireGameEventToAll(const std::string &eventName, Args... args) {
-    // Fire event only to subscribed contexts (subscription-based routing)
-    auto it = m_EventSubscriptions.find(eventName);
-    if (it != m_EventSubscriptions.end()) {
-        for (const auto &contextName : it->second) {
-            auto context = GetContext(contextName);
-            if (context && context->IsExecuting()) {
-                context->FireGameEvent(eventName, args...);
-            }
-        }
-    }
+inline std::string ScriptContextManager::GlobalContextName() {
+    return "global";
 }
 
-template <typename... Args>
-void ScriptContextManager::FireGameEventToContext(const std::string &contextName, const std::string &eventName, Args... args) {
-    auto context = GetContext(contextName);
-    if (context && context->IsExecuting()) {
-        context->FireGameEvent(eventName, args...);
-    }
+inline std::string ScriptContextManager::ResolveLevelKey(const std::string &manifestLevel,
+                                                         const std::string &mapName,
+                                                         int levelNumber) {
+    return tas::context::ResolveLevelKey(manifestLevel, mapName, levelNumber);
 }
+
+inline std::string ScriptContextManager::MakeLevelContextName(const std::string &levelKey) {
+    return tas::context::MakeLevelContextName(levelKey);
+}
+

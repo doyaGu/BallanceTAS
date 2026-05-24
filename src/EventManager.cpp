@@ -2,19 +2,19 @@
 
 #include "Logger.h"
 
-EventManager::ListenerId EventManager::RegisterListener(const std::string &eventName, sol::function callback, bool oneTime) {
+EventManager::ListenerId EventManager::RegisterListener(const std::string &eventName, tas::lua::LuaFunction callback, bool oneTime) {
     if (eventName.empty()) {
         HandleError(eventName, "Event name cannot be empty");
         return kInvalidListenerId;
     }
 
-    if (!callback.valid()) {
+    if (!callback.IsValid()) {
         HandleError(eventName, "Lua callback is invalid");
         return kInvalidListenerId;
     }
 
     ListenerId id = m_NextListenerId.fetch_add(1, std::memory_order_relaxed);
-    m_Listeners[eventName].emplace_back(id, std::move(callback), oneTime);
+    m_Listeners[eventName].emplace_back(id, std::make_shared<tas::lua::LuaFunction>(std::move(callback)), oneTime);
     return id;
 }
 
@@ -34,7 +34,7 @@ EventManager::ListenerId EventManager::RegisterListener(const std::string &event
     return id;
 }
 
-EventManager::ListenerId EventManager::RegisterOnceListener(const std::string &eventName, sol::function callback) {
+EventManager::ListenerId EventManager::RegisterOnceListener(const std::string &eventName, tas::lua::LuaFunction callback) {
     return RegisterListener(eventName, std::move(callback), true);
 }
 
@@ -102,8 +102,9 @@ bool EventManager::UnregisterListener(const std::string &eventName, ListenerId i
 }
 
 bool EventManager::IsCallbackValid(const CallbackEntry &entry) {
-    if (std::holds_alternative<sol::function>(entry.callback)) {
-        return std::get<sol::function>(entry.callback).valid();
+    if (std::holds_alternative<LuaCallback>(entry.callback)) {
+        const auto &callback = std::get<LuaCallback>(entry.callback);
+        return callback && callback->IsValid();
     } else {
         return static_cast<bool>(std::get<std::function<void()>>(entry.callback));
     }

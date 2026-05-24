@@ -8,8 +8,9 @@
 #include <atomic>
 #include <cstdint>
 #include <algorithm>
+#include <memory>
 
-#include <sol/sol.hpp>
+#include "LuaRuntime/LuaFunction.h"
 
 /**
  * @class EventManager
@@ -17,7 +18,7 @@
  *
  * LIFETIME SAFETY:
  * ================
- * EventManager stores Lua callbacks (sol::function) which hold references to a Lua VM.
+ * EventManager stores Lua callbacks (LuaFunction) which hold references to a Lua VM.
  * To prevent use-after-free errors:
  *
  * 1. CRITICAL: ClearListeners() MUST be called before the Lua VM is destroyed.
@@ -27,7 +28,7 @@
  *    - Then:  EventManager is destroyed
  *    - Finally: Lua VM is destroyed
  *
- * 4. Lua callback validity is checked before invocation (sol::function::valid()).
+ * 4. Lua callback validity is checked before invocation.
  * 5. Invalid callbacks are automatically removed during FireEvent().
  *
  * This design ensures Lua callbacks never outlive their associated Lua VM.
@@ -40,7 +41,8 @@ public:
     /**
      * @brief Callback variant that can hold either C++ function or Lua function
      */
-    using Callback = std::variant<std::function<void()>, sol::function>;
+    using LuaCallback = std::shared_ptr<tas::lua::LuaFunction>;
+    using Callback = std::variant<std::function<void()>, LuaCallback>;
 
     /**
      * @brief Wrapper for callback with one-time execution flag
@@ -66,7 +68,7 @@ public:
      * @param callback The Lua function to call.
      * @param oneTime If true, the listener will be removed after first call.
      */
-    ListenerId RegisterListener(const std::string &eventName, sol::function callback, bool oneTime = false);
+    ListenerId RegisterListener(const std::string &eventName, tas::lua::LuaFunction callback, bool oneTime = false);
 
     /**
      * @brief Register a C++ function to be called when an event is fired.
@@ -86,7 +88,7 @@ public:
     ListenerId RegisterListener(const std::string &eventName, F &&callback, bool oneTime = false,
                                 typename std::enable_if_t<
                                     std::is_invocable_v<F> &&
-                                    !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                    !std::is_same_v<std::decay_t<F>, tas::lua::LuaFunction> &&
                                     !std::is_same_v<std::decay_t<F>, std::function<void()>>
                                 > * = nullptr);
 
@@ -95,7 +97,7 @@ public:
      * @param eventName The name of the event to listen for.
      * @param callback The Lua function to call.
      */
-    ListenerId RegisterOnceListener(const std::string &eventName, sol::function callback);
+    ListenerId RegisterOnceListener(const std::string &eventName, tas::lua::LuaFunction callback);
 
     /**
      * @brief Register a one-time C++ function listener.
@@ -113,7 +115,7 @@ public:
     ListenerId RegisterOnceListener(const std::string &eventName, F &&callback,
                                     typename std::enable_if_t<
                                         std::is_invocable_v<F> &&
-                                        !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                        !std::is_same_v<std::decay_t<F>, tas::lua::LuaFunction> &&
                                         !std::is_same_v<std::decay_t<F>, std::function<void()>>
                                     > * = nullptr);
 
@@ -191,7 +193,7 @@ template <typename F>
 EventManager::ListenerId EventManager::RegisterListener(const std::string &eventName, F &&callback, bool oneTime,
                                                         typename std::enable_if_t<
                                                             std::is_invocable_v<F> &&
-                                                            !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                                            !std::is_same_v<std::decay_t<F>, tas::lua::LuaFunction> &&
                                                             !std::is_same_v<std::decay_t<F>, std::function<void()>>
                                                         > *) {
     if (eventName.empty()) {
@@ -211,7 +213,7 @@ template <typename F>
 EventManager::ListenerId EventManager::RegisterOnceListener(const std::string &eventName, F &&callback,
                                                             typename std::enable_if_t<
                                                                 std::is_invocable_v<F> &&
-                                                                !std::is_same_v<std::decay_t<F>, sol::function> &&
+                                                                !std::is_same_v<std::decay_t<F>, tas::lua::LuaFunction> &&
                                                                 !std::is_same_v<std::decay_t<F>, std::function<void()>>
                                                             > *) {
     return RegisterListener(eventName, std::forward<F>(callback), true);
@@ -287,24 +289,19 @@ void EventManager::FireEvent(const std::string &eventName, Args &&... args) {
 
 template <typename... Args>
 bool EventManager::CallCallback(const CallbackEntry &entry, Args &&... args) const {
+    (void) sizeof...(args);
     try {
-        if (std::holds_alternative<sol::function>(entry.callback)) {
+        if (std::holds_alternative<LuaCallback>(entry.callback)) {
             // Lua function
-            const auto &luaFunc = std::get<sol::function>(entry.callback);
+            const auto &luaFunc = std::get<LuaCallback>(entry.callback);
 
-            // Double-check that the function is still valid before calling
-            // Sol2 functions can become invalid if Lua state changes
-            if (!luaFunc.valid()) {
+            if (!luaFunc || !luaFunc->IsValid()) {
                 return false;
             }
 
-            // Call the Lua function and check the result
-            auto result = luaFunc(std::forward<Args>(args)...);
-
-            // Check if the call was successful
-            if (!result.valid()) {
-                sol::error err = result;
-                HandleError("lua_callback", std::string("Lua execution error: ") + err.what());
+            auto result = luaFunc->Call(0, 0);
+            if (result.IsError()) {
+                HandleError("lua_callback", std::string("Lua execution error: ") + result.GetError().message);
                 return false;
             }
 
@@ -319,10 +316,6 @@ bool EventManager::CallCallback(const CallbackEntry &entry, Args &&... args) con
             cppFunc();
             return true;
         }
-    } catch (const sol::error &e) {
-        // Specific handling for Sol2 errors
-        HandleError("lua_callback", std::string("Sol2 error: ") + e.what());
-        return false;
     } catch (const std::exception &e) {
         // Handle other standard exceptions
         HandleError("callback", std::string("Exception: ") + e.what());

@@ -5,7 +5,6 @@
 #include <string>
 
 // Forward declarations
-class ServiceProvider;
 class Recorder;
 class PlaybackService;
 class EventBus;
@@ -23,13 +22,11 @@ class EventBus;
  */
 class ValidationService {
 public:
-    explicit ValidationService(ServiceProvider *provider);
+    ValidationService(Recorder &recorder, EventBus &eventBus);
     ~ValidationService();
 
     ValidationService(const ValidationService &) = delete;
     ValidationService &operator=(const ValidationService &) = delete;
-
-    void SetEventBus(EventBus *bus) { m_EventBus = bus; }
 
     /**
      * @brief Start a validation recording session.
@@ -53,9 +50,8 @@ public:
     const std::string &GetOutputPath() const { return m_OutputPath; }
 
 private:
-    ServiceProvider *m_ServiceProvider;
-    Recorder *m_Recorder = nullptr;
-    EventBus *m_EventBus = nullptr;
+    Recorder &m_Recorder;
+    EventBus &m_EventBus;
 
     bool m_IsActive = false;
     std::string m_OutputPath;

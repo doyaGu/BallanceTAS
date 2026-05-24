@@ -1,280 +1,291 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+
+#include "GameInterface.h"
+#include "Logger.h"
+#include "ProjectManager.h"
+#include "RecordPlayer.h"
+#include "ScriptContext.h"
+#include "ScriptContextManager.h"
+#include "TASProject.h"
+
 #include <stdexcept>
 
-#include "Logger.h"
-#include "TASEngine.h"
-#include "ProjectManager.h"
-#include "TASProject.h"
-#include "RecordPlayer.h"
-#include "ScriptContextManager.h"
-#include "ScriptContext.h"
-#include "GameInterface.h"
+namespace {
 
-// ===================================================================
-// Project Management API Registration
-// ===================================================================
+ScriptContext *GetContext(lua_State *L) {
+    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
+}
 
-void LuaApi::RegisterProjectApi(sol::table &tas, ScriptContext *context) {
+void SetProjectFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(L, context);
+    lua_pushcclosure(L, function, 1);
+    lua_setfield(L, -2, name);
+}
+
+void PushStringField(lua_State *L, const char *name, const std::string &value) {
+    lua_pushlstring(L, value.data(), value.size());
+    lua_setfield(L, -2, name);
+}
+
+void PushProjectInfo(lua_State *L, const TASProject &project) {
+    lua_createtable(L, 0, 6);
+    PushStringField(L, "name", project.GetName());
+    PushStringField(L, "type", project.IsScriptProject() ? "script" : "record");
+    PushStringField(L, "scope", project.IsGlobalProject() ? "global" : "level");
+    PushStringField(L, "author", project.GetAuthor());
+    PushStringField(L, "description", project.GetDescription());
+    PushStringField(L, "target_level", project.GetTargetLevel());
+}
+
+const char *CheckProjectName(lua_State *L, int index, const char *functionName) {
+    size_t length = 0;
+    const char *name = luaL_checklstring(L, index, &length);
+    if (length == 0) {
+        luaL_error(L, "%s: project name cannot be empty", functionName);
+    }
+    return name;
+}
+
+TASProject *FindProject(ProjectManager &manager, const std::string &name) {
+    const auto &projects = manager.GetProjects();
+    for (const auto &project : projects) {
+        if (project && project->IsValid() && project->GetName() == name) {
+            return project.get();
+        }
+    }
+    return nullptr;
+}
+
+std::string ResolveProjectLevelKey(const TASProject &project, GameInterface *game) {
+    return ScriptContextManager::ResolveLevelKey(
+        project.GetTargetLevel(),
+        game ? game->GetMapName() : "",
+        game ? game->GetCurrentLevel() : 0);
+}
+
+int List(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_newtable(L);
+    int index = 1;
+    for (const auto &project : manager->GetProjects()) {
+        if (project && project->IsValid()) {
+            PushProjectInfo(L, *project);
+            lua_seti(L, -2, index++);
+        }
+    }
+    return 1;
+}
+
+int GetCurrent(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager || !manager->GetCurrentProject()) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    PushProjectInfo(L, *manager->GetCurrentProject());
+    return 1;
+}
+
+int Find(lua_State *L) {
+    auto *context = GetContext(L);
+    const std::string name = CheckProjectName(L, 1, "project.find");
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    TASProject *project = FindProject(*manager, name);
+    if (!project) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    PushProjectInfo(L, *project);
+    return 1;
+}
+
+int Load(lua_State *L) {
+    auto *context = GetContext(L);
+    const std::string name = CheckProjectName(L, 1, "project.load");
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager) {
+        return luaL_error(L, "project.load: ProjectManager not available");
+    }
+
+    TASProject *project = FindProject(*manager, name);
+    if (!project) {
+        Log::Warn("project.load: Project '%s' not found", name.c_str());
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    manager->SetCurrentProject(project);
+    if (project->IsScriptProject()) {
+        auto *contextManager = context->GetScriptContextManager();
+        auto *game = context->GetGameInterface();
+        if (!contextManager) {
+            return luaL_error(L, "project.load: ScriptContextManager not available");
+        }
+
+        const bool isGlobal = project->IsGlobalProject();
+        auto targetContext = isGlobal
+                                 ? contextManager->GetOrCreateGlobalContext()
+                                 : contextManager->GetOrCreateLevelContext(ResolveProjectLevelKey(*project, game));
+        if (!targetContext) {
+            return luaL_error(L, "project.load: Failed to create script context");
+        }
+
+        Log::Info("Loading script project: %s", name.c_str());
+        lua_pushboolean(L, targetContext->LoadAndExecute(project));
+        return 1;
+    }
+
+    if (project->IsRecordProject()) {
+        auto *recordPlayer = context->GetRecordPlayer();
+        if (!recordPlayer) {
+            return luaL_error(L, "project.load: RecordPlayer not available");
+        }
+
+        const std::string recordPath = project->GetRecordFilePath();
+        Log::Info("Loading record project: %s (%s)", name.c_str(), recordPath.c_str());
+        lua_pushboolean(L, recordPlayer->LoadAndPlay(recordPath));
+        return 1;
+    }
+
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
+int Unload(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager) {
+        return luaL_error(L, "project.unload: ProjectManager not available");
+    }
+
+    TASProject *current = manager->GetCurrentProject();
+    if (!current) {
+        Log::Warn("project.unload: No project currently loaded");
+        return 0;
+    }
+
+    Log::Info("Unloading project: %s", current->GetName().c_str());
+    if (current->IsScriptProject()) {
+        auto *contextManager = context->GetScriptContextManager();
+        if (contextManager) {
+            for (const auto &scriptContext : contextManager->GetContextsByPriority()) {
+                if (scriptContext && scriptContext->GetCurrentProject() == current) {
+                    scriptContext->Stop();
+                    Log::Info("Stopped context: %s", scriptContext->GetName().c_str());
+                }
+            }
+        }
+    } else if (current->IsRecordProject()) {
+        auto *recordPlayer = context->GetRecordPlayer();
+        if (recordPlayer) {
+            recordPlayer->Stop();
+        }
+    }
+
+    manager->SetCurrentProject(nullptr);
+    return 0;
+}
+
+int Reload(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager) {
+        return luaL_error(L, "project.reload: ProjectManager not available");
+    }
+
+    TASProject *current = manager->GetCurrentProject();
+    if (!current) {
+        Log::Warn("project.reload: No project currently loaded");
+        lua_pushboolean(L, 0);
+        return 1;
+    }
+
+    const std::string projectName = current->GetName();
+    Log::Info("Reloading project: %s", projectName.c_str());
+
+    if (current->IsScriptProject()) {
+        auto *contextManager = context->GetScriptContextManager();
+        if (contextManager) {
+            for (const auto &scriptContext : contextManager->GetContextsByPriority()) {
+                if (scriptContext && scriptContext->GetCurrentProject() == current) {
+                    scriptContext->Stop();
+                }
+            }
+        }
+        if (!contextManager) {
+            return luaL_error(L, "project.reload: ScriptContextManager not available");
+        }
+
+        auto *game = context->GetGameInterface();
+        auto targetContext = current->IsGlobalProject()
+                                 ? contextManager->GetOrCreateGlobalContext()
+                                 : contextManager->GetOrCreateLevelContext(ResolveProjectLevelKey(*current, game));
+        if (!targetContext) {
+            return luaL_error(L, "project.reload: Failed to create script context");
+        }
+
+        lua_pushboolean(L, targetContext->LoadAndExecute(current));
+        return 1;
+    }
+
+    if (current->IsRecordProject()) {
+        auto *recordPlayer = context->GetRecordPlayer();
+        lua_pushboolean(L, recordPlayer && recordPlayer->LoadAndPlay(current->GetRecordFilePath()));
+        return 1;
+    }
+
+    lua_pushboolean(L, 0);
+    return 1;
+}
+
+int IsLoaded(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    lua_pushboolean(L, manager && manager->GetCurrentProject());
+    return 1;
+}
+
+} // namespace
+
+void LuaApi::RegisterProjectApi(lua_State *state, ScriptContext *context) {
     if (!context) {
         throw std::runtime_error("LuaApi::RegisterProjectApi requires a valid ScriptContext");
     }
 
-    // Create nested 'project' table
-    sol::table project = tas["project"] = tas.create();
+    tas::lua::LuaStackGuard guard(state);
+    lua_getglobal(state, "tas");
+    if (!lua_istable(state, -1)) {
+        lua_pop(state, 1);
+        lua_newtable(state);
+        lua_setglobal(state, "tas");
+        lua_getglobal(state, "tas");
+    }
 
-    // tas.project.list() - List all available projects
-    project["list"] = [context]() -> sol::object {
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            return sol::nil;
-        }
+    lua_newtable(state);
+    SetProjectFunction(state, "list", List, context);
+    SetProjectFunction(state, "get_current", GetCurrent, context);
+    SetProjectFunction(state, "find", Find, context);
+    SetProjectFunction(state, "load", Load, context);
+    SetProjectFunction(state, "unload", Unload, context);
+    SetProjectFunction(state, "reload", Reload, context);
+    SetProjectFunction(state, "is_loaded", IsLoaded, context);
+    lua_setfield(state, -2, "project");
 
-        const auto &projects = pm->GetProjects();
-        sol::state_view lua = context->GetLuaState();
-        sol::table result = lua.create_table();
-
-        int index = 1;
-        for (const auto &proj : projects) {
-            if (proj && proj->IsValid()) {
-                sol::table projInfo = lua.create_table();
-                projInfo["name"] = proj->GetName();
-                projInfo["type"] = proj->IsScriptProject() ? "script" : "record";
-                projInfo["scope"] = proj->IsGlobalProject() ? "global" : "level";
-                projInfo["author"] = proj->GetAuthor();
-                projInfo["description"] = proj->GetDescription();
-                projInfo["target_level"] = proj->GetTargetLevel();
-                result[index++] = projInfo;
-            }
-        }
-
-        return result;
-    };
-
-    // tas.project.get_current() - Get current project info
-    project["get_current"] = [context]() -> sol::object {
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            return sol::nil;
-        }
-
-        TASProject *currentProj = pm->GetCurrentProject();
-        if (!currentProj) {
-            return sol::nil;
-        }
-
-        sol::state_view lua = context->GetLuaState();
-        sol::table projInfo = lua.create_table();
-        projInfo["name"] = currentProj->GetName();
-        projInfo["type"] = currentProj->IsScriptProject() ? "script" : "record";
-        projInfo["scope"] = currentProj->IsGlobalProject() ? "global" : "level";
-        projInfo["author"] = currentProj->GetAuthor();
-        projInfo["description"] = currentProj->GetDescription();
-        projInfo["target_level"] = currentProj->GetTargetLevel();
-        return projInfo;
-    };
-
-    // tas.project.find(name) - Find a project by name
-    project["find"] = [context](const std::string &projectName) -> sol::object {
-        if (projectName.empty()) {
-            throw sol::error("project.find: project name cannot be empty");
-        }
-
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            return sol::nil;
-        }
-
-        const auto &projects = pm->GetProjects();
-        for (const auto &proj : projects) {
-            if (proj && proj->IsValid() && proj->GetName() == projectName) {
-                sol::state_view lua = context->GetLuaState();
-                sol::table projInfo = lua.create_table();
-                projInfo["name"] = proj->GetName();
-                projInfo["type"] = proj->IsScriptProject() ? "script" : "record";
-                projInfo["scope"] = proj->IsGlobalProject() ? "global" : "level";
-                projInfo["author"] = proj->GetAuthor();
-                projInfo["description"] = proj->GetDescription();
-                projInfo["target_level"] = proj->GetTargetLevel();
-                return projInfo;
-            }
-        }
-
-        return sol::nil;
-    };
-
-    // tas.project.load(name) - Load and execute a project (script or record)
-    project["load"] = [context](const std::string &projectName) -> bool {
-        if (projectName.empty()) {
-            throw sol::error("project.load: project name cannot be empty");
-        }
-
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            throw sol::error("project.load: ProjectManager not available");
-        }
-
-        // Find the project
-        const auto &projects = pm->GetProjects();
-        TASProject *targetProject = nullptr;
-        for (const auto &proj : projects) {
-            if (proj && proj->IsValid() && proj->GetName() == projectName) {
-                targetProject = proj.get();
-                break;
-            }
-        }
-
-        if (!targetProject) {
-            Log::Warn("project.load: Project '%s' not found", projectName.c_str());
-            return false;
-        }
-
-        // Set as current project
-        pm->SetCurrentProject(targetProject);
-
-        // Load based on project type
-        if (targetProject->IsScriptProject()) {
-            // Get the script context manager
-            auto *ctxMgr = context->GetScriptContextManager();
-            if (!ctxMgr) {
-                throw sol::error("project.load: ScriptContextManager not available");
-            }
-
-            // Determine context type
-            bool isGlobal = targetProject->IsGlobalProject();
-            auto ctx = isGlobal
-                           ? ctxMgr->GetOrCreateGlobalContext()
-                           : ctxMgr->GetOrCreateLevelContext(std::to_string(context->GetGameInterface()->GetCurrentLevel()));
-
-            if (!ctx) {
-                throw sol::error("project.load: Failed to create script context");
-            }
-
-            Log::Info("Loading script project: %s", projectName.c_str());
-            return ctx->LoadAndExecute(targetProject);
-        } else if (targetProject->IsRecordProject()) {
-            // Load record project
-            auto *recordPlayer = context->GetRecordPlayer();
-            if (!recordPlayer) {
-                throw sol::error("project.load: RecordPlayer not available");
-            }
-
-            std::string recordPath = targetProject->GetRecordFilePath();
-            Log::Info("Loading record project: %s (%s)", projectName.c_str(), recordPath.c_str());
-            return recordPlayer->LoadAndPlay(recordPath);
-        }
-
-        return false;
-    };
-
-    // tas.project.unload() - Stop current project
-    project["unload"] = [context]() {
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            throw sol::error("project.unload: ProjectManager not available");
-        }
-
-        TASProject *currentProj = pm->GetCurrentProject();
-        if (!currentProj) {
-            Log::Warn("project.unload: No project currently loaded");
-            return;
-        }
-
-        Log::Info("Unloading project: %s", currentProj->GetName().c_str());
-
-        // Stop based on project type
-        if (currentProj->IsScriptProject()) {
-            auto *ctxMgr = context->GetScriptContextManager();
-            if (ctxMgr) {
-                // Find and stop all contexts executing this project
-                auto contexts = ctxMgr->GetContextsByPriority();
-                for (const auto &ctx : contexts) {
-                    if (ctx && ctx->GetCurrentProject() == currentProj) {
-                        ctx->Stop();
-                        Log::Info("Stopped context: %s", ctx->GetName().c_str());
-                    }
-                }
-            }
-        } else if (currentProj->IsRecordProject()) {
-            auto *recordPlayer = context->GetRecordPlayer();
-            if (recordPlayer) {
-                recordPlayer->Stop();
-            }
-        }
-
-        pm->SetCurrentProject(nullptr);
-    };
-
-    // tas.project.reload() - Reload current project
-    project["reload"] = [context]() -> bool {
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            throw sol::error("project.reload: ProjectManager not available");
-        }
-
-        TASProject *currentProj = pm->GetCurrentProject();
-        if (!currentProj) {
-            Log::Warn("project.reload: No project currently loaded");
-            return false;
-        }
-
-        std::string projectName = currentProj->GetName();
-        Log::Info("Reloading project: %s", projectName.c_str());
-
-        // Unload first
-        if (currentProj->IsScriptProject()) {
-            auto *ctxMgr = context->GetScriptContextManager();
-            if (ctxMgr) {
-                // Stop all contexts executing this project
-                auto contexts = ctxMgr->GetContextsByPriority();
-                for (const auto &ctx : contexts) {
-                    if (ctx && ctx->GetCurrentProject() == currentProj) {
-                        ctx->Stop();
-                    }
-                }
-            }
-        } else if (currentProj->IsRecordProject()) {
-            auto *recordPlayer = context->GetRecordPlayer();
-            if (recordPlayer) {
-                recordPlayer->Stop();
-            }
-        }
-
-        // Reload
-        if (currentProj->IsScriptProject()) {
-            auto *ctxMgr = context->GetScriptContextManager();
-            if (!ctxMgr) {
-                throw sol::error("project.reload: ScriptContextManager not available");
-            }
-
-            // Determine context type and reload
-            bool isGlobal = currentProj->IsGlobalProject();
-            auto ctx = isGlobal
-                           ? ctxMgr->GetOrCreateGlobalContext()
-                           : ctxMgr->GetOrCreateLevelContext(std::to_string(context->GetGameInterface()->GetCurrentLevel()));
-
-            if (!ctx) {
-                throw sol::error("project.reload: Failed to create script context");
-            }
-
-            return ctx->LoadAndExecute(currentProj);
-        } else if (currentProj->IsRecordProject()) {
-            auto *recordPlayer = context->GetRecordPlayer();
-            if (recordPlayer) {
-                std::string recordPath = currentProj->GetRecordFilePath();
-                return recordPlayer->LoadAndPlay(recordPath);
-            }
-        }
-
-        return false;
-    };
-
-    // tas.project.is_loaded() - Check if any project is loaded
-    project["is_loaded"] = [context]() -> bool {
-        auto *pm = context->GetProjectManager();
-        if (!pm) {
-            return false;
-        }
-        return pm->GetCurrentProject() != nullptr;
-    };
+    lua_pop(state, 1);
 }

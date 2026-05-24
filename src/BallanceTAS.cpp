@@ -8,6 +8,9 @@
 #include "InGameOSD.h"
 #include "Recorder.h"
 #include "GameInterface.h"
+#include "ServiceContainer.h"
+#include "ScriptContextManager.h"
+#include "StartupProjectManager.h"
 #include "UIManager.h"
 #include "Logger.h"
 #include "BMLLogSink.h"
@@ -137,8 +140,8 @@ void BallanceTAS::OnModifyConfig(const char *category, const char *key, IPropert
             m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
         }
     } else if (std::string_view(category) == "Recording") {
-        if (m_Engine && m_Engine->GetRecorder()) {
-            m_Engine->GetRecorder()->SetMaxFrames(m_ConfigService.GetMaxFrames());
+        if (auto *recorder = m_Engine ? m_Engine->GetServiceProvider().Resolve<Recorder>() : nullptr) {
+            recorder->SetMaxFrames(m_ConfigService.GetMaxFrames());
         }
     } else if (std::string_view(category) == "Hotkeys") {
         if (m_UIManager) {
@@ -291,6 +294,17 @@ bool BallanceTAS::Initialize() {
         m_ConfigService.SetEventBus(m_Engine->GetEventBus());
         m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
         m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
+        if (auto *startup = m_Engine->GetServiceProvider().Resolve<StartupProjectManager>()) {
+            StartupConfig startupConfig = m_ConfigService.GetStartupConfig();
+            startup->SetStartupEnabled(startupConfig.enabled);
+            startup->SetAutoLoadEnabled(startupConfig.autoLoad);
+            if (!startupConfig.project.empty()) {
+                startup->SetStartupProject(startupConfig.project);
+            }
+            if (startupConfig.enabled && startupConfig.autoLoad) {
+                startup->LoadAndExecuteStartupScript();
+            }
+        }
 
         // Initialize UI Manager
         m_UIManager = std::make_unique<UIManager>(m_Engine.get());
@@ -307,7 +321,7 @@ bool BallanceTAS::Initialize() {
         UpdateOSDPanelConfig();
 
         // Configure recording settings
-        if (auto *recorder = m_Engine->GetRecorder()) {
+        if (auto *recorder = m_Engine->GetServiceProvider().Resolve<Recorder>()) {
             recorder->SetMaxFrames(m_ConfigService.GetMaxFrames());
             recorder->SetAutoGenerate(true); // Always auto-generate
         }
@@ -398,6 +412,13 @@ void BallanceTAS::OnProcess() {
     if (m_Initialized && m_Engine && m_UIManager) {
         OnMenuStart();
 
+        m_Engine->IncrementCurrentTick();
+        if (!m_Engine->IsPlayingScript()) {
+            if (auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>()) {
+                contexts->TickAll();
+            }
+        }
+
         // Process and render UI
         m_UIManager->Process();
         m_UIManager->Render();
@@ -465,13 +486,12 @@ void BallanceTAS::OnPreLoadLevel() {
     PublishEngineEvent(this, PreLoadLevelEvent{});
 }
 
-void BallanceTAS::OnPostLoadLevel() {
-    PublishEngineEvent(this, PostLoadLevelEvent{});
-}
+// Macro for trivial BML callback -> EventBus forwarding
+#define FORWARD_SIMPLE_EVENT(BmlCallback, EventType) \
+    void BallanceTAS::BmlCallback() { PublishEngineEvent(this, EventType{}); }
 
-void BallanceTAS::OnStartLevel() {
-    PublishEngineEvent(this, StartLevelEvent{});
-}
+FORWARD_SIMPLE_EVENT(OnPostLoadLevel,   PostLoadLevelEvent)
+FORWARD_SIMPLE_EVENT(OnStartLevel,      StartLevelEvent)
 
 void BallanceTAS::OnPreResetLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
@@ -480,17 +500,9 @@ void BallanceTAS::OnPreResetLevel() {
     }
 }
 
-void BallanceTAS::OnPostResetLevel() {
-    PublishEngineEvent(this, PostResetLevelEvent{});
-}
-
-void BallanceTAS::OnPauseLevel() {
-    PublishEngineEvent(this, PauseLevelEvent{});
-}
-
-void BallanceTAS::OnUnpauseLevel() {
-    PublishEngineEvent(this, UnpauseLevelEvent{});
-}
+FORWARD_SIMPLE_EVENT(OnPostResetLevel,  PostResetLevelEvent)
+FORWARD_SIMPLE_EVENT(OnPauseLevel,      PauseLevelEvent)
+FORWARD_SIMPLE_EVENT(OnUnpauseLevel,    UnpauseLevelEvent)
 
 void BallanceTAS::OnPreExitLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
@@ -499,57 +511,22 @@ void BallanceTAS::OnPreExitLevel() {
     }
 }
 
-void BallanceTAS::OnPostExitLevel() {
-    PublishEngineEvent(this, PostExitLevelEvent{});
-}
+FORWARD_SIMPLE_EVENT(OnPostExitLevel,   PostExitLevelEvent)
+FORWARD_SIMPLE_EVENT(OnPreNextLevel,    PreNextLevelEvent)
+FORWARD_SIMPLE_EVENT(OnPostNextLevel,   PostNextLevelEvent)
+FORWARD_SIMPLE_EVENT(OnDead,            DeadEvent)
+FORWARD_SIMPLE_EVENT(OnPreEndLevel,     PreEndLevelEvent)
+FORWARD_SIMPLE_EVENT(OnPostEndLevel,    PostEndLevelEvent)
+FORWARD_SIMPLE_EVENT(OnCounterActive,   CounterActiveEvent)
+FORWARD_SIMPLE_EVENT(OnCounterInactive, CounterInactiveEvent)
+FORWARD_SIMPLE_EVENT(OnBallNavActive,   BallNavActiveEvent)
+FORWARD_SIMPLE_EVENT(OnBallNavInactive, BallNavInactiveEvent)
+FORWARD_SIMPLE_EVENT(OnCamNavActive,    CamNavActiveEvent)
+FORWARD_SIMPLE_EVENT(OnCamNavInactive,  CamNavInactiveEvent)
+FORWARD_SIMPLE_EVENT(OnBallOff,         BallOffEvent)
+FORWARD_SIMPLE_EVENT(OnGameOver,        GameOverEvent)
 
-void BallanceTAS::OnPreNextLevel() {
-    PublishEngineEvent(this, PreNextLevelEvent{});
-}
-
-void BallanceTAS::OnPostNextLevel() {
-    PublishEngineEvent(this, PostNextLevelEvent{});
-}
-
-void BallanceTAS::OnDead() {
-    PublishEngineEvent(this, BallOffEvent{});
-}
-
-void BallanceTAS::OnPreEndLevel() {
-    PublishEngineEvent(this, PreEndLevelEvent{});
-}
-
-void BallanceTAS::OnPostEndLevel() {
-    PublishEngineEvent(this, PostEndLevelEvent{});
-}
-
-void BallanceTAS::OnCounterActive() {
-    PublishEngineEvent(this, CounterActiveEvent{});
-}
-
-void BallanceTAS::OnCounterInactive() {
-    PublishEngineEvent(this, CounterInactiveEvent{});
-}
-
-void BallanceTAS::OnBallNavActive() {
-    PublishEngineEvent(this, BallNavActiveEvent{});
-}
-
-void BallanceTAS::OnBallNavInactive() {
-    PublishEngineEvent(this, BallNavInactiveEvent{});
-}
-
-void BallanceTAS::OnCamNavActive() {
-    PublishEngineEvent(this, CamNavActiveEvent{});
-}
-
-void BallanceTAS::OnCamNavInactive() {
-    PublishEngineEvent(this, CamNavInactiveEvent{});
-}
-
-void BallanceTAS::OnBallOff() {
-    PublishEngineEvent(this, BallOffEvent{});
-}
+#undef FORWARD_SIMPLE_EVENT
 
 void BallanceTAS::OnPreCheckpointReached() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
@@ -578,10 +555,6 @@ void BallanceTAS::OnLevelFinish() {
             m_Engine->Stop();
         }
     }
-}
-
-void BallanceTAS::OnGameOver() {
-    PublishEngineEvent(this, GameOverEvent{});
 }
 
 void BallanceTAS::OnExtraPoint() {

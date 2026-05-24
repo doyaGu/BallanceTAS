@@ -6,6 +6,20 @@
 #include "Logger.h"
 #include "TASEngine.h"
 
+namespace {
+
+std::string TrimSharedKey(const std::string &key) {
+    const size_t first = key.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) {
+        return {};
+    }
+
+    const size_t last = key.find_last_not_of(" \t\r\n");
+    return key.substr(first, last - first + 1);
+}
+
+} // namespace
+
 SharedDataManager::SharedDataManager(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::runtime_error("SharedDataManager requires a valid TASEngine instance.");
@@ -54,7 +68,7 @@ void SharedDataManager::Shutdown() {
     }
 }
 
-bool SharedDataManager::Set(const std::string &key, sol::object value, const SetOptions &options) {
+bool SharedDataManager::Set(const std::string &key, const tas::lua::LuaValue &value, const SetOptions &options) {
     if (key.empty()) {
         Log::Warn("SharedDataManager: Cannot set value with empty key.");
         return false;
@@ -76,9 +90,7 @@ bool SharedDataManager::Set(const std::string &key, sol::object value, const Set
             expiryTime = GetCurrentTimeMs() + options.ttl_ms;
         }
 
-        // Create new value from Lua object
-        StoredValue newValue = StoredValue::FromLuaObject(value);
-        newValue.expiryTime = expiryTime;
+        StoredValue newValue(value, expiryTime);
 
         // Store the value
         m_Data[key] = newValue;
@@ -94,7 +106,7 @@ bool SharedDataManager::Set(const std::string &key, sol::object value, const Set
     }
 }
 
-sol::object SharedDataManager::Get(sol::state_view lua, const std::string &key, sol::object defaultValue) {
+tas::lua::LuaValue SharedDataManager::Get(const std::string &key, const tas::lua::LuaValue &defaultValue) {
     if (key.empty()) {
         Log::Warn("SharedDataManager: Cannot get value with empty key.");
         return defaultValue;
@@ -112,7 +124,7 @@ sol::object SharedDataManager::Get(sol::state_view lua, const std::string &key, 
                 m_Data.erase(it);
                 return defaultValue;
             }
-            return it->second.ToLuaObject(lua);
+            return it->second.value;
         }
         return defaultValue;
     } catch (const std::exception &e) {
@@ -158,6 +170,18 @@ void SharedDataManager::Clear() {
     m_Data.clear();
 }
 
+void SharedDataManager::ClearNamespace(const std::string &prefix) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    for (auto it = m_Data.begin(); it != m_Data.end();) {
+        if (it->first.rfind(prefix, 0) == 0) {
+            QueueWatchNotificationLocked(it->first, it->second, StoredValue());
+            it = m_Data.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 std::vector<std::string> SharedDataManager::GetKeys() const {
     std::lock_guard<std::mutex> lock(m_Mutex);
     std::vector<std::string> keys;
@@ -183,105 +207,12 @@ size_t SharedDataManager::GetSize() const {
     return count;
 }
 
-// StoredValue methods
-
-sol::object SharedDataManager::StoredValue::ToLuaObject(sol::state_view lua) const {
-    switch (type) {
-        case Type::Nil:
-            return sol::nil;
-
-        case Type::Boolean:
-            return sol::make_object(lua, std::any_cast<bool>(data));
-
-        case Type::Number:
-            return sol::make_object(lua, std::any_cast<double>(data));
-
-        case Type::String:
-            return sol::make_object(lua, std::any_cast<std::string>(data));
-
-        case Type::Table: {
-            const auto &tableData = std::any_cast<std::unordered_map<std::string, StoredValue>>(data);
-            return DeserializeTable(lua, tableData);
-        }
-
-        default:
-            return sol::nil;
-    }
+std::string SharedDataManager::MakeGlobalKey(const std::string &key) {
+    return "global:" + TrimSharedKey(key);
 }
 
-SharedDataManager::StoredValue SharedDataManager::StoredValue::FromLuaObject(sol::object obj) {
-    sol::type objType = obj.get_type();
-
-    switch (objType) {
-        case sol::type::nil:
-        case sol::type::none:
-            return StoredValue(Type::Nil, std::any{});
-
-        case sol::type::boolean:
-            return StoredValue(Type::Boolean, std::any(obj.as<bool>()));
-
-        case sol::type::number:
-            return StoredValue(Type::Number, std::any(obj.as<double>()));
-
-        case sol::type::string:
-            return StoredValue(Type::String, std::any(obj.as<std::string>()));
-
-        case sol::type::table: {
-            sol::table table = obj.as<sol::table>();
-            auto serialized = SerializeTable(table);
-            return StoredValue(Type::Table, std::any(std::move(serialized)));
-        }
-
-        // Explicitly forbidden types (cannot be serialized across VMs)
-        case sol::type::function:
-            throw std::runtime_error("Functions cannot be stored in shared data (not serializable across VMs)");
-
-        case sol::type::userdata:
-        case sol::type::lightuserdata:
-            throw std::runtime_error("Userdata cannot be stored in shared data (not serializable across VMs)");
-
-        case sol::type::thread:
-            throw std::runtime_error("Threads/coroutines cannot be stored in shared data (not serializable across VMs)");
-
-        default:
-            throw std::runtime_error("Unsupported Lua type for shared data: " +
-                                   std::to_string(static_cast<int>(objType)));
-    }
-}
-
-std::unordered_map<std::string, SharedDataManager::StoredValue>
-SharedDataManager::SerializeTable(const sol::table &table) {
-    std::unordered_map<std::string, StoredValue> result;
-
-    // Iterate over all key-value pairs in the table
-    for (const auto &[key, value] : table) {
-        // Only support string keys (JSON-compatible)
-        if (key.get_type() == sol::type::string) {
-            std::string keyStr = key.as<std::string>();
-            try {
-                result[keyStr] = StoredValue::FromLuaObject(value);
-            } catch (const std::exception &) {
-                // Skip unsupported values with warning
-                // Note: We can't access m_Engine here as this is a static method
-                // Logger integration will happen when this is called from Set()
-                continue;
-            }
-        }
-        // Non-string keys are silently ignored (JSON-compatible requirement)
-    }
-
-    return result;
-}
-
-sol::table SharedDataManager::DeserializeTable(sol::state_view lua,
-                                              const std::unordered_map<std::string, StoredValue> &data) {
-    sol::table result = lua.create_table();
-
-    for (const auto &[key, value] : data) {
-        result[key] = value.ToLuaObject(lua);
-    }
-
-    return result;
+std::string SharedDataManager::MakeSharedKey(const std::string &key) {
+    return "shared:" + TrimSharedKey(key);
 }
 
 // ============================================================================
@@ -289,18 +220,18 @@ sol::table SharedDataManager::DeserializeTable(sol::state_view lua,
 // ============================================================================
 
 void SharedDataManager::Watch(const std::string &contextName, std::weak_ptr<ScriptContext> contextPtr,
-                              const std::string &key, sol::function callback) {
-    if (contextName.empty() || key.empty() || !callback.valid()) {
+                              const std::string &key, tas::lua::LuaFunction callback) {
+    if (contextName.empty() || key.empty() || !callback.IsValid()) {
         Log::Warn("[%s] SharedDataManager: Invalid watch parameters (context: %s, key: %s, callback valid: %s).",
                                    contextName.empty() ? "unknown" : contextName.c_str(),
                                    contextName.empty() ? "empty" : contextName.c_str(),
                                    key.empty() ? "empty" : key.c_str(),
-                                   callback.valid() ? "yes" : "no");
+                                   callback.IsValid() ? "yes" : "no");
         return;
     }
 
     std::lock_guard<std::mutex> lock(m_Mutex);
-    m_Watches[key][contextName] = WatchEntry(contextPtr, callback, ++m_WatchGeneration);
+    m_Watches[key][contextName] = WatchEntry(contextPtr, std::move(callback), ++m_WatchGeneration);
     Log::Info("[%s] Watching key '%s' (generation: %llu).",
                                contextName.c_str(), key.c_str(), m_WatchGeneration);
 }
@@ -349,31 +280,26 @@ void SharedDataManager::TriggerWatches(const std::string &key,
     for (const auto &[contextName, entry] : watchEntries) {
         // Validate context is still alive
         auto contextPtr = entry.context.lock();
-        if (!contextPtr) {
+        if (entry.trackContextLifetime && !contextPtr) {
             // Context has been destroyed, skip this callback
             Log::Warn("SharedDataManager: Watch callback skipped for destroyed context '%s' (key: %s)",
                                        contextName.c_str(), key.c_str());
             continue;
         }
 
-        if (!entry.callback.valid()) {
+        if (!entry.callback || !entry.callback->IsValid()) {
             continue;
         }
 
         try {
-            // Get the Lua state from the callback itself (sol::function knows its VM)
-            sol::state_view lua = entry.callback.lua_state();
-
-            // Convert values to Lua objects
-            sol::object oldLuaValue = oldValue.ToLuaObject(lua);
-            sol::object newLuaValue = newValue.ToLuaObject(lua);
-
-            // Invoke callback with (newValue, oldValue, key)
-            auto result = entry.callback(newLuaValue, oldLuaValue, key);
-            if (!result.valid()) {
-                sol::error err = result;
+            auto result = entry.callback->Call(3, 0, [&](lua_State *state) {
+                newValue.value.Push(state);
+                oldValue.value.Push(state);
+                lua_pushlstring(state, key.data(), key.size());
+            });
+            if (result.IsError()) {
                 Log::Error("SharedDataManager: Watch callback error (%s, %s): %s",
-                                           contextName.c_str(), key.c_str(), err.what());
+                                           contextName.c_str(), key.c_str(), result.GetError().message.c_str());
             }
         } catch (const std::exception &e) {
             Log::Error("SharedDataManager: Exception in watch callback (%s, %s): %s",

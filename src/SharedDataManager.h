@@ -2,10 +2,12 @@
 
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <mutex>
-#include <any>
+#include <memory>
 
-#include <sol/sol.hpp>
+#include "LuaRuntime/LuaFunction.h"
+#include "LuaRuntime/LuaValue.h"
 
 // Forward declarations
 class TASEngine;
@@ -51,26 +53,26 @@ public:
      * @brief Options for setting shared data.
      */
     struct SetOptions {
-        int ttl_ms = 0; // Time-to-live in milliseconds (0 = no expiry)
+        explicit SetOptions(int ttl = 0) : ttl_ms(ttl) {}
+        int ttl_ms; // Time-to-live in milliseconds (0 = no expiry)
     };
 
     /**
      * @brief Sets a shared value with optional TTL.
      * @param key The key to store the value under.
-     * @param value The Lua value to store (must be JSON-compatible).
+     * @param value The portable Lua value to store.
      * @param options Optional settings (TTL, etc.).
      * @return True if the value was stored successfully.
      */
-    bool Set(const std::string &key, sol::object value, const SetOptions &options = SetOptions());
+    bool Set(const std::string &key, const tas::lua::LuaValue &value, const SetOptions &options = SetOptions());
 
     /**
      * @brief Gets a shared value.
-     * @param lua The Lua state to create the return value in.
      * @param key The key to retrieve.
      * @param defaultValue Optional default value if key doesn't exist.
      * @return The stored value, or defaultValue if not found.
      */
-    sol::object Get(sol::state_view lua, const std::string &key, sol::object defaultValue = sol::nil);
+    tas::lua::LuaValue Get(const std::string &key, const tas::lua::LuaValue &defaultValue = tas::lua::LuaValue());
 
     /**
      * @brief Checks if a key exists in shared data.
@@ -90,6 +92,7 @@ public:
      * @brief Clears all shared data.
      */
     void Clear();
+    void ClearNamespace(const std::string &prefix);
 
     /**
      * @brief Gets all keys in shared data.
@@ -103,15 +106,18 @@ public:
      */
     size_t GetSize() const;
 
+    static std::string MakeGlobalKey(const std::string &key);
+    static std::string MakeSharedKey(const std::string &key);
+
     /**
      * @brief Watches a key for changes and calls callback when value changes.
      * @param contextName Name of the context registering the watch.
      * @param contextPtr Weak pointer to the context (for lifetime tracking).
      * @param key The key to watch.
-     * @param callback Lua function to call when value changes (receives new_value, old_value).
+     * @param callback Lua function to call when value changes (receives new_value, old_value, key).
      */
     void Watch(const std::string &contextName, std::weak_ptr<ScriptContext> contextPtr,
-               const std::string &key, sol::function callback);
+               const std::string &key, tas::lua::LuaFunction callback);
 
     /**
      * @brief Removes a watch for a specific key in a context.
@@ -138,62 +144,36 @@ private:
      */
     struct WatchEntry {
         std::weak_ptr<ScriptContext> context; // Weak pointer to track context lifetime
-        sol::function callback;               // Lua callback function
+        std::shared_ptr<tas::lua::LuaFunction> callback; // Lua callback function
         uint64_t generation;                  // Generation counter for versioning
+        bool trackContextLifetime = false;
 
         WatchEntry() : generation(0) {}
 
-        WatchEntry(std::weak_ptr<ScriptContext> ctx, sol::function cb, uint64_t gen)
-            : context(std::move(ctx)), callback(std::move(cb)), generation(gen) {}
+        WatchEntry(std::weak_ptr<ScriptContext> ctx, tas::lua::LuaFunction cb, uint64_t gen)
+            : context(std::move(ctx)),
+              callback(std::make_shared<tas::lua::LuaFunction>(std::move(cb))),
+              generation(gen),
+              trackContextLifetime(!context.expired()) {}
     };
 
     /**
      * @brief Represents a stored value with its type information.
      */
     struct StoredValue {
-        enum class Type {
-            Nil,
-            Boolean,
-            Number,
-            String,
-            Table // Serialized as JSON-like structure
-        };
-
-        Type type = Type::Nil;
-        std::any data;
+        tas::lua::LuaValue value;
         int64_t expiryTime = 0; // 0 = no expiry, otherwise milliseconds since epoch
 
         StoredValue() = default;
 
-        StoredValue(Type t, std::any d, int64_t expiry = 0) : type(t), data(std::move(d)), expiryTime(expiry) {}
+        StoredValue(tas::lua::LuaValue v, int64_t expiry = 0)
+            : value(std::move(v)), expiryTime(expiry) {}
 
         // Check if value has expired
         bool IsExpired(int64_t currentTime) const {
             return expiryTime > 0 && currentTime >= expiryTime;
         }
-
-        // Convert to sol::object
-        sol::object ToLuaObject(sol::state_view lua) const;
-
-        // Create from sol::object (JSON-compatible types only)
-        static StoredValue FromLuaObject(sol::object obj);
     };
-
-    /**
-     * @brief Serializes a Lua table to a storable format.
-     * @param table The Lua table to serialize.
-     * @return Serialized table data.
-     */
-    static std::unordered_map<std::string, StoredValue> SerializeTable(const sol::table &table);
-
-    /**
-     * @brief Deserializes a table back to Lua.
-     * @param lua The Lua state to create the table in.
-     * @param data The serialized table data.
-     * @return The deserialized Lua table.
-     */
-    static sol::table DeserializeTable(sol::state_view lua,
-                                       const std::unordered_map<std::string, StoredValue> &data);
 
     /**
      * @brief Gets current time in milliseconds since epoch.

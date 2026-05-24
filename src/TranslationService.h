@@ -3,18 +3,29 @@
 #include "Result.h"
 #include "HookManager.h"
 #include "EventBus.h"
+#include "RecordFileIO.h"
 
+#include <filesystem>
 #include <string>
+#include <vector>
 
 // Forward declarations
-class ServiceProvider;
 class TASProject;
 class Recorder;
 class RecordPlayer;
+class IGameControl;
+class IInputAccess;
 class GameInterface;
+class InputSystem;
 class ProjectManager;
+class ScriptContextManager;
 struct GenerationOptions;
-struct StartLevelEvent;
+
+enum class TranslationDirection {
+    None,
+    RecordToScript,
+    ScriptToRecord,
+};
 
 /**
  * @class TranslationService
@@ -32,14 +43,20 @@ struct StartLevelEvent;
  */
 class TranslationService {
 public:
-    explicit TranslationService(ServiceProvider *provider);
+    TranslationService(Recorder &recorder,
+                       RecordPlayer &recordPlayer,
+                       IGameControl &gameControl,
+                       IInputAccess &inputAccess,
+                       GameInterface &gameInterface,
+                       ScriptContextManager &scriptContextManager,
+                       InputSystem &inputSystem,
+                       HookManager &hookManager,
+                       EventBus &eventBus,
+                       std::string tasRootPath);
     ~TranslationService();
 
     TranslationService(const TranslationService &) = delete;
     TranslationService &operator=(const TranslationService &) = delete;
-
-    void SetEventBus(EventBus *bus);
-    void SetHookManager(HookManager *hookMgr);
 
     /**
      * @brief Validate the project and mark translation as pending.
@@ -49,7 +66,7 @@ public:
     Result<void> PrepareTranslation(TASProject *project);
 
     /**
-     * @brief Activate translation once the level actually loads.
+     * @brief Activate translation when level loading starts.
      *
      * Configures the Recorder for auto-generation, starts RecordPlayer, and
      * installs per-frame callbacks.
@@ -68,30 +85,47 @@ public:
     // --- Queries ---
     bool IsPrepared() const { return m_IsPrepared; }
     bool IsTranslating() const { return m_IsTranslating; }
+    TranslationDirection GetDirection() const { return m_Direction; }
     float GetProgress() const;
     size_t GetCurrentTick() const { return m_CurrentTick; }
+    const std::string &GetLastOutputPath() const { return m_LastOutputPath; }
+    const std::string &GetLastResultMessage() const { return m_LastResultMessage; }
 
 private:
-    void InstallCallbacks();
+    Result<void> ActivateRecordToScriptTranslation();
+    Result<void> ActivateScriptToRecordTranslation();
+    void InstallRecordToScriptCallbacks();
+    void InstallScriptToRecordCallbacks();
     void RemoveHookCallbacks();
-    void OnPlaybackComplete();
+    void OnRecordToScriptPlaybackComplete();
+    void OnScriptToRecordPlaybackComplete();
     GenerationOptions BuildGenerationOptions(const TASProject *project) const;
+    std::filesystem::path BuildRecordOutputPath(const TASProject *project) const;
+    std::vector<InputSystem *> GetActiveScriptInputs() const;
 
-    ServiceProvider *m_ServiceProvider;
-    EventBus *m_EventBus = nullptr;
-    HookManager *m_HookManager = nullptr;
-
-    // Cached subsystems
-    Recorder *m_Recorder = nullptr;
-    RecordPlayer *m_RecordPlayer = nullptr;
-    GameInterface *m_GameInterface = nullptr;
+    EventBus &m_EventBus;
+    HookManager &m_HookManager;
+    Recorder &m_Recorder;
+    RecordPlayer &m_RecordPlayer;
+    IGameControl &m_GameControl;
+    IInputAccess &m_InputAccess;
+    GameInterface &m_GameInterface;
+    ScriptContextManager &m_ScriptContextManager;
+    InputSystem &m_InputSystem;
+    std::string m_TasRootPath;
 
     // State
     TASProject *m_CurrentProject = nullptr;
+    TranslationDirection m_Direction = TranslationDirection::None;
     bool m_IsPrepared = false;
     bool m_IsTranslating = false;
     bool m_CompletionSignaled = false;
     size_t m_CurrentTick = 0;
+    std::string m_ScriptContextName;
+    tas::record::RecordInputMapping m_RecordInputMapping;
+    std::vector<RecordFrameData> m_CapturedRecordFrames;
+    std::string m_LastOutputPath;
+    std::string m_LastResultMessage;
 
     // RAII hook guards
     ScopedCallback m_PostTickGuard;

@@ -1,31 +1,20 @@
 #pragma once
 
-#include <functional>
-#include <string>
 #include <vector>
 
 #include "EventBus.h"
 
 class ContextLifecycleCoordinator;
 struct OperationRequestStore;
-class PlaybackService;
-class TASProject;
-class TASStateMachine;
-class TranslationService;
-class ValidationService;
+class RuntimeSession;
 
 class RuntimeEventRouter {
 public:
     RuntimeEventRouter(
         EventBus &eventBus,
-        TASStateMachine &stateMachine,
+        RuntimeSession &runtimeSession,
         ContextLifecycleCoordinator &contextLifecycleCoordinator,
-        PlaybackService *playbackService,
-        TranslationService *translationService,
-        ValidationService *validationService,
-        OperationRequestStore &requests,
-        std::function<bool()> validationEnabledProvider,
-        std::function<std::string(TASProject *)> validationOutputPathBuilder);
+        OperationRequestStore &requests);
 
     void Initialize();
     void Shutdown();
@@ -37,13 +26,8 @@ private:
     void HandleTranslationCompleted();
 
     EventBus &m_EventBus;
-    TASStateMachine &m_StateMachine;
+    RuntimeSession &m_RuntimeSession;
     ContextLifecycleCoordinator &m_ContextLifecycleCoordinator;
-    PlaybackService *m_PlaybackService = nullptr;
-    TranslationService *m_TranslationService = nullptr;
-    ValidationService *m_ValidationService = nullptr;
     OperationRequestStore &m_Requests;
-    std::function<bool()> m_ValidationEnabledProvider;
-    std::function<std::string(TASProject *)> m_ValidationOutputPathBuilder;
     std::vector<ScopedSubscription> m_Subscriptions;
 };

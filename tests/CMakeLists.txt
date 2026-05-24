@@ -1,7 +1,7 @@
 # =============================================================================
 # BallanceTAS – Test Suite
 #
-# Standalone tests (ResultTest, StateMachineTest, LoggerTest) link only against
+# Standalone tests (ResultTest, RuntimeSessionStateTest, LoggerTest) link only against
 # tas_core which is pure C++ — no VirtoolsSDK/BML required.
 #
 # Full integration tests (LuaApiTest) require the complete mod build and are
@@ -59,10 +59,16 @@ add_tas_test(ResultTest
         tas_core
 )
 
-# StateMachineTest – tests for TASStateMachine (links tas_core library)
-add_tas_test(StateMachineTest
+add_tas_test(RuntimeSessionStateTest
     SOURCES
-        StateMachineTest.cpp
+        RuntimeSessionStateTest.cpp
+    DEPENDENCIES
+        tas_core
+)
+
+add_tas_test(RuntimeSessionLifecycleTest
+    SOURCES
+        RuntimeSessionLifecycleTest.cpp
     DEPENDENCIES
         tas_core
 )
@@ -145,7 +151,8 @@ add_tas_test(LuaRuntimeTest
 
 # Register standalone tests with CTest
 add_test(NAME ResultTest          COMMAND ResultTest)
-add_test(NAME StateMachineTest    COMMAND StateMachineTest)
+add_test(NAME RuntimeSessionStateTest COMMAND RuntimeSessionStateTest)
+add_test(NAME RuntimeSessionLifecycleTest COMMAND RuntimeSessionLifecycleTest)
 add_test(NAME LoggerTest          COMMAND LoggerTest)
 add_test(NAME ResourceManagerTest COMMAND ResourceManagerTest)
 add_test(NAME EventBusTest        COMMAND EventBusTest)

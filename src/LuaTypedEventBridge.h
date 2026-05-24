@@ -7,8 +7,8 @@
 #include "GameEvents.h"
 
 class Recorder;
+class RuntimeSession;
 class ScriptContextManager;
-class TASStateMachine;
 
 class LuaTypedEventBridge {
 public:
@@ -16,7 +16,7 @@ public:
         EventBus &eventBus,
         ScriptContextManager &scriptContextManager,
         Recorder *recorder,
-        TASStateMachine &stateMachine,
+        RuntimeSession &runtimeSession,
         std::function<size_t()> currentTickProvider);
 
     void Initialize();
@@ -38,7 +38,7 @@ private:
     EventBus &m_EventBus;
     ScriptContextManager &m_ScriptContextManager;
     Recorder *m_Recorder = nullptr;
-    TASStateMachine &m_StateMachine;
+    RuntimeSession &m_RuntimeSession;
     std::function<size_t()> m_CurrentTickProvider;
     std::vector<ScopedSubscription> m_Subscriptions;
 };

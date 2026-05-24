@@ -22,10 +22,10 @@ add_library(tas_core STATIC
         PlaybackTypes.h
         EventBus.h
         GameEvents.h
+        RuntimeSession.h            RuntimeSession.cpp
         TASConstants.h
         ILogSink.h
         ServiceContainer.h          ServiceContainer.cpp
-        TASStateMachine.h           TASStateMachine.cpp
         Logger.h                    Logger.cpp
         ThreadOwnershipValidator.h
         LockFreeMPSCQueue.h
@@ -117,7 +117,6 @@ add_library(tas_features STATIC
         LuaTypedEventBridge.h       LuaTypedEventBridge.cpp
         HookManager.h               HookManager.cpp
         ConfigService.h             ConfigService.cpp
-        TASStateHandlers.h          TASStateHandlers.cpp
         TASProject.h                TASProject.cpp
         ProjectManager.h            ProjectManager.cpp
         Recorder.h                  Recorder.cpp

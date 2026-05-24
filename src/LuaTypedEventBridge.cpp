@@ -2,8 +2,8 @@
 
 #include "Logger.h"
 #include "Recorder.h"
+#include "RuntimeSession.h"
 #include "ScriptContextManager.h"
-#include "TASStateMachine.h"
 
 template <typename EventT>
 static LuaGameEvent BuildLuaGameEvent(const EventT &, size_t tick) {
@@ -81,12 +81,12 @@ LuaTypedEventBridge::LuaTypedEventBridge(
     EventBus &eventBus,
     ScriptContextManager &scriptContextManager,
     Recorder *recorder,
-    TASStateMachine &stateMachine,
+    RuntimeSession &runtimeSession,
     std::function<size_t()> currentTickProvider)
     : m_EventBus(eventBus),
       m_ScriptContextManager(scriptContextManager),
       m_Recorder(recorder),
-      m_StateMachine(stateMachine),
+      m_RuntimeSession(runtimeSession),
       m_CurrentTickProvider(std::move(currentTickProvider)) {
 }
 
@@ -149,7 +149,7 @@ void LuaTypedEventBridge::RecordLegacyEvent(const LuaGameEvent &event) {
     if (!m_Recorder) {
         return;
     }
-    if (!m_StateMachine.IsRecording() && !m_StateMachine.IsTranslating()) {
+    if (!m_RuntimeSession.IsRecording() && !m_RuntimeSession.IsTranslating()) {
         return;
     }
 

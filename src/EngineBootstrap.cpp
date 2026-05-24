@@ -1,5 +1,7 @@
 #include "EngineBootstrap.h"
 
+#include <filesystem>
+
 #include "TASConstants.h"
 #include "ContextLifecycleCoordinator.h"
 #include "EventBus.h"
@@ -14,6 +16,7 @@
 #include "RecordPlayer.h"
 #include "Recorder.h"
 #include "RecordingService.h"
+#include "RuntimeSession.h"
 #include "RuntimeEventRouter.h"
 #include "DeterminismVerifier.h"
 #include "SavestateManager.h"
@@ -23,14 +26,219 @@
 #include "StartupProjectManager.h"
 #include "TASEngine.h"
 #include "TASProject.h"
-#include "TASStateHandlers.h"
-#include "TASStateMachine.h"
 #include "TranslationService.h"
+#include "UIManager.h"
 #include "ValidationService.h"
 
 #ifdef ENABLE_REPL
 #include "LuaREPLServer.h"
 #endif
+
+namespace {
+
+RuntimeSession::Hooks BuildRuntimeSessionHooks(TASEngine &engine) {
+    RuntimeSession::Hooks hooks;
+    auto *services = &engine.GetServiceProvider();
+
+    hooks.prepareRecording = [services](RuntimeSession::RecordingOptions options) {
+        auto *service = services->Resolve<RecordingService>();
+        return service
+            ? service->PrepareRecording(options.validation)
+            : Result<void>::Error("RecordingService not available", "runtime_session");
+    };
+    hooks.activateRecording = [services]() {
+        auto *service = services->Resolve<RecordingService>();
+        return service
+            ? service->ActivateRecording()
+            : Result<void>::Error("RecordingService not available", "runtime_session");
+    };
+    hooks.stopRecordingGraceful = [services]() {
+        auto *service = services->Resolve<RecordingService>();
+        if (!service) {
+            return Result<void>::Ok();
+        }
+        auto result = service->StopRecordingGraceful();
+        return result.IsOk() ? Result<void>::Ok() : Result<void>::Error(result.GetError());
+    };
+    hooks.stopRecordingImmediate = [services]() {
+        if (auto *service = services->Resolve<RecordingService>()) {
+            service->StopRecordingImmediate();
+        }
+    };
+    hooks.isRecordingPrepared = [services]() {
+        auto *service = services->Resolve<RecordingService>();
+        return service && service->IsPrepared();
+    };
+    hooks.isRecordingActive = [services]() {
+        auto *service = services->Resolve<RecordingService>();
+        return service && service->IsRecording();
+    };
+
+    hooks.preparePlayback = [services](TASProject *project, PlaybackType type) {
+        auto *service = services->Resolve<PlaybackService>();
+        return service
+            ? service->PreparePlayback(project, type)
+            : Result<void>::Error("PlaybackService not available", "runtime_session");
+    };
+    hooks.activatePlayback = [services]() {
+        auto *service = services->Resolve<PlaybackService>();
+        return service
+            ? service->ActivatePlayback()
+            : Result<void>::Error("PlaybackService not available", "runtime_session");
+    };
+    hooks.stopPlaybackGraceful = [services](bool clearProject) {
+        auto *service = services->Resolve<PlaybackService>();
+        return service ? service->StopPlaybackGraceful(clearProject) : Result<void>::Ok();
+    };
+    hooks.stopPlaybackImmediate = [services]() {
+        if (auto *service = services->Resolve<PlaybackService>()) {
+            service->StopPlaybackImmediate();
+        }
+    };
+    hooks.pausePlayback = [services]() {
+        if (auto *service = services->Resolve<PlaybackService>()) {
+            service->Pause();
+        }
+    };
+    hooks.resumePlayback = [services]() {
+        if (auto *service = services->Resolve<PlaybackService>()) {
+            service->Resume();
+        }
+    };
+    hooks.isPlaybackPrepared = [services]() {
+        auto *service = services->Resolve<PlaybackService>();
+        return service && service->IsPrepared();
+    };
+    hooks.isPlaybackActiveOrPaused = [services]() {
+        auto *service = services->Resolve<PlaybackService>();
+        return service && (service->IsPlaying() || service->IsPaused());
+    };
+    hooks.currentPlaybackProject = [services]() {
+        auto *service = services->Resolve<PlaybackService>();
+        return service ? service->GetCurrentProject() : nullptr;
+    };
+
+    hooks.prepareTranslation = [services](TASProject *project) {
+        auto *service = services->Resolve<TranslationService>();
+        return service
+            ? service->PrepareTranslation(project)
+            : Result<void>::Error("TranslationService not available", "runtime_session");
+    };
+    hooks.activateTranslation = [services]() {
+        auto *service = services->Resolve<TranslationService>();
+        return service
+            ? service->ActivateTranslation()
+            : Result<void>::Error("TranslationService not available", "runtime_session");
+    };
+    hooks.stopTranslationGraceful = [services](bool clearProject) {
+        auto *service = services->Resolve<TranslationService>();
+        return service ? service->StopTranslationGraceful(clearProject) : Result<void>::Ok();
+    };
+    hooks.stopTranslationImmediate = [services]() {
+        if (auto *service = services->Resolve<TranslationService>()) {
+            service->StopTranslationImmediate();
+        }
+    };
+    hooks.isTranslationPrepared = [services]() {
+        auto *service = services->Resolve<TranslationService>();
+        return service && service->IsPrepared();
+    };
+    hooks.isTranslationActive = [services]() {
+        auto *service = services->Resolve<TranslationService>();
+        return service && service->IsTranslating();
+    };
+
+    hooks.startValidationForPlayback = [services](TASProject *project) {
+        auto *validation = services->Resolve<ValidationService>();
+        auto *playback = services->Resolve<PlaybackService>();
+        if (!validation || !playback || validation->IsActive()) {
+            return Result<void>::Ok();
+        }
+        std::string outputPath;
+        if (project) {
+            std::filesystem::path path(project->GetPath());
+            if (path.has_extension()) {
+                path = path.parent_path();
+            }
+            outputPath = path.string();
+            if (!outputPath.empty() && outputPath.back() != '\\' && outputPath.back() != '/') {
+                outputPath.push_back('\\');
+            }
+        }
+        return outputPath.empty() ? Result<void>::Ok() : validation->Start(outputPath, *playback);
+    };
+    hooks.stopValidationGraceful = [services]() {
+        auto *validation = services->Resolve<ValidationService>();
+        return validation && validation->IsActive() ? validation->Stop() : Result<void>::Ok();
+    };
+    hooks.stopValidationImmediate = [services]() {
+        auto *validation = services->Resolve<ValidationService>();
+        if (validation && validation->IsActive()) {
+            validation->StopImmediate();
+        }
+    };
+    hooks.isValidationActive = [services]() {
+        auto *validation = services->Resolve<ValidationService>();
+        return validation && validation->IsActive();
+    };
+
+    hooks.onStateEntered = [&engine, services](RuntimeSession::State state, RuntimeSession::State) {
+        auto *game = services->Resolve<GameInterface>();
+        auto *input = services->Resolve<InputSystem>();
+        const auto resetInput = [input]() {
+            if (input) {
+                input->Reset();
+                input->SetEnabled(false);
+            }
+        };
+
+        switch (state) {
+        case RuntimeSession::State::Idle:
+            resetInput();
+            if (game) {
+                game->SetUIMode(UIMode::Idle);
+            }
+            engine.ClearControlRequests();
+            break;
+        case RuntimeSession::State::PendingRecord:
+        case RuntimeSession::State::PendingScriptPlayback:
+        case RuntimeSession::State::PendingRecordPlayback:
+        case RuntimeSession::State::PendingTranslation:
+            if (game) {
+                game->SetUIMode(UIMode::Idle);
+            }
+            break;
+        case RuntimeSession::State::Recording:
+        case RuntimeSession::State::Translating:
+            if (game) {
+                game->SetUIMode(UIMode::Recording);
+            }
+            break;
+        case RuntimeSession::State::PlayingScript:
+        case RuntimeSession::State::PlayingRecord:
+            if (game) {
+                game->SetUIMode(UIMode::Playing);
+            }
+            break;
+        case RuntimeSession::State::Paused:
+            if (game) {
+                game->SetUIMode(UIMode::Paused);
+            }
+            break;
+        case RuntimeSession::State::ShuttingDown:
+            resetInput();
+            if (game) {
+                game->SetUIMode(UIMode::Idle);
+            }
+            engine.ClearControlRequests();
+            break;
+        }
+    };
+
+    return hooks;
+}
+
+} // namespace
 
 bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
     try {
@@ -87,34 +295,6 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
         c.RegisterSingletonInstance<DeterminismVerifier>(
             std::make_unique<DeterminismVerifier>(engine.m_ServiceProvider));
 
-        // State machine — uses EventBus directly
-        c.RegisterSingletonInstance<TASStateMachine>(
-            std::make_unique<TASStateMachine>(engine.m_EventBus));
-
-        auto *sm = c.Resolve<TASStateMachine>();
-        sm->RegisterHandler(TASStateMachine::State::Idle,
-                            std::make_unique<IdleHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::PendingRecord,
-                            std::make_unique<PendingRecordHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::Recording,
-                            std::make_unique<RecordingHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::PendingScriptPlayback,
-                            std::make_unique<PendingScriptPlaybackHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::PendingRecordPlayback,
-                            std::make_unique<PendingRecordPlaybackHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::PlayingScript,
-                            std::make_unique<PlayingScriptHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::PlayingRecord,
-                            std::make_unique<PlayingRecordHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::PendingTranslation,
-                            std::make_unique<PendingTranslationHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::Translating,
-                            std::make_unique<TranslatingHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::Paused,
-                            std::make_unique<PausedHandler>(&engine));
-        sm->RegisterHandler(TASStateMachine::State::ShuttingDown,
-                            std::make_unique<ShuttingDownHandler>(&engine));
-
         Log::Info("Core runtime subsystems initialized.");
         return true;
     } catch (const std::exception &e) {
@@ -156,6 +336,8 @@ bool EngineBootstrap::InitializeHighLevelSubsystems(TASEngine &engine) {
                 engine.HandlePlaybackCompleted();
             });
         }
+        c.RegisterSingletonInstance<RuntimeSession>(
+            std::make_unique<RuntimeSession>(engine.m_EventBus, BuildRuntimeSessionHooks(engine)));
 
         auto *startupProjectManager = c.Resolve<StartupProjectManager>();
         if (startupProjectManager && !startupProjectManager->Initialize()) {
@@ -172,19 +354,14 @@ bool EngineBootstrap::InitializeHighLevelSubsystems(TASEngine &engine) {
                 *engine.m_EventBus,
                 *scriptContextManager,
                 c.Resolve<Recorder>(),
-                *c.Resolve<TASStateMachine>(),
+                *c.Resolve<RuntimeSession>(),
                 [&engine]() { return engine.GetCurrentTick(); }));
         c.RegisterSingletonInstance<RuntimeEventRouter>(
             std::make_unique<RuntimeEventRouter>(
                 *engine.m_EventBus,
-                *c.Resolve<TASStateMachine>(),
+                *c.Resolve<RuntimeSession>(),
                 *c.Resolve<ContextLifecycleCoordinator>(),
-                c.Resolve<PlaybackService>(),
-                c.Resolve<TranslationService>(),
-                c.Resolve<ValidationService>(),
-                engine.m_Requests,
-                [&engine]() { return engine.IsValidationEnabled(); },
-                [&engine](TASProject *project) { return engine.BuildValidationOutputPath(project); }));
+                engine.m_Requests));
 
         auto *bridge = c.Resolve<LuaTypedEventBridge>();
         if (bridge) {

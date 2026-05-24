@@ -16,6 +16,7 @@
 #include "RecordPlayer.h"
 #include "Recorder.h"
 #include "RecordingService.h"
+#include "RuntimeSession.h"
 #include "RuntimeEventRouter.h"
 #include "SavestateManager.h"
 #include "ScriptContext.h"
@@ -23,7 +24,6 @@
 #include "ScriptGenerator.h"
 #include "StartupProjectManager.h"
 #include "TASProject.h"
-#include "TASStateMachine.h"
 #include "TranslationService.h"
 #include "ValidationService.h"
 
@@ -72,20 +72,18 @@ void TASEngine::Shutdown() {
         return;
     }
 
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-
-    bool handledByStateMachine = false;
-    if (stateMachine && !stateMachine->IsShuttingDown()) {
-        auto result = stateMachine->Transition(TASStateMachine::Event::Shutdown);
+    bool handledBySession = false;
+    if (auto *session = Session(); session && !session->IsShuttingDown()) {
+        auto result = session->Shutdown();
         if (!result.IsOk()) {
             Log::Error("Failed to transition to shutdown state: %s",
                        result.GetError().message.c_str());
         } else {
-            handledByStateMachine = true;
+            handledBySession = true;
         }
     }
 
-    if (!handledByStateMachine) {
+    if (!handledBySession) {
         auto *validationService = m_ServiceContainer.Resolve<ValidationService>();
         auto *playbackService = m_ServiceContainer.Resolve<PlaybackService>();
         auto *recordingService = m_ServiceContainer.Resolve<RecordingService>();
@@ -151,8 +149,8 @@ void TASEngine::Start() {
 }
 
 void TASEngine::Stop() {
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (m_ShuttingDown || !stateMachine || stateMachine->IsIdle() || stateMachine->IsShuttingDown()) {
+    auto *session = Session();
+    if (m_ShuttingDown || !session || session->IsIdle() || session->IsShuttingDown()) {
         return;
     }
 
@@ -173,15 +171,20 @@ void TASEngine::Stop() {
     }
 
     m_Requests.clearProjectOnStop = true;
-    const bool transitioned = TransitionState(TASStateMachine::Event::LevelEnd, "level end");
+    auto result = session->OnLevelEnd({true});
+    const bool transitioned = result.IsOk();
+    if (!result.IsOk()) {
+        Log::Error("Runtime session transition failed for level end: %s",
+                   result.GetError().message.c_str());
+    }
     if (transitioned && IsAutoRestartEnabled()) {
         RestartCurrentProject();
     }
 }
 
 bool TASEngine::StartRecording() {
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (m_ShuttingDown || !stateMachine || !stateMachine->IsIdle()) {
+    auto *session = Session();
+    if (m_ShuttingDown || !session || !session->IsIdle()) {
         Log::Warn("Cannot start recording: TAS is not idle.");
         return false;
     }
@@ -189,7 +192,13 @@ bool TASEngine::StartRecording() {
     ClearControlRequests();
     m_LastCompletedPlaybackProjectName.clear();
     m_Requests.requestedValidationRecording = false;
-    return TransitionState(TASStateMachine::Event::StartRecording, "start recording");
+    auto result = session->StartRecording({false});
+    if (!result.IsOk()) {
+        Log::Error("Runtime session failed to start recording: %s",
+                   result.GetError().message.c_str());
+        return false;
+    }
+    return true;
 }
 
 void TASEngine::StopRecording() {
@@ -201,13 +210,13 @@ void TASEngine::StopRecording() {
         return;
     }
 
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (!stateMachine || (!stateMachine->IsRecording() && !stateMachine->IsPendingRecord())) {
+    auto *session = Session();
+    if (!session || (!session->IsRecording() && !session->IsPendingRecord())) {
         return;
     }
 
     m_Requests.clearProjectOnStop = false;
-    TransitionState(TASStateMachine::Event::Stop, "stop recording");
+    StopSession({false}, "stop recording");
 }
 
 size_t TASEngine::GetRecordingFrameCount() const {
@@ -216,8 +225,8 @@ size_t TASEngine::GetRecordingFrameCount() const {
 }
 
 bool TASEngine::StartReplay() {
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (m_ShuttingDown || !stateMachine || !stateMachine->IsIdle()) {
+    auto *session = Session();
+    if (m_ShuttingDown || !session || !session->IsIdle()) {
         Log::Warn("Cannot start replay: TAS is not idle.");
         return false;
     }
@@ -251,12 +260,13 @@ bool TASEngine::StartReplay() {
     m_Requests.requestedProject = project;
     m_Requests.requestedPlaybackType = type;
 
-    return TransitionState(
-        type == PlaybackType::Script
-            ? TASStateMachine::Event::StartScriptPlayback
-            : TASStateMachine::Event::StartRecordPlayback,
-        "start replay"
-    );
+    auto result = session->StartPlayback(project, type, {m_ValidationEnabled});
+    if (!result.IsOk()) {
+        Log::Error("Runtime session failed to start replay: %s",
+                   result.GetError().message.c_str());
+        return false;
+    }
+    return true;
 }
 
 void TASEngine::StopReplay(bool clearProject) {
@@ -272,20 +282,20 @@ void TASEngine::StopReplay(bool clearProject) {
         return;
     }
 
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (!stateMachine ||
-        (!stateMachine->IsPlaying() && !stateMachine->IsPaused() && !stateMachine->IsPendingPlay())) {
+    auto *session = Session();
+    if (!session ||
+        (!session->IsPlaying() && !session->IsPaused() && !session->IsPendingPlay())) {
         return;
     }
 
     m_Requests.clearProjectOnStop = clearProject;
     m_LastCompletedPlaybackProjectName.clear();
-    TransitionState(TASStateMachine::Event::Stop, "stop replay");
+    StopSession({clearProject}, "stop replay");
 }
 
 bool TASEngine::StartTranslation() {
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (m_ShuttingDown || !stateMachine || !stateMachine->IsIdle()) {
+    auto *session = Session();
+    if (m_ShuttingDown || !session || !session->IsIdle()) {
         Log::Warn("Cannot start translation: TAS is not idle.");
         return false;
     }
@@ -306,7 +316,13 @@ bool TASEngine::StartTranslation() {
     m_LastCompletedPlaybackProjectName.clear();
     m_Requests.requestedProject = project;
 
-    return TransitionState(TASStateMachine::Event::StartTranslation, "start translation");
+    auto result = session->StartTranslation(project, {});
+    if (!result.IsOk()) {
+        Log::Error("Runtime session failed to start translation: %s",
+                   result.GetError().message.c_str());
+        return false;
+    }
+    return true;
 }
 
 void TASEngine::StopTranslation(bool clearProject) {
@@ -318,14 +334,14 @@ void TASEngine::StopTranslation(bool clearProject) {
         return;
     }
 
-    auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (!stateMachine ||
-        (!stateMachine->IsTranslating() && !stateMachine->IsPendingTranslate())) {
+    auto *session = Session();
+    if (!session ||
+        (!session->IsTranslating() && !session->IsPendingTranslate())) {
         return;
     }
 
     m_Requests.clearProjectOnStop = clearProject;
-    TransitionState(TASStateMachine::Event::Stop, "stop translation");
+    StopSession({clearProject}, "stop translation");
 }
 
 bool TASEngine::StartValidationRecording(const std::string &outputPath) {
@@ -394,28 +410,28 @@ bool TASEngine::RestartCurrentProject() {
 }
 
 bool TASEngine::IsPlaying() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsPlaying();
+    auto *session = Session();
+    return session && session->IsPlaying();
 }
 
 bool TASEngine::IsRecording() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsRecording();
+    auto *session = Session();
+    return session && session->IsRecording();
 }
 
 bool TASEngine::IsTranslating() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsTranslating();
+    auto *session = Session();
+    return session && session->IsTranslating();
 }
 
 bool TASEngine::IsIdle() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsIdle();
+    auto *session = Session();
+    return session && session->IsIdle();
 }
 
 bool TASEngine::IsPaused() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsPaused();
+    auto *session = Session();
+    return session && session->IsPaused();
 }
 
 bool TASEngine::IsPlayingScript() const {
@@ -427,61 +443,39 @@ bool TASEngine::IsPlayingRecord() const {
 }
 
 PlaybackType TASEngine::GetPlaybackType() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (!sm) {
-        return PlaybackType::None;
-    }
-
-    switch (sm->GetCurrentState()) {
-    case TASStateMachine::State::PendingScriptPlayback:
-    case TASStateMachine::State::PlayingScript:
-        return PlaybackType::Script;
-    case TASStateMachine::State::PendingRecordPlayback:
-    case TASStateMachine::State::PlayingRecord:
-        return PlaybackType::Record;
-    case TASStateMachine::State::Paused:
-        switch (sm->GetPausedFromState()) {
-        case TASStateMachine::State::PlayingScript:
-            return PlaybackType::Script;
-        case TASStateMachine::State::PlayingRecord:
-            return PlaybackType::Record;
-        default:
-            break;
-        }
-        break;
-    default:
-        break;
-    }
-
-    auto *playbackService = m_ServiceContainer.Resolve<PlaybackService>();
-    return playbackService ? playbackService->GetPlaybackType() : PlaybackType::None;
+    auto *session = Session();
+    return session ? session->GetPlaybackType() : PlaybackType::None;
 }
 
 bool TASEngine::IsPendingPlay() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsPendingPlay();
+    auto *session = Session();
+    return session && session->IsPendingPlay();
 }
 
 bool TASEngine::IsPendingRecord() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsPendingRecord();
+    auto *session = Session();
+    return session && session->IsPendingRecord();
 }
 
 bool TASEngine::IsPendingTranslate() const {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    return sm && sm->IsPendingTranslate();
+    auto *session = Session();
+    return session && session->IsPendingTranslate();
 }
 
-bool TASEngine::TransitionState(TASStateMachine::Event event, const char *reason) {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (!sm) {
-        Log::Error("State machine not available for %s.", reason ? reason : "transition");
+RuntimeSession *TASEngine::Session() const {
+    return m_ServiceContainer.Resolve<RuntimeSession>();
+}
+
+bool TASEngine::StopSession(RuntimeSession::StopOptions options, const char *reason) {
+    auto *session = Session();
+    if (!session) {
+        Log::Error("Runtime session not available for %s.", reason ? reason : "transition");
         return false;
     }
 
-    auto result = sm->Transition(event);
+    auto result = session->Stop(options);
     if (!result.IsOk()) {
-        Log::Error("State transition failed for %s: %s",
+        Log::Error("Runtime session transition failed for %s: %s",
                    reason ? reason : "transition",
                    result.GetError().message.c_str());
         return false;
@@ -491,8 +485,8 @@ bool TASEngine::TransitionState(TASStateMachine::Event event, const char *reason
 }
 
 void TASEngine::HandlePlaybackCompleted() {
-    auto *sm = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (m_ShuttingDown || !sm || (!sm->IsPlaying() && !sm->IsPaused())) {
+    auto *session = Session();
+    if (m_ShuttingDown || !session || (!session->IsPlaying() && !session->IsPaused())) {
         return;
     }
 
@@ -503,12 +497,16 @@ void TASEngine::HandlePlaybackCompleted() {
     }
 
     m_Requests.clearProjectOnStop = false;
-    TransitionState(TASStateMachine::Event::Stop, "playback completed");
+    auto result = session->OnPlaybackCompleted(GetPlaybackType());
+    if (!result.IsOk()) {
+        Log::Error("Runtime session failed to complete playback: %s",
+                   result.GetError().message.c_str());
+    }
 }
 
 float TASEngine::ResolveLevelLoadPhysicsDeltaTime() const {
-    const auto *stateMachine = m_ServiceContainer.Resolve<TASStateMachine>();
-    if (!stateMachine || stateMachine->IsIdle() || stateMachine->IsShuttingDown()) {
+    const auto *session = Session();
+    if (!session || session->IsIdle() || session->IsShuttingDown()) {
         return 0.0f;
     }
 
@@ -523,12 +521,12 @@ float TASEngine::ResolveLevelLoadPhysicsDeltaTime() const {
         }
     }
 
-    if (stateMachine->IsPendingRecord() || stateMachine->IsRecording()) {
+    if (session->IsPendingRecord() || session->IsRecording()) {
         const auto *recorder = m_ServiceContainer.Resolve<Recorder>();
         return recorder ? recorder->GetDeltaTime() : 0.0f;
     }
 
-    if (stateMachine->IsPendingTranslate() || stateMachine->IsTranslating()) {
+    if (session->IsPendingTranslate() || session->IsTranslating()) {
         const auto *recorder = m_ServiceContainer.Resolve<Recorder>();
         return recorder ? recorder->GetDeltaTime() : 0.0f;
     }

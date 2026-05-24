@@ -10,9 +10,9 @@
 #include "EventBus.h"
 #include "OperationRequestStore.h"
 #include "PlaybackTypes.h"
+#include "RuntimeSession.h"
 #include "ServiceContainer.h"
 #include "TASConstants.h"
-#include "TASStateMachine.h"
 
 extern "C" { struct lua_State; }
 
@@ -38,6 +38,7 @@ class EventBus;
 class HookManager;
 class SavestateManager;
 class RuntimeEventRouter;
+class RuntimeSession;
 class ContextLifecycleCoordinator;
 class LuaTypedEventBridge;
 
@@ -122,7 +123,8 @@ public:
     void ClearControlRequests();
 
 private:
-    bool TransitionState(TASStateMachine::Event event, const char *reason);
+    RuntimeSession *Session() const;
+    bool StopSession(RuntimeSession::StopOptions options, const char *reason);
     void HandlePlaybackCompleted();
     float ResolveLevelLoadPhysicsDeltaTime() const;
     std::string BuildValidationOutputPath(TASProject *project) const;

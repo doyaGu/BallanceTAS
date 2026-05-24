@@ -1,201 +1,204 @@
-/**
- * @file EngineBootstrap.cpp
- * @brief Composition root — all subsystem construction and wiring lives here.
- *
- * This is the ONE file that is allowed to know about every concrete subsystem
- * type.  TASEngine.cpp only needs EngineBootstrap.h and delegates here.
- */
-
 #include "EngineBootstrap.h"
 
-#include "TASEngine.h"
-#include "Logger.h"
-#include "GameInterface.h"
-#include "InputSystem.h"
+#include "TASConstants.h"
+#include "ContextLifecycleCoordinator.h"
+#include "EventBus.h"
 #include "EventManager.h"
-#include "Recorder.h"
-#include "ScriptGenerator.h"
-#include "ScriptContextManager.h"
-#include "ScriptContext.h"
-#include "RecordPlayer.h"
-#include "StartupProjectManager.h"
-#include "ProjectManager.h"
-#include "TASStateMachine.h"
-#include "TASStateHandlers.h"
-#include "SavestateManager.h"
-#include "ServiceContainer.h"
-#include "UIManager.h"
-
-// Services
-#include "RecordingService.h"
+#include "GameInterface.h"
+#include "HookManager.h"
+#include "InputSystem.h"
+#include "Logger.h"
+#include "LuaTypedEventBridge.h"
 #include "PlaybackService.h"
+#include "ProjectManager.h"
+#include "RecordPlayer.h"
+#include "Recorder.h"
+#include "RecordingService.h"
+#include "RuntimeEventRouter.h"
+#include "DeterminismVerifier.h"
+#include "SavestateManager.h"
+#include "ScriptContextManager.h"
+#include "ScriptGenerator.h"
+#include "ServiceContainer.h"
+#include "StartupProjectManager.h"
+#include "TASEngine.h"
+#include "TASProject.h"
+#include "TASStateHandlers.h"
+#include "TASStateMachine.h"
 #include "TranslationService.h"
 #include "ValidationService.h"
-#include "EventBus.h"
-#include "HookManager.h"
 
 #ifdef ENABLE_REPL
 #include "LuaREPLServer.h"
 #endif
 
-// ============================================================================
-// Phase 1 — Core subsystems (ServiceContainer, state machine, controllers)
-// ============================================================================
-
 bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
-    // 0. Create ServiceContainer
     try {
-        engine.m_ServiceContainer = std::make_unique<ServiceContainer>();
-        Log::Info("ServiceContainer initialized.");
+        auto &c = engine.m_ServiceContainer;
 
-        // Register external dependencies (TASEngine retains ownership)
-        engine.m_ServiceContainer->RegisterSingletonPtr(engine.m_GameInterface);
-        engine.m_ServiceContainer->RegisterSingletonPtr(&engine);
-        engine.m_ServiceContainer->RegisterSingletonPtr(engine.m_EventBus);
-        engine.m_ServiceContainer->RegisterSingletonPtr(engine.m_HookManager);
-    } catch (const std::exception &e) {
-        Log::Error("Failed to initialize ServiceContainer: %s", e.what());
-        return false;
-    }
+        // Register externally-owned pointers (BallanceTAS lifetime)
+        c.RegisterSingletonPtr<GameInterface>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<EventBus>(engine.m_EventBus);
+        c.RegisterSingletonPtr<HookManager>(engine.m_HookManager);
 
-    // 1. Create core subsystems and transfer ownership to ServiceContainer
-    try {
-        auto inputSystem = std::make_unique<InputSystem>();
-        auto eventManager = std::make_unique<EventManager>();
-        auto recorder = std::make_unique<Recorder>(&engine);
-        auto scriptGenerator = std::make_unique<ScriptGenerator>(&engine);
-        auto scriptContextManager = std::make_unique<ScriptContextManager>(&engine);
-        auto recordPlayer = std::make_unique<RecordPlayer>(&engine);
-        auto startupProjectManager = std::make_unique<StartupProjectManager>(&engine);
+        // Register GameInterface against narrow ISP interfaces
+        c.RegisterSingletonPtr<IGameControl>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<IGameQuery>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<IInputAccess>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<IPhysicsProvider>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<IObjectProvider>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<IGameStateProvider>(engine.m_GameInterface);
+        c.RegisterSingletonPtr<ITimeProvider>(engine.m_GameInterface);
 
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(inputSystem));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(eventManager));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(recorder));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(scriptGenerator));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(scriptContextManager));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(recordPlayer));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(startupProjectManager));
+        // Register OperationRequestStore (non-owning ptr to TASEngine's member)
+        c.RegisterSingletonPtr<OperationRequestStore>(&engine.m_Requests);
 
-        // State machine
-        auto stateMachine = std::make_unique<TASStateMachine>(&engine);
+        // Core subsystems — container takes ownership
+        c.RegisterSingletonInstance<InputSystem>(std::make_unique<InputSystem>());
+        c.RegisterSingletonInstance<EventManager>(std::make_unique<EventManager>());
+        c.RegisterSingletonInstance<Recorder>(std::make_unique<Recorder>(&engine));
+        c.RegisterSingletonInstance<ScriptGenerator>(std::make_unique<ScriptGenerator>(&engine));
+        c.RegisterSingletonInstance<ScriptContextManager>(std::make_unique<ScriptContextManager>(&engine));
+        c.RegisterSingletonInstance<RecordPlayer>(std::make_unique<RecordPlayer>(&engine));
+        c.RegisterSingletonInstance<StartupProjectManager>(std::make_unique<StartupProjectManager>(&engine));
+        c.RegisterSingletonInstance<ProjectManager>(std::make_unique<ProjectManager>(&engine));
 
-        stateMachine->RegisterHandler(TASStateMachine::State::Idle,
-                                      std::make_unique<IdleHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::PendingRecord,
-                                      std::make_unique<PendingRecordHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::Recording,
-                                      std::make_unique<RecordingHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::PendingScriptPlayback,
-                                      std::make_unique<PendingScriptPlaybackHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::PendingRecordPlayback,
-                                      std::make_unique<PendingRecordPlaybackHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::PlayingScript,
-                                      std::make_unique<PlayingScriptHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::PlayingRecord,
-                                      std::make_unique<PlayingRecordHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::PendingTranslation,
-                                      std::make_unique<PendingTranslationHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::Translating,
-                                      std::make_unique<TranslatingHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::Paused,
-                                      std::make_unique<PausedHandler>(&engine));
-        stateMachine->RegisterHandler(TASStateMachine::State::ShuttingDown,
-                                      std::make_unique<ShuttingDownHandler>(&engine));
+        // Services with dependencies
+        c.RegisterSingletonInstance<RecordingService>(
+            std::make_unique<RecordingService>(&engine.m_ServiceProvider));
+        c.RegisterSingletonInstance<TranslationService>(
+            std::make_unique<TranslationService>(
+                *c.Resolve<Recorder>(),
+                *c.Resolve<RecordPlayer>(),
+                *engine.m_GameInterface,
+                *engine.m_GameInterface,
+                *engine.m_GameInterface,
+                *c.Resolve<ScriptContextManager>(),
+                *c.Resolve<InputSystem>(),
+                *engine.m_HookManager,
+                *engine.m_EventBus,
+                engine.GetPath()));
+        c.RegisterSingletonInstance<ValidationService>(
+            std::make_unique<ValidationService>(
+                *c.Resolve<Recorder>(),
+                *engine.m_EventBus));
+        c.RegisterSingletonInstance<SavestateManager>(
+            std::make_unique<SavestateManager>(engine.m_ServiceProvider));
+        c.RegisterSingletonInstance<DeterminismVerifier>(
+            std::make_unique<DeterminismVerifier>(engine.m_ServiceProvider));
 
-        Log::Info("State machine initialized with all handlers registered.");
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(stateMachine));
+        // State machine — uses EventBus directly
+        c.RegisterSingletonInstance<TASStateMachine>(
+            std::make_unique<TASStateMachine>(engine.m_EventBus));
 
-        // Services
-        auto provider = engine.GetServiceProvider();
+        auto *sm = c.Resolve<TASStateMachine>();
+        sm->RegisterHandler(TASStateMachine::State::Idle,
+                            std::make_unique<IdleHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::PendingRecord,
+                            std::make_unique<PendingRecordHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::Recording,
+                            std::make_unique<RecordingHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::PendingScriptPlayback,
+                            std::make_unique<PendingScriptPlaybackHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::PendingRecordPlayback,
+                            std::make_unique<PendingRecordPlaybackHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::PlayingScript,
+                            std::make_unique<PlayingScriptHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::PlayingRecord,
+                            std::make_unique<PlayingRecordHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::PendingTranslation,
+                            std::make_unique<PendingTranslationHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::Translating,
+                            std::make_unique<TranslatingHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::Paused,
+                            std::make_unique<PausedHandler>(&engine));
+        sm->RegisterHandler(TASStateMachine::State::ShuttingDown,
+                            std::make_unique<ShuttingDownHandler>(&engine));
 
-        auto recordingService = std::make_unique<RecordingService>(provider);
-        auto playbackService = std::make_unique<PlaybackService>(provider);
-        auto translationService = std::make_unique<TranslationService>(provider);
-        auto validationService = std::make_unique<ValidationService>(provider);
-
-        // Wire services to shared infrastructure
-        recordingService->SetEventBus(engine.m_EventBus);
-        recordingService->SetHookManager(engine.m_HookManager);
-        playbackService->SetEventBus(engine.m_EventBus);
-        playbackService->SetHookManager(engine.m_HookManager);
-        translationService->SetEventBus(engine.m_EventBus);
-        translationService->SetHookManager(engine.m_HookManager);
-        validationService->SetEventBus(engine.m_EventBus);
-
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(recordingService));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(playbackService));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(translationService));
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(validationService));
-
-        Log::Info("Services initialized.");
-
-        // SavestateManager
-        auto savestateManager = std::make_unique<SavestateManager>(provider);
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(savestateManager));
-
-        Log::Info("SavestateManager initialized.");
+        Log::Info("Core runtime subsystems initialized.");
+        return true;
     } catch (const std::exception &e) {
         Log::Error("Failed to initialize core subsystems: %s", e.what());
         return false;
     }
-
-    return true;
 }
 
-// ============================================================================
-// Phase 2 — Higher-level subsystems (scripting, projects, callbacks)
-// ============================================================================
-
 bool EngineBootstrap::InitializeHighLevelSubsystems(TASEngine &engine) {
-    // 1. Initialize execution subsystems
     try {
-        auto *scriptCtxMgr = engine.m_ServiceContainer->Resolve<ScriptContextManager>();
-        if (scriptCtxMgr && !scriptCtxMgr->Initialize()) {
+        auto &c = engine.m_ServiceContainer;
+
+        auto *scriptContextManager = c.Resolve<ScriptContextManager>();
+        if (scriptContextManager && !scriptContextManager->Initialize()) {
             Log::Error("Failed to initialize ScriptContextManager.");
             return false;
         }
 
+        LuaREPLServer *replPtr = nullptr;
 #ifdef ENABLE_REPL
-        auto replServer = std::make_unique<LuaREPLServer>(&engine);
-        if (replServer->Initialize(7878, "")) {
+        c.RegisterSingletonInstance<LuaREPLServer>(
+            std::make_unique<LuaREPLServer>(&engine));
+        auto *replServer = c.Resolve<LuaREPLServer>();
+        if (replServer->Initialize(TASConstants::DefaultREPLPort, "")) {
             if (replServer->Start()) {
-                Log::Info("REPL server started on port 7878");
-                engine.m_ServiceContainer->RegisterSingletonInstance(std::move(replServer));
+                Log::Info("REPL server started on port %u", TASConstants::DefaultREPLPort);
+                replPtr = replServer;
             } else {
-                Log::Warn("Failed to start REPL server, not registering in container");
+                Log::Warn("Failed to start REPL server.");
             }
         } else {
-            Log::Warn("Failed to initialize REPL server, not registering in container");
+            Log::Warn("Failed to initialize REPL server.");
         }
 #endif
-    } catch (const std::exception &e) {
-        Log::Error("Failed to initialize execution subsystems: %s", e.what());
-        return false;
-    }
+        c.RegisterSingletonInstance<PlaybackService>(
+            std::make_unique<PlaybackService>(&engine.m_ServiceProvider));
+        if (auto *playbackService = c.Resolve<PlaybackService>()) {
+            playbackService->SetCompletionCallback([&engine]() {
+                engine.HandlePlaybackCompleted();
+            });
+        }
 
-    // 2. Initialize Project Manager
-    try {
-        auto projectManager = std::make_unique<ProjectManager>(&engine);
-        engine.m_ServiceContainer->RegisterSingletonInstance(std::move(projectManager));
-    } catch (const std::exception &e) {
-        Log::Error("Failed to initialize project manager: %s", e.what());
-        return false;
-    }
-
-    // 3. Initialize StartupProjectManager
-    try {
-        auto *startupMgr = engine.m_ServiceContainer->Resolve<StartupProjectManager>();
-        if (startupMgr && !startupMgr->Initialize()) {
+        auto *startupProjectManager = c.Resolve<StartupProjectManager>();
+        if (startupProjectManager && !startupProjectManager->Initialize()) {
             Log::Error("Failed to initialize StartupProjectManager.");
             return false;
         }
+
+        c.RegisterSingletonInstance<ContextLifecycleCoordinator>(
+            std::make_unique<ContextLifecycleCoordinator>(
+                *scriptContextManager,
+                *engine.m_GameInterface));
+        c.RegisterSingletonInstance<LuaTypedEventBridge>(
+            std::make_unique<LuaTypedEventBridge>(
+                *engine.m_EventBus,
+                *scriptContextManager,
+                c.Resolve<Recorder>(),
+                *c.Resolve<TASStateMachine>(),
+                [&engine]() { return engine.GetCurrentTick(); }));
+        c.RegisterSingletonInstance<RuntimeEventRouter>(
+            std::make_unique<RuntimeEventRouter>(
+                *engine.m_EventBus,
+                *c.Resolve<TASStateMachine>(),
+                *c.Resolve<ContextLifecycleCoordinator>(),
+                c.Resolve<PlaybackService>(),
+                c.Resolve<TranslationService>(),
+                c.Resolve<ValidationService>(),
+                engine.m_Requests,
+                [&engine]() { return engine.IsValidationEnabled(); },
+                [&engine](TASProject *project) { return engine.BuildValidationOutputPath(project); }));
+
+        auto *bridge = c.Resolve<LuaTypedEventBridge>();
+        if (bridge) {
+            bridge->Initialize();
+        }
+        auto *router = c.Resolve<RuntimeEventRouter>();
+        if (router) {
+            router->Initialize();
+        }
+
+        Log::Info("TASEngine and all subsystems initialized.");
+        return true;
     } catch (const std::exception &e) {
-        Log::Error("Failed to initialize startup project manager: %s", e.what());
+        Log::Error("Failed to initialize higher-level subsystems: %s", e.what());
         return false;
     }
-
-    Log::Info("TASEngine and all subsystems initialized.");
-    Log::Info("ServiceContainer holds %zu registered services.",
-              engine.m_ServiceContainer->GetServiceCount());
-    return true;
 }

@@ -17,24 +17,23 @@ class TASEngine;
 
 /**
  * @class EngineBootstrap
- * @brief Creates, registers, and initialises all TASEngine subsystems.
+ * @brief Creates and initialises all TASEngine subsystems.
  *
- * All subsystem construction and ServiceContainer registration lives here.
- * TASEngine delegates to EngineBootstrap during Initialize() / Shutdown()
- * so that engine.h does not need to know about every concrete subsystem type.
+ * All subsystem construction and wiring lives here. TASEngine delegates to
+ * EngineBootstrap during Initialize() / Shutdown() so engine.h does not need
+ * to know about every concrete subsystem type.
  */
 class EngineBootstrap {
 public:
     EngineBootstrap() = delete;
 
     /**
-     * @brief Wire up all subsystems into the engine's ServiceContainer.
+     * @brief Wire up the runtime core and service graph.
      *
      * This covers:
-     *  1. ServiceContainer creation and external‐dependency registration
-     *  2. Core subsystem creation (InputSystem, EventManager, Recorder, …)
-     *  3. State machine and controller initialisation
-     *  4. SavestateManager creation
+     *  1. Core subsystem creation (InputSystem, EventManager, Recorder, ...)
+     *  2. State machine and service initialisation
+     *  3. Savestate and runtime router creation
      *
      * @param engine The TASEngine instance to initialise.
      * @return true on success, false on failure (errors are logged).
@@ -47,9 +46,8 @@ public:
      * This covers:
      *  1. ScriptContextManager initialisation
      *  2. REPL server (if enabled)
-     *  3. ProjectManager
-     *  4. StartupProjectManager
-     *  5. Status callbacks
+     *  3. StartupProjectManager
+     *  4. Typed runtime event components
      *
      * @param engine The TASEngine instance.
      * @return true on success, false on failure.

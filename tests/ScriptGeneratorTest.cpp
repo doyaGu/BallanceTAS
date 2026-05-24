@@ -7,23 +7,21 @@
 #include "ScriptGenerationCore.h"
 #include "ScriptInputTransition.h"
 
-namespace {
-
-RawInputState State(bool up, bool right) {
+static RawInputState State(bool up, bool right) {
     RawInputState state;
     state.keyUp = up ? 1 : KS_IDLE;
     state.keyRight = right ? 1 : KS_IDLE;
     return state;
 }
 
-RawInputState RawState(uint8_t up, uint8_t right = KS_IDLE) {
+static RawInputState RawState(uint8_t up, uint8_t right = KS_IDLE) {
     RawInputState state;
     state.keyUp = up;
     state.keyRight = right;
     return state;
 }
 
-std::vector<KeyEvent> DetectAll(const std::vector<RawInputState> &states) {
+static std::vector<KeyEvent> DetectAll(const std::vector<RawInputState> &states) {
     std::vector<KeyEvent> allEvents;
     RawInputState previous;
     for (size_t frame = 0; frame < states.size(); ++frame) {
@@ -61,7 +59,7 @@ TEST(ScriptGeneratorTest, PreservesCkSingleFramePressAndRelease) {
     EXPECT_EQ(events[0].transition, KeyTransition::PressedAndReleased);
 }
 
-size_t Count(const std::vector<KeyEvent> &events, const char *key, KeyTransition transition) {
+static size_t Count(const std::vector<KeyEvent> &events, const char *key, KeyTransition transition) {
     size_t count = 0;
     for (const auto &event : events) {
         if (event.key == key && event.transition == transition) {
@@ -70,8 +68,6 @@ size_t Count(const std::vector<KeyEvent> &events, const char *key, KeyTransition
     }
     return count;
 }
-
-} // namespace
 
 TEST(ScriptGeneratorTest, TranslatesLegacyDownStateFramesIntoBalancedKeyEdges) {
     auto events = DetectAll({

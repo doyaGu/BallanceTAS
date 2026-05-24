@@ -9,15 +9,13 @@
 
 #include "TASProject.h"
 
-namespace {
-
-std::filesystem::path TempRecordPath(const std::string &name) {
+static std::filesystem::path TempRecordPath(const std::string &name) {
     auto path = std::filesystem::temp_directory_path() / "BallanceTAS_RecordFileIO";
     std::filesystem::create_directories(path);
     return path / name;
 }
 
-std::vector<RecordFrameData> ReadLegacyRecord(const std::filesystem::path &path) {
+static std::vector<RecordFrameData> ReadLegacyRecord(const std::filesystem::path &path) {
     std::ifstream file(path, std::ios::binary);
     uint32_t uncompressedSize = 0;
     file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
@@ -38,8 +36,6 @@ std::vector<RecordFrameData> ReadLegacyRecord(const std::filesystem::path &path)
     CKDeletePointer(uncompressed);
     return frames;
 }
-
-} // namespace
 
 TEST(RecordFileIOTest, RejectsEmptyRecordWrites) {
     const auto path = TempRecordPath("empty_output.tas");

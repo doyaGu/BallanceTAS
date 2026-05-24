@@ -9,25 +9,23 @@
 
 #include <stdexcept>
 
-namespace {
-
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-SharedDataManager *GetShared(lua_State *L) {
+static SharedDataManager *GetShared(lua_State *L) {
     ScriptContext *context = GetContext(L);
     ScriptContextManager *manager = context ? context->GetScriptContextManager() : nullptr;
     return manager ? manager->GetSharedDataManager() : nullptr;
 }
 
-void SetGlobalFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetGlobalFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-const char *CheckKey(lua_State *L, int index, const char *functionName, size_t *length) {
+static const char *CheckKey(lua_State *L, int index, const char *functionName, size_t *length) {
     const char *key = luaL_checklstring(L, index, length);
     if (!key || *length == 0) {
         luaL_error(L, "%s: key cannot be empty", functionName);
@@ -35,7 +33,7 @@ const char *CheckKey(lua_State *L, int index, const char *functionName, size_t *
     return key;
 }
 
-tas::lua::LuaValue CheckPortableValue(lua_State *L, int index, const char *functionName) {
+static tas::lua::LuaValue CheckPortableValue(lua_State *L, int index, const char *functionName) {
     auto value = tas::lua::LuaValue::FromStack(L, index);
     if (value.IsError()) {
         luaL_error(L, "%s: %s", functionName, value.GetError().message.c_str());
@@ -43,7 +41,7 @@ tas::lua::LuaValue CheckPortableValue(lua_State *L, int index, const char *funct
     return value.Unwrap();
 }
 
-int SetData(lua_State *L) {
+static int SetData(lua_State *L) {
     if (lua_gettop(L) != 2) {
         return luaL_error(L, "tas.global.set(key, value): expected key and value");
     }
@@ -59,7 +57,7 @@ int SetData(lua_State *L) {
     return 0;
 }
 
-int GetData(lua_State *L) {
+static int GetData(lua_State *L) {
     if (lua_gettop(L) != 1) {
         return luaL_error(L, "tas.global.get(key): expected key");
     }
@@ -75,7 +73,7 @@ int GetData(lua_State *L) {
     return 1;
 }
 
-int HasData(lua_State *L) {
+static int HasData(lua_State *L) {
     if (lua_gettop(L) != 1 || !lua_isstring(L, 1)) {
         lua_pushboolean(L, 0);
         return 1;
@@ -93,7 +91,7 @@ int HasData(lua_State *L) {
     return 1;
 }
 
-int ClearData(lua_State *L) {
+static int ClearData(lua_State *L) {
     if (lua_gettop(L) != 1) {
         return luaL_error(L, "tas.global.remove(key): expected key");
     }
@@ -108,7 +106,7 @@ int ClearData(lua_State *L) {
     return 0;
 }
 
-int ClearAllData(lua_State *L) {
+static int ClearAllData(lua_State *L) {
     if (lua_gettop(L) != 0) {
         return luaL_error(L, "tas.global.clear(): expected no arguments");
     }
@@ -120,7 +118,7 @@ int ClearAllData(lua_State *L) {
     return 0;
 }
 
-int GetAllKeys(lua_State *L) {
+static int GetAllKeys(lua_State *L) {
     lua_newtable(L);
     SharedDataManager *shared = GetShared(L);
     if (!shared) {
@@ -139,8 +137,6 @@ int GetAllKeys(lua_State *L) {
     }
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterGlobalApi(lua_State *state, ScriptContext *context) {
     if (!context) {

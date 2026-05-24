@@ -6,38 +6,36 @@
 
 #include <cstring>
 
-namespace {
-
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-void SetGCFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetGCFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-const char *GCModeName(LuaGCMode mode) {
+static const char *GCModeName(LuaGCMode mode) {
     return mode == LuaGCMode::Generational ? "generational" : "incremental";
 }
 
-int Collect(lua_State *L) {
+static int Collect(lua_State *L) {
     lua_gc(L, LUA_GCCOLLECT, 0);
     return 0;
 }
 
-int Stop(lua_State *L) {
+static int Stop(lua_State *L) {
     lua_gc(L, LUA_GCSTOP, 0);
     return 0;
 }
 
-int Restart(lua_State *L) {
+static int Restart(lua_State *L) {
     lua_gc(L, LUA_GCRESTART, 0);
     return 0;
 }
 
-int Step(lua_State *L) {
+static int Step(lua_State *L) {
     const int stepSize = lua_gettop(L) >= 1 && !lua_isnil(L, 1) ? static_cast<int>(luaL_checkinteger(L, 1)) : 1;
     if (stepSize < 0) {
         return luaL_error(L, "gc.step: step_size must be non-negative");
@@ -46,7 +44,7 @@ int Step(lua_State *L) {
     return 1;
 }
 
-int SetMode(lua_State *L) {
+static int SetMode(lua_State *L) {
     auto *context = GetContext(L);
     if (!context) {
         return luaL_error(L, "gc.set_mode: context unavailable");
@@ -64,13 +62,13 @@ int SetMode(lua_State *L) {
     return luaL_error(L, "gc.set_mode: mode must be 'generational' or 'incremental'");
 }
 
-int GetMode(lua_State *L) {
+static int GetMode(lua_State *L) {
     auto *context = GetContext(L);
     lua_pushstring(L, context ? GCModeName(context->GetGCMode()) : "incremental");
     return 1;
 }
 
-int Tune(lua_State *L) {
+static int Tune(lua_State *L) {
     if (lua_gettop(L) != 1 || !lua_istable(L, 1)) {
         return luaL_error(L, "gc.tune(params): expected table");
     }
@@ -112,19 +110,19 @@ int Tune(lua_State *L) {
     return 1;
 }
 
-int MemoryKB(lua_State *L) {
+static int MemoryKB(lua_State *L) {
     auto *context = GetContext(L);
     lua_pushnumber(L, context ? context->GetLuaMemoryKB() : 0.0);
     return 1;
 }
 
-int MemoryBytes(lua_State *L) {
+static int MemoryBytes(lua_State *L) {
     auto *context = GetContext(L);
     lua_pushinteger(L, context ? static_cast<lua_Integer>(context->GetLuaMemoryBytes()) : 0);
     return 1;
 }
 
-int IsRunning(lua_State *L) {
+static int IsRunning(lua_State *L) {
 #if LUA_VERSION_NUM >= 502
     lua_pushboolean(L, lua_gc(L, LUA_GCISRUNNING, 0) != 0);
 #else
@@ -133,7 +131,7 @@ int IsRunning(lua_State *L) {
     return 1;
 }
 
-int Stats(lua_State *L) {
+static int Stats(lua_State *L) {
     auto *context = GetContext(L);
     const int memoryKB = lua_gc(L, LUA_GCCOUNT, 0);
     const int memoryBytesRemainder = lua_gc(L, LUA_GCCOUNTB, 0);
@@ -172,8 +170,6 @@ int Stats(lua_State *L) {
     lua_setfield(L, -2, "context_type");
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterGCApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);

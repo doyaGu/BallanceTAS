@@ -7,26 +7,24 @@
 
 #include "TASProject.h"
 
-namespace {
-
-bool IsActiveOrPending(const TASMenuStatePresentation &state) {
+static bool IsActiveOrPending(const TASMenuStatePresentation &state) {
     return state.hasBlockingActivity;
 }
 
-bool IsActiveProject(const TASProject &project, const TASMenuStatePresentation &state) {
+static bool IsActiveProject(const TASProject &project, const TASMenuStatePresentation &state) {
     if (!state.activeProjectKey.empty()) {
         return state.activeProjectKey == project.GetPath();
     }
     return !state.activeProjectName.empty() && state.activeProjectName == project.GetName();
 }
 
-std::string FormatUpdateRate(float updateRate) {
+static std::string FormatUpdateRate(float updateRate) {
     char buffer[32] = {};
     std::snprintf(buffer, sizeof(buffer), "%.0f Hz", updateRate);
     return buffer;
 }
 
-std::string FormatRecordPlaybackDetail(const TASMenuRuntimeSnapshot &snapshot) {
+static std::string FormatRecordPlaybackDetail(const TASMenuRuntimeSnapshot &snapshot) {
     std::ostringstream stream;
     if (!snapshot.activeProjectName.empty()) {
         stream << snapshot.activeProjectName << " ";
@@ -43,7 +41,7 @@ std::string FormatRecordPlaybackDetail(const TASMenuRuntimeSnapshot &snapshot) {
     return stream.str();
 }
 
-std::string FormatScriptPlaybackDetail(const TASMenuRuntimeSnapshot &snapshot) {
+static std::string FormatScriptPlaybackDetail(const TASMenuRuntimeSnapshot &snapshot) {
     std::ostringstream stream;
     if (!snapshot.activeProjectName.empty()) {
         stream << snapshot.activeProjectName << " ";
@@ -52,7 +50,7 @@ std::string FormatScriptPlaybackDetail(const TASMenuRuntimeSnapshot &snapshot) {
     return stream.str();
 }
 
-std::string BuildRecordInfo(const TASProject &project) {
+static std::string BuildRecordInfo(const TASProject &project) {
     std::ostringstream stream;
     stream << project.GetRecordFrameCount() << " frames";
     if (project.GetRecordFrameCount() == 0) {
@@ -61,14 +59,14 @@ std::string BuildRecordInfo(const TASProject &project) {
     return stream.str();
 }
 
-std::string BuildInvalidReason(const TASProject &project) {
+static std::string BuildInvalidReason(const TASProject &project) {
     if (!project.GetValidationMessage().empty()) {
         return project.GetValidationMessage();
     }
     return "Invalid project";
 }
 
-std::string BuildPlayDisabledReason(const TASProject &project, const TASMenuStatePresentation &menuState) {
+static std::string BuildPlayDisabledReason(const TASProject &project, const TASMenuStatePresentation &menuState) {
     if (IsActiveOrPending(menuState)) {
         return "Stop current TAS first";
     }
@@ -88,7 +86,7 @@ std::string BuildPlayDisabledReason(const TASProject &project, const TASMenuStat
     return {};
 }
 
-std::string BuildTranslateDisabledReason(const TASProject &project, const TASMenuStatePresentation &menuState) {
+static std::string BuildTranslateDisabledReason(const TASProject &project, const TASMenuStatePresentation &menuState) {
     if (IsActiveOrPending(menuState)) {
         return "Stop current TAS first";
     }
@@ -107,7 +105,7 @@ std::string BuildTranslateDisabledReason(const TASProject &project, const TASMen
     return {};
 }
 
-std::string BuildScopeLabel(const TASProject &project) {
+static std::string BuildScopeLabel(const TASProject &project) {
     if (project.IsGlobalProject()) {
         return "GLOBAL";
     }
@@ -119,7 +117,7 @@ std::string BuildScopeLabel(const TASProject &project) {
     return "LEVEL";
 }
 
-std::string BuildRowStatus(const TASProject &project, const TASMenuStatePresentation &state) {
+static std::string BuildRowStatus(const TASProject &project, const TASMenuStatePresentation &state) {
     if (!project.IsValid()) {
         return "ERROR";
     }
@@ -150,7 +148,7 @@ std::string BuildRowStatus(const TASProject &project, const TASMenuStatePresenta
     return "LEVEL";
 }
 
-std::string BuildRowBadge(const std::string &status) {
+static std::string BuildRowBadge(const std::string &status) {
     if (status == "GLOBAL") {
         return "G";
     }
@@ -178,7 +176,7 @@ std::string BuildRowBadge(const std::string &status) {
     return "";
 }
 
-TASMenuTone BuildRowTone(const TASProject &project, const TASMenuStatePresentation &state) {
+static TASMenuTone BuildRowTone(const TASProject &project, const TASMenuStatePresentation &state) {
     if (!project.IsValid()) {
         return TASMenuTone::Error;
     }
@@ -193,8 +191,6 @@ TASMenuTone BuildRowTone(const TASProject &project, const TASMenuStatePresentati
 
     return TASMenuTone::Normal;
 }
-
-} // namespace
 
 std::string TruncateMenuLabel(const std::string &label, size_t maxChars) {
     if (label.size() <= maxChars || maxChars < 4) {

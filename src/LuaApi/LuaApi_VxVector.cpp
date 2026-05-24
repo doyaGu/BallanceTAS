@@ -7,8 +7,6 @@
 #include <cmath>
 #include <cstdio>
 
-namespace {
-
 constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
 constexpr const char *kVxVector4Mt = "BallanceTAS.VxVector4";
 constexpr const char *kVx2DVectorMt = "BallanceTAS.Vx2DVector";
@@ -17,52 +15,52 @@ constexpr const char *kVxCompressedVectorMt = "BallanceTAS.VxCompressedVector";
 constexpr const char *kVxCompressedVectorOldMt = "BallanceTAS.VxCompressedVectorOld";
 
 template <typename T>
-T *TestUserdata(lua_State *L, int index, const char *metatableName) {
+static T *TestUserdata(lua_State *L, int index, const char *metatableName) {
     auto *box = static_cast<tas::lua::UserdataBox<T> *>(luaL_testudata(L, index, metatableName));
     return box ? box->ptr : nullptr;
 }
 
-VxVector *CheckVxVector(lua_State *L, int index) {
+static VxVector *CheckVxVector(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxVector>(L, index, kVxVectorMt);
 }
 
-Vx2DVector *CheckVx2DVector(lua_State *L, int index) {
+static Vx2DVector *CheckVx2DVector(lua_State *L, int index) {
     return tas::lua::CheckUserdata<Vx2DVector>(L, index, kVx2DVectorMt);
 }
 
-VxVector4 *CheckVxVector4(lua_State *L, int index) {
+static VxVector4 *CheckVxVector4(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxVector4>(L, index, kVxVector4Mt);
 }
 
-VxBbox *CheckVxBbox(lua_State *L, int index) {
+static VxBbox *CheckVxBbox(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxBbox>(L, index, kVxBboxMt);
 }
 
-VxCompressedVector *CheckVxCompressedVector(lua_State *L, int index) {
+static VxCompressedVector *CheckVxCompressedVector(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxCompressedVector>(L, index, kVxCompressedVectorMt);
 }
 
-VxCompressedVectorOld *CheckVxCompressedVectorOld(lua_State *L, int index) {
+static VxCompressedVectorOld *CheckVxCompressedVectorOld(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxCompressedVectorOld>(L, index, kVxCompressedVectorOldMt);
 }
 
-VxVector *TestVxVector(lua_State *L, int index) {
+static VxVector *TestVxVector(lua_State *L, int index) {
     return TestUserdata<VxVector>(L, index, kVxVectorMt);
 }
 
-VxVector4 *TestVxVector4(lua_State *L, int index) {
+static VxVector4 *TestVxVector4(lua_State *L, int index) {
     return TestUserdata<VxVector4>(L, index, kVxVector4Mt);
 }
 
-Vx2DVector *TestVx2DVector(lua_State *L, int index) {
+static Vx2DVector *TestVx2DVector(lua_State *L, int index) {
     return TestUserdata<Vx2DVector>(L, index, kVx2DVectorMt);
 }
 
-VxBbox *TestVxBbox(lua_State *L, int index) {
+static VxBbox *TestVxBbox(lua_State *L, int index) {
     return TestUserdata<VxBbox>(L, index, kVxBboxMt);
 }
 
-void PushVxVector(lua_State *L, float x, float y, float z) {
+static void PushVxVector(lua_State *L, float x, float y, float z) {
     VxVector value;
     value.x = x;
     value.y = y;
@@ -70,14 +68,14 @@ void PushVxVector(lua_State *L, float x, float y, float z) {
     tas::lua::PushOwnedUserdata<VxVector>(L, kVxVectorMt, value);
 }
 
-void PushVx2DVector(lua_State *L, float x, float y) {
+static void PushVx2DVector(lua_State *L, float x, float y) {
     Vx2DVector value;
     value.x = x;
     value.y = y;
     tas::lua::PushOwnedUserdata<Vx2DVector>(L, kVx2DVectorMt, value);
 }
 
-void PushVxVector4(lua_State *L, float x, float y, float z, float w) {
+static void PushVxVector4(lua_State *L, float x, float y, float z, float w) {
     VxVector4 value;
     value.x = x;
     value.y = y;
@@ -86,26 +84,26 @@ void PushVxVector4(lua_State *L, float x, float y, float z, float w) {
     tas::lua::PushOwnedUserdata<VxVector4>(L, kVxVector4Mt, value);
 }
 
-void PushVxBbox(lua_State *L, const VxVector &min, const VxVector &max) {
+static void PushVxBbox(lua_State *L, const VxVector &min, const VxVector &max) {
     VxBbox value;
     value.Min = min;
     value.Max = max;
     tas::lua::PushOwnedUserdata<VxBbox>(L, kVxBboxMt, value);
 }
 
-void PushVxCompressedVector(lua_State *L, float x, float y, float z) {
+static void PushVxCompressedVector(lua_State *L, float x, float y, float z) {
     VxCompressedVector value;
     value.Set(x, y, z);
     tas::lua::PushOwnedUserdata<VxCompressedVector>(L, kVxCompressedVectorMt, value);
 }
 
-void PushVxCompressedVectorOld(lua_State *L, float x, float y, float z) {
+static void PushVxCompressedVectorOld(lua_State *L, float x, float y, float z) {
     VxCompressedVectorOld value;
     value.Set(x, y, z);
     tas::lua::PushOwnedUserdata<VxCompressedVectorOld>(L, kVxCompressedVectorOldMt, value);
 }
 
-bool ReadVectorOperand(lua_State *L, int index, float &x, float &y, float &z) {
+static bool ReadVectorOperand(lua_State *L, int index, float &x, float &y, float &z) {
     if (auto *value = TestVxVector(L, index)) {
         x = value->x;
         y = value->y;
@@ -119,7 +117,7 @@ bool ReadVectorOperand(lua_State *L, int index, float &x, float &y, float &z) {
     return false;
 }
 
-bool ReadVector4Operand(lua_State *L, int index, float &x, float &y, float &z, float &w) {
+static bool ReadVector4Operand(lua_State *L, int index, float &x, float &y, float &z, float &w) {
     if (auto *value = TestVxVector4(L, index)) {
         x = value->x;
         y = value->y;
@@ -134,7 +132,7 @@ bool ReadVector4Operand(lua_State *L, int index, float &x, float &y, float &z, f
     return false;
 }
 
-bool ReadVector2Operand(lua_State *L, int index, float &x, float &y) {
+static bool ReadVector2Operand(lua_State *L, int index, float &x, float &y) {
     if (auto *value = TestVx2DVector(L, index)) {
         x = value->x;
         y = value->y;
@@ -147,19 +145,19 @@ bool ReadVector2Operand(lua_State *L, int index, float &x, float &y) {
     return false;
 }
 
-float Magnitude(float x, float y, float z) {
+static float Magnitude(float x, float y, float z) {
     return std::sqrt(x * x + y * y + z * z);
 }
 
-float Magnitude(float x, float y, float z, float w) {
+static float Magnitude(float x, float y, float z, float w) {
     return std::sqrt(x * x + y * y + z * z + w * w);
 }
 
-float Magnitude(float x, float y) {
+static float Magnitude(float x, float y) {
     return std::sqrt(x * x + y * y);
 }
 
-int VxVectorNew(lua_State *L) {
+static int VxVectorNew(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         PushVxVector(L, 0.0f, 0.0f, 0.0f);
@@ -180,12 +178,12 @@ int VxVectorNew(lua_State *L) {
     return luaL_error(L, "VxVector expects 0, 1, or 3 arguments");
 }
 
-int VxVectorCall(lua_State *L) {
+static int VxVectorCall(lua_State *L) {
     lua_remove(L, 1);
     return VxVectorNew(L);
 }
 
-int Vx2DVectorNew(lua_State *L) {
+static int Vx2DVectorNew(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         PushVx2DVector(L, 0.0f, 0.0f);
@@ -205,7 +203,7 @@ int Vx2DVectorNew(lua_State *L) {
     return luaL_error(L, "Vx2DVector expects 0, 1, or 2 arguments");
 }
 
-int VxVector4New(lua_State *L) {
+static int VxVector4New(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         PushVxVector4(L, 0.0f, 0.0f, 0.0f, 0.0f);
@@ -227,12 +225,12 @@ int VxVector4New(lua_State *L) {
     return luaL_error(L, "VxVector4 expects 0, 1, or 4 arguments");
 }
 
-int VxVector4Call(lua_State *L) {
+static int VxVector4Call(lua_State *L) {
     lua_remove(L, 1);
     return VxVector4New(L);
 }
 
-int VxBboxNew(lua_State *L) {
+static int VxBboxNew(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         VxVector zero;
@@ -258,12 +256,12 @@ int VxBboxNew(lua_State *L) {
     return luaL_error(L, "VxBbox expects 0, 1, or 2 arguments");
 }
 
-int VxBboxCall(lua_State *L) {
+static int VxBboxCall(lua_State *L) {
     lua_remove(L, 1);
     return VxBboxNew(L);
 }
 
-int VxCompressedVectorNew(lua_State *L) {
+static int VxCompressedVectorNew(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         VxCompressedVector value;
@@ -282,12 +280,12 @@ int VxCompressedVectorNew(lua_State *L) {
     return luaL_error(L, "VxCompressedVector expects 0 or 3 arguments");
 }
 
-int VxCompressedVectorCall(lua_State *L) {
+static int VxCompressedVectorCall(lua_State *L) {
     lua_remove(L, 1);
     return VxCompressedVectorNew(L);
 }
 
-int VxCompressedVectorOldNew(lua_State *L) {
+static int VxCompressedVectorOldNew(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         VxCompressedVectorOld value;
@@ -306,17 +304,17 @@ int VxCompressedVectorOldNew(lua_State *L) {
     return luaL_error(L, "VxCompressedVectorOld expects 0 or 3 arguments");
 }
 
-int VxCompressedVectorOldCall(lua_State *L) {
+static int VxCompressedVectorOldCall(lua_State *L) {
     lua_remove(L, 1);
     return VxCompressedVectorOldNew(L);
 }
 
-int Vx2DVectorCall(lua_State *L) {
+static int Vx2DVectorCall(lua_State *L) {
     lua_remove(L, 1);
     return Vx2DVectorNew(L);
 }
 
-int VxCompressedVectorSet(lua_State *L) {
+static int VxCompressedVectorSet(lua_State *L) {
     auto *value = CheckVxCompressedVector(L, 1);
     value->Set(static_cast<float>(luaL_checknumber(L, 2)),
                static_cast<float>(luaL_checknumber(L, 3)),
@@ -325,7 +323,7 @@ int VxCompressedVectorSet(lua_State *L) {
     return 1;
 }
 
-int VxCompressedVectorToString(lua_State *L) {
+static int VxCompressedVectorToString(lua_State *L) {
     auto *value = CheckVxCompressedVector(L, 1);
     char buffer[80];
     std::snprintf(buffer, sizeof(buffer), "VxCompressedVector(%d, %d)", static_cast<int>(value->xa), static_cast<int>(value->ya));
@@ -333,7 +331,7 @@ int VxCompressedVectorToString(lua_State *L) {
     return 1;
 }
 
-int VxCompressedVectorOldSet(lua_State *L) {
+static int VxCompressedVectorOldSet(lua_State *L) {
     auto *value = CheckVxCompressedVectorOld(L, 1);
     value->Set(static_cast<float>(luaL_checknumber(L, 2)),
                static_cast<float>(luaL_checknumber(L, 3)),
@@ -342,7 +340,7 @@ int VxCompressedVectorOldSet(lua_State *L) {
     return 1;
 }
 
-int VxCompressedVectorOldToString(lua_State *L) {
+static int VxCompressedVectorOldToString(lua_State *L) {
     auto *value = CheckVxCompressedVectorOld(L, 1);
     char buffer[88];
     std::snprintf(buffer, sizeof(buffer), "VxCompressedVectorOld(%d, %d)", value->xa, value->ya);
@@ -350,54 +348,54 @@ int VxCompressedVectorOldToString(lua_State *L) {
     return 1;
 }
 
-int VxBboxMin(lua_State *L) {
+static int VxBboxMin(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     PushVxVector(L, box->Min.x, box->Min.y, box->Min.z);
     return 1;
 }
 
-int VxBboxSetMin(lua_State *L) {
+static int VxBboxSetMin(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     auto *value = CheckVxVector(L, 2);
     box->Min = *value;
     return 0;
 }
 
-int VxBboxMax(lua_State *L) {
+static int VxBboxMax(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     PushVxVector(L, box->Max.x, box->Max.y, box->Max.z);
     return 1;
 }
 
-int VxBboxSetMax(lua_State *L) {
+static int VxBboxSetMax(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     auto *value = CheckVxVector(L, 2);
     box->Max = *value;
     return 0;
 }
 
-int VxBboxSize(lua_State *L) {
+static int VxBboxSize(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     const VxVector value = box->GetSize();
     PushVxVector(L, value.x, value.y, value.z);
     return 1;
 }
 
-int VxBboxHalfSize(lua_State *L) {
+static int VxBboxHalfSize(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     const VxVector value = box->GetHalfSize();
     PushVxVector(L, value.x, value.y, value.z);
     return 1;
 }
 
-int VxBboxCenter(lua_State *L) {
+static int VxBboxCenter(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     const VxVector value = box->GetCenter();
     PushVxVector(L, value.x, value.y, value.z);
     return 1;
 }
 
-int VxBboxSetCenterProperty(lua_State *L) {
+static int VxBboxSetCenterProperty(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     auto *center = CheckVxVector(L, 2);
     const VxVector halfSize = box->GetHalfSize();
@@ -405,13 +403,13 @@ int VxBboxSetCenterProperty(lua_State *L) {
     return 0;
 }
 
-int VxBboxIsValid(lua_State *L) {
+static int VxBboxIsValid(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     lua_pushboolean(L, box->IsValid());
     return 1;
 }
 
-int VxBboxSetCorners(lua_State *L) {
+static int VxBboxSetCorners(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     auto *min = CheckVxVector(L, 2);
     auto *max = CheckVxVector(L, 3);
@@ -420,7 +418,7 @@ int VxBboxSetCorners(lua_State *L) {
     return 1;
 }
 
-int VxBboxSetCenter(lua_State *L) {
+static int VxBboxSetCenter(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     auto *center = CheckVxVector(L, 2);
     auto *halfSize = CheckVxVector(L, 3);
@@ -429,14 +427,14 @@ int VxBboxSetCenter(lua_State *L) {
     return 1;
 }
 
-int VxBboxReset(lua_State *L) {
+static int VxBboxReset(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     box->Reset();
     lua_pushvalue(L, 1);
     return 1;
 }
 
-int VxBboxMerge(lua_State *L) {
+static int VxBboxMerge(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     if (auto *other = TestVxBbox(L, 2)) {
         box->Merge(*other);
@@ -448,14 +446,14 @@ int VxBboxMerge(lua_State *L) {
     return 1;
 }
 
-int VxBboxEq(lua_State *L) {
+static int VxBboxEq(lua_State *L) {
     auto *a = TestVxBbox(L, 1);
     auto *b = TestVxBbox(L, 2);
     lua_pushboolean(L, a && b && *a == *b);
     return 1;
 }
 
-int VxBboxToString(lua_State *L) {
+static int VxBboxToString(lua_State *L) {
     auto *box = CheckVxBbox(L, 1);
     char buffer[160];
     std::snprintf(buffer,
@@ -471,19 +469,19 @@ int VxBboxToString(lua_State *L) {
     return 1;
 }
 
-int VxVector4Magnitude(lua_State *L) {
+static int VxVector4Magnitude(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     lua_pushnumber(L, Magnitude(value->x, value->y, value->z, value->w));
     return 1;
 }
 
-int VxVector4SquareMagnitude(lua_State *L) {
+static int VxVector4SquareMagnitude(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     lua_pushnumber(L, value->x * value->x + value->y * value->y + value->z * value->z + value->w * value->w);
     return 1;
 }
 
-int VxVector4NumericIndex(lua_State *L) {
+static int VxVector4NumericIndex(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     switch (luaL_checkinteger(L, 2)) {
     case 0:
@@ -504,7 +502,7 @@ int VxVector4NumericIndex(lua_State *L) {
     }
 }
 
-int VxVector4NumericNewIndex(lua_State *L) {
+static int VxVector4NumericNewIndex(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     const float number = static_cast<float>(luaL_checknumber(L, 3));
     switch (luaL_checkinteger(L, 2)) {
@@ -525,7 +523,7 @@ int VxVector4NumericNewIndex(lua_State *L) {
     }
 }
 
-int VxVector4Set(lua_State *L) {
+static int VxVector4Set(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     value->x = static_cast<float>(luaL_checknumber(L, 2));
     value->y = static_cast<float>(luaL_checknumber(L, 3));
@@ -535,7 +533,7 @@ int VxVector4Set(lua_State *L) {
     return 1;
 }
 
-int VxVector4Normalize(lua_State *L) {
+static int VxVector4Normalize(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     const float magnitude = Magnitude(value->x, value->y, value->z, value->w);
     if (magnitude > 0.0f) {
@@ -548,7 +546,7 @@ int VxVector4Normalize(lua_State *L) {
     return 1;
 }
 
-int VxVector4Dot(lua_State *L) {
+static int VxVector4Dot(lua_State *L) {
     auto *a = CheckVxVector4(L, 1);
     auto *b = CheckVxVector4(L, 2);
     lua_pushnumber(L, a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
@@ -556,7 +554,7 @@ int VxVector4Dot(lua_State *L) {
 }
 
 template <typename BinaryOp>
-int VxVector4Binary(lua_State *L, const char *operationName, BinaryOp op) {
+static int VxVector4Binary(lua_State *L, const char *operationName, BinaryOp op) {
     float ax, ay, az, aw;
     float bx, by, bz, bw;
     if (!ReadVector4Operand(L, 1, ax, ay, az, aw) || !ReadVector4Operand(L, 2, bx, by, bz, bw)) {
@@ -566,36 +564,36 @@ int VxVector4Binary(lua_State *L, const char *operationName, BinaryOp op) {
     return 1;
 }
 
-int VxVector4Add(lua_State *L) {
+static int VxVector4Add(lua_State *L) {
     return VxVector4Binary(L, "VxVector4 addition", [](float a, float b) { return a + b; });
 }
 
-int VxVector4Sub(lua_State *L) {
+static int VxVector4Sub(lua_State *L) {
     return VxVector4Binary(L, "VxVector4 subtraction", [](float a, float b) { return a - b; });
 }
 
-int VxVector4Mul(lua_State *L) {
+static int VxVector4Mul(lua_State *L) {
     return VxVector4Binary(L, "VxVector4 multiplication", [](float a, float b) { return a * b; });
 }
 
-int VxVector4Div(lua_State *L) {
+static int VxVector4Div(lua_State *L) {
     return VxVector4Binary(L, "VxVector4 division", [](float a, float b) { return a / b; });
 }
 
-int VxVector4Unm(lua_State *L) {
+static int VxVector4Unm(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     PushVxVector4(L, -value->x, -value->y, -value->z, -value->w);
     return 1;
 }
 
-int VxVector4Eq(lua_State *L) {
+static int VxVector4Eq(lua_State *L) {
     auto *a = TestVxVector4(L, 1);
     auto *b = TestVxVector4(L, 2);
     lua_pushboolean(L, a && b && a->x == b->x && a->y == b->y && a->z == b->z && a->w == b->w);
     return 1;
 }
 
-int VxVector4ToString(lua_State *L) {
+static int VxVector4ToString(lua_State *L) {
     auto *value = CheckVxVector4(L, 1);
     char buffer[112];
     std::snprintf(buffer, sizeof(buffer), "VxVector4(%g, %g, %g, %g)", value->x, value->y, value->z, value->w);
@@ -603,19 +601,19 @@ int VxVector4ToString(lua_State *L) {
     return 1;
 }
 
-int VxVectorMagnitude(lua_State *L) {
+static int VxVectorMagnitude(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     lua_pushnumber(L, Magnitude(value->x, value->y, value->z));
     return 1;
 }
 
-int VxVectorSquareMagnitude(lua_State *L) {
+static int VxVectorSquareMagnitude(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     lua_pushnumber(L, value->x * value->x + value->y * value->y + value->z * value->z);
     return 1;
 }
 
-int VxVectorNumericIndex(lua_State *L) {
+static int VxVectorNumericIndex(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     switch (luaL_checkinteger(L, 2)) {
     case 0:
@@ -633,7 +631,7 @@ int VxVectorNumericIndex(lua_State *L) {
     }
 }
 
-int VxVectorNumericNewIndex(lua_State *L) {
+static int VxVectorNumericNewIndex(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     const float number = static_cast<float>(luaL_checknumber(L, 3));
     switch (luaL_checkinteger(L, 2)) {
@@ -651,7 +649,7 @@ int VxVectorNumericNewIndex(lua_State *L) {
     }
 }
 
-int VxVectorSet(lua_State *L) {
+static int VxVectorSet(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     value->x = static_cast<float>(luaL_checknumber(L, 2));
     value->y = static_cast<float>(luaL_checknumber(L, 3));
@@ -660,7 +658,7 @@ int VxVectorSet(lua_State *L) {
     return 1;
 }
 
-int VxVectorNormalize(lua_State *L) {
+static int VxVectorNormalize(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     const float magnitude = Magnitude(value->x, value->y, value->z);
     if (magnitude > 0.0f) {
@@ -672,14 +670,14 @@ int VxVectorNormalize(lua_State *L) {
     return 1;
 }
 
-int VxVectorDot(lua_State *L) {
+static int VxVectorDot(lua_State *L) {
     auto *a = CheckVxVector(L, 1);
     auto *b = CheckVxVector(L, 2);
     lua_pushnumber(L, a->x * b->x + a->y * b->y + a->z * b->z);
     return 1;
 }
 
-int VxVectorCross(lua_State *L) {
+static int VxVectorCross(lua_State *L) {
     auto *a = CheckVxVector(L, 1);
     auto *b = CheckVxVector(L, 2);
     PushVxVector(L,
@@ -690,7 +688,7 @@ int VxVectorCross(lua_State *L) {
 }
 
 template <typename BinaryOp>
-int VxVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
+static int VxVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
     float ax, ay, az;
     float bx, by, bz;
     if (!ReadVectorOperand(L, 1, ax, ay, az) || !ReadVectorOperand(L, 2, bx, by, bz)) {
@@ -700,36 +698,36 @@ int VxVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
     return 1;
 }
 
-int VxVectorAdd(lua_State *L) {
+static int VxVectorAdd(lua_State *L) {
     return VxVectorBinary(L, "VxVector addition", [](float a, float b) { return a + b; });
 }
 
-int VxVectorSub(lua_State *L) {
+static int VxVectorSub(lua_State *L) {
     return VxVectorBinary(L, "VxVector subtraction", [](float a, float b) { return a - b; });
 }
 
-int VxVectorMul(lua_State *L) {
+static int VxVectorMul(lua_State *L) {
     return VxVectorBinary(L, "VxVector multiplication", [](float a, float b) { return a * b; });
 }
 
-int VxVectorDiv(lua_State *L) {
+static int VxVectorDiv(lua_State *L) {
     return VxVectorBinary(L, "VxVector division", [](float a, float b) { return a / b; });
 }
 
-int VxVectorUnm(lua_State *L) {
+static int VxVectorUnm(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     PushVxVector(L, -value->x, -value->y, -value->z);
     return 1;
 }
 
-int VxVectorEq(lua_State *L) {
+static int VxVectorEq(lua_State *L) {
     auto *a = TestVxVector(L, 1);
     auto *b = TestVxVector(L, 2);
     lua_pushboolean(L, a && b && a->x == b->x && a->y == b->y && a->z == b->z);
     return 1;
 }
 
-int VxVectorToString(lua_State *L) {
+static int VxVectorToString(lua_State *L) {
     auto *value = CheckVxVector(L, 1);
     char buffer[96];
     std::snprintf(buffer, sizeof(buffer), "VxVector(%g, %g, %g)", value->x, value->y, value->z);
@@ -737,34 +735,34 @@ int VxVectorToString(lua_State *L) {
     return 1;
 }
 
-int VxVectorAxisX(lua_State *L) {
+static int VxVectorAxisX(lua_State *L) {
     PushVxVector(L, 1.0f, 0.0f, 0.0f);
     return 1;
 }
 
-int VxVectorAxisY(lua_State *L) {
+static int VxVectorAxisY(lua_State *L) {
     PushVxVector(L, 0.0f, 1.0f, 0.0f);
     return 1;
 }
 
-int VxVectorAxisZ(lua_State *L) {
+static int VxVectorAxisZ(lua_State *L) {
     PushVxVector(L, 0.0f, 0.0f, 1.0f);
     return 1;
 }
 
-int Vx2DVectorMagnitude(lua_State *L) {
+static int Vx2DVectorMagnitude(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     lua_pushnumber(L, Magnitude(value->x, value->y));
     return 1;
 }
 
-int Vx2DVectorSquareMagnitude(lua_State *L) {
+static int Vx2DVectorSquareMagnitude(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     lua_pushnumber(L, value->x * value->x + value->y * value->y);
     return 1;
 }
 
-int Vx2DVectorNumericIndex(lua_State *L) {
+static int Vx2DVectorNumericIndex(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     switch (luaL_checkinteger(L, 2)) {
     case 0:
@@ -779,7 +777,7 @@ int Vx2DVectorNumericIndex(lua_State *L) {
     }
 }
 
-int Vx2DVectorNumericNewIndex(lua_State *L) {
+static int Vx2DVectorNumericNewIndex(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     const float number = static_cast<float>(luaL_checknumber(L, 3));
     switch (luaL_checkinteger(L, 2)) {
@@ -794,7 +792,7 @@ int Vx2DVectorNumericNewIndex(lua_State *L) {
     }
 }
 
-int Vx2DVectorSet(lua_State *L) {
+static int Vx2DVectorSet(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     value->x = static_cast<float>(luaL_checknumber(L, 2));
     value->y = static_cast<float>(luaL_checknumber(L, 3));
@@ -802,7 +800,7 @@ int Vx2DVectorSet(lua_State *L) {
     return 1;
 }
 
-int Vx2DVectorNormalize(lua_State *L) {
+static int Vx2DVectorNormalize(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     const float magnitude = Magnitude(value->x, value->y);
     if (magnitude > 0.0f) {
@@ -813,7 +811,7 @@ int Vx2DVectorNormalize(lua_State *L) {
     return 1;
 }
 
-int Vx2DVectorDot(lua_State *L) {
+static int Vx2DVectorDot(lua_State *L) {
     auto *a = CheckVx2DVector(L, 1);
     auto *b = CheckVx2DVector(L, 2);
     lua_pushnumber(L, a->x * b->x + a->y * b->y);
@@ -821,7 +819,7 @@ int Vx2DVectorDot(lua_State *L) {
 }
 
 template <typename BinaryOp>
-int Vx2DVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
+static int Vx2DVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
     float ax, ay;
     float bx, by;
     if (!ReadVector2Operand(L, 1, ax, ay) || !ReadVector2Operand(L, 2, bx, by)) {
@@ -831,36 +829,36 @@ int Vx2DVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
     return 1;
 }
 
-int Vx2DVectorAdd(lua_State *L) {
+static int Vx2DVectorAdd(lua_State *L) {
     return Vx2DVectorBinary(L, "Vx2DVector addition", [](float a, float b) { return a + b; });
 }
 
-int Vx2DVectorSub(lua_State *L) {
+static int Vx2DVectorSub(lua_State *L) {
     return Vx2DVectorBinary(L, "Vx2DVector subtraction", [](float a, float b) { return a - b; });
 }
 
-int Vx2DVectorMul(lua_State *L) {
+static int Vx2DVectorMul(lua_State *L) {
     return Vx2DVectorBinary(L, "Vx2DVector multiplication", [](float a, float b) { return a * b; });
 }
 
-int Vx2DVectorDiv(lua_State *L) {
+static int Vx2DVectorDiv(lua_State *L) {
     return Vx2DVectorBinary(L, "Vx2DVector division", [](float a, float b) { return a / b; });
 }
 
-int Vx2DVectorUnm(lua_State *L) {
+static int Vx2DVectorUnm(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     PushVx2DVector(L, -value->x, -value->y);
     return 1;
 }
 
-int Vx2DVectorEq(lua_State *L) {
+static int Vx2DVectorEq(lua_State *L) {
     auto *a = TestVx2DVector(L, 1);
     auto *b = TestVx2DVector(L, 2);
     lua_pushboolean(L, a && b && a->x == b->x && a->y == b->y);
     return 1;
 }
 
-int Vx2DVectorToString(lua_State *L) {
+static int Vx2DVectorToString(lua_State *L) {
     auto *value = CheckVx2DVector(L, 1);
     char buffer[80];
     std::snprintf(buffer, sizeof(buffer), "Vx2DVector(%g, %g)", value->x, value->y);
@@ -868,12 +866,12 @@ int Vx2DVectorToString(lua_State *L) {
     return 1;
 }
 
-void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+static void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
     lua_pushcfunction(L, function);
     lua_setfield(L, -2, name);
 }
 
-void RegisterClassTable(lua_State *L, const char *name, lua_CFunction constructor, lua_CFunction callConstructor) {
+static void RegisterClassTable(lua_State *L, const char *name, lua_CFunction constructor, lua_CFunction callConstructor) {
     lua_newtable(L);
     SetFunction(L, "new", constructor);
 
@@ -892,7 +890,7 @@ void RegisterClassTable(lua_State *L, const char *name, lua_CFunction constructo
     lua_pop(L, 2);
 }
 
-void RegisterVxVectorType(lua_State *L) {
+static void RegisterVxVectorType(lua_State *L) {
     tas::lua::LuaUserdataRegistry<VxVector>(L, kVxVectorMt)
         .Property<&VxVector::x>("x")
         .Property<&VxVector::y>("y")
@@ -920,7 +918,7 @@ void RegisterVxVectorType(lua_State *L) {
     lua_pop(L, 1);
 }
 
-void RegisterVx2DVectorType(lua_State *L) {
+static void RegisterVx2DVectorType(lua_State *L) {
     tas::lua::LuaUserdataRegistry<Vx2DVector>(L, kVx2DVectorMt)
         .Property<&Vx2DVector::x>("x")
         .Property<&Vx2DVector::y>("y")
@@ -941,7 +939,7 @@ void RegisterVx2DVectorType(lua_State *L) {
     RegisterClassTable(L, "Vx2DVector", Vx2DVectorNew, Vx2DVectorCall);
 }
 
-void RegisterVxVector4Type(lua_State *L) {
+static void RegisterVxVector4Type(lua_State *L) {
     tas::lua::LuaUserdataRegistry<VxVector4>(L, kVxVector4Mt)
         .Property<&VxVector4::x>("x")
         .Property<&VxVector4::y>("y")
@@ -964,7 +962,7 @@ void RegisterVxVector4Type(lua_State *L) {
     RegisterClassTable(L, "VxVector4", VxVector4New, VxVector4Call);
 }
 
-void RegisterVxBboxType(lua_State *L) {
+static void RegisterVxBboxType(lua_State *L) {
     tas::lua::LuaUserdataRegistry<VxBbox>(L, kVxBboxMt)
         .Property("min", VxBboxMin, VxBboxSetMin)
         .Property("max", VxBboxMax, VxBboxSetMax)
@@ -982,7 +980,7 @@ void RegisterVxBboxType(lua_State *L) {
     RegisterClassTable(L, "VxBbox", VxBboxNew, VxBboxCall);
 }
 
-void RegisterVxCompressedVectorType(lua_State *L) {
+static void RegisterVxCompressedVectorType(lua_State *L) {
     tas::lua::LuaUserdataRegistry<VxCompressedVector>(L, kVxCompressedVectorMt)
         .Property<&VxCompressedVector::xa>("xa")
         .Property<&VxCompressedVector::ya>("ya")
@@ -992,7 +990,7 @@ void RegisterVxCompressedVectorType(lua_State *L) {
     RegisterClassTable(L, "VxCompressedVector", VxCompressedVectorNew, VxCompressedVectorCall);
 }
 
-void RegisterVxCompressedVectorOldType(lua_State *L) {
+static void RegisterVxCompressedVectorOldType(lua_State *L) {
     tas::lua::LuaUserdataRegistry<VxCompressedVectorOld>(L, kVxCompressedVectorOldMt)
         .Property<&VxCompressedVectorOld::xa>("xa")
         .Property<&VxCompressedVectorOld::ya>("ya")
@@ -1001,8 +999,6 @@ void RegisterVxCompressedVectorOldType(lua_State *L) {
 
     RegisterClassTable(L, "VxCompressedVectorOld", VxCompressedVectorOldNew, VxCompressedVectorOldCall);
 }
-
-} // namespace
 
 void LuaApi::RegisterVxVector(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

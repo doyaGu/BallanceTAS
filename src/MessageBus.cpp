@@ -10,12 +10,11 @@
 #include "Logger.h"
 #include "TASEngine.h"
 
-namespace {
-tas::lua::LuaValue MakeStringEntry(const std::string &value) {
+static tas::lua::LuaValue MakeStringEntry(const std::string &value) {
     return tas::lua::LuaValue{value};
 }
 
-std::shared_ptr<tas::lua::LuaValue::Table> MakeMessageTable(const MessageBus::Message &msg) {
+static std::shared_ptr<tas::lua::LuaValue::Table> MakeMessageTable(const MessageBus::Message &msg) {
     auto table = std::make_shared<tas::lua::LuaValue::Table>();
     auto add = [&](std::string key, tas::lua::LuaValue value) {
         table->entries.push_back({
@@ -34,7 +33,6 @@ std::shared_ptr<tas::lua::LuaValue::Table> MakeMessageTable(const MessageBus::Me
     add("is_request", tas::lua::LuaValue{!msg.isResponse && !msg.correlationId.empty()});
     return table;
 }
-} // namespace
 
 MessageBus::MessageBus(TASEngine *engine) : m_Engine(engine), m_MessageQueue(m_QueueConfig.maxQueueSize) {
     if (!m_Engine) {

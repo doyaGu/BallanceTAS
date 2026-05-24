@@ -5,13 +5,11 @@
 
 #include <string>
 
-namespace {
-
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-RecordPlayer *RequireRecordPlayer(lua_State *L, const char *functionName) {
+static RecordPlayer *RequireRecordPlayer(lua_State *L, const char *functionName) {
     auto *context = GetContext(L);
     auto *recordPlayer = context ? context->GetRecordPlayer() : nullptr;
     if (!recordPlayer) {
@@ -20,7 +18,7 @@ RecordPlayer *RequireRecordPlayer(lua_State *L, const char *functionName) {
     return recordPlayer;
 }
 
-size_t CheckFrame(lua_State *L, int index, const char *name) {
+static size_t CheckFrame(lua_State *L, int index, const char *name) {
     const lua_Integer value = luaL_checkinteger(L, index);
     if (value < 0) {
         luaL_error(L, "%s must be non-negative", name);
@@ -28,11 +26,11 @@ size_t CheckFrame(lua_State *L, int index, const char *name) {
     return static_cast<size_t>(value);
 }
 
-void PushString(lua_State *L, const std::string &value) {
+static void PushString(lua_State *L, const std::string &value) {
     lua_pushlstring(L, value.data(), value.size());
 }
 
-int Load(lua_State *L) {
+static int Load(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     if (!path || !*path) {
         return luaL_error(L, "record.load: path cannot be empty");
@@ -41,55 +39,55 @@ int Load(lua_State *L) {
     return 1;
 }
 
-int Stop(lua_State *L) {
+static int Stop(lua_State *L) {
     RequireRecordPlayer(L, "record.stop")->Stop();
     return 0;
 }
 
-int Pause(lua_State *L) {
+static int Pause(lua_State *L) {
     RequireRecordPlayer(L, "record.pause")->Pause();
     return 0;
 }
 
-int Resume(lua_State *L) {
+static int Resume(lua_State *L) {
     RequireRecordPlayer(L, "record.resume")->Resume();
     return 0;
 }
 
-int Seek(lua_State *L) {
+static int Seek(lua_State *L) {
     lua_pushboolean(L, RequireRecordPlayer(L, "record.seek")->Seek(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
-int IsPlaying(lua_State *L) {
+static int IsPlaying(lua_State *L) {
     auto *context = GetContext(L);
     auto *recordPlayer = context ? context->GetRecordPlayer() : nullptr;
     lua_pushboolean(L, recordPlayer && recordPlayer->IsPlaying());
     return 1;
 }
 
-int IsPaused(lua_State *L) {
+static int IsPaused(lua_State *L) {
     auto *context = GetContext(L);
     auto *recordPlayer = context ? context->GetRecordPlayer() : nullptr;
     lua_pushboolean(L, recordPlayer && recordPlayer->IsPaused());
     return 1;
 }
 
-int GetCurrentFrame(lua_State *L) {
+static int GetCurrentFrame(lua_State *L) {
     auto *context = GetContext(L);
     auto *recordPlayer = context ? context->GetRecordPlayer() : nullptr;
     lua_pushinteger(L, recordPlayer ? static_cast<lua_Integer>(recordPlayer->GetCurrentFrame()) : 0);
     return 1;
 }
 
-int GetTotalFrames(lua_State *L) {
+static int GetTotalFrames(lua_State *L) {
     auto *context = GetContext(L);
     auto *recordPlayer = context ? context->GetRecordPlayer() : nullptr;
     lua_pushinteger(L, recordPlayer ? static_cast<lua_Integer>(recordPlayer->GetTotalFrames()) : 0);
     return 1;
 }
 
-void PushFrameInput(lua_State *L, const RecordFrameData &frameData) {
+static void PushFrameInput(lua_State *L, const RecordFrameData &frameData) {
     lua_newtable(L);
     lua_pushnumber(L, frameData.deltaTime);
     lua_setfield(L, -2, "delta_time");
@@ -110,7 +108,7 @@ void PushFrameInput(lua_State *L, const RecordFrameData &frameData) {
     lua_setfield(L, -2, "keys");
 }
 
-int GetFrameInput(lua_State *L) {
+static int GetFrameInput(lua_State *L) {
     auto *recordPlayer = RequireRecordPlayer(L, "record.get_frame_input");
     RecordFrameData data;
     if (!recordPlayer->GetFrameInput(CheckFrame(L, 1, "frame"), &data)) {
@@ -121,7 +119,7 @@ int GetFrameInput(lua_State *L) {
     return 1;
 }
 
-int SetFrameKey(lua_State *L) {
+static int SetFrameKey(lua_State *L) {
     auto *recordPlayer = RequireRecordPlayer(L, "record.set_frame_key");
     const size_t frame = CheckFrame(L, 1, "frame");
     const char *key = luaL_checkstring(L, 2);
@@ -130,48 +128,48 @@ int SetFrameKey(lua_State *L) {
     return 1;
 }
 
-int GetFrameDeltaTime(lua_State *L) {
+static int GetFrameDeltaTime(lua_State *L) {
     lua_pushnumber(L, RequireRecordPlayer(L, "record.get_frame_delta_time")->GetFrameDeltaTimeByFrame(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
-int SetFrameDeltaTime(lua_State *L) {
+static int SetFrameDeltaTime(lua_State *L) {
     auto *recordPlayer = RequireRecordPlayer(L, "record.set_frame_delta_time");
     lua_pushboolean(L, recordPlayer->SetFrameDeltaTime(CheckFrame(L, 1, "frame"), static_cast<float>(luaL_checknumber(L, 2))));
     return 1;
 }
 
-int InsertFrames(lua_State *L) {
+static int InsertFrames(lua_State *L) {
     lua_pushboolean(L, RequireRecordPlayer(L, "record.insert_frames")->InsertFrames(CheckFrame(L, 1, "start_frame"), CheckFrame(L, 2, "count")));
     return 1;
 }
 
-int DeleteFrames(lua_State *L) {
+static int DeleteFrames(lua_State *L) {
     lua_pushboolean(L, RequireRecordPlayer(L, "record.delete_frames")->DeleteFrames(CheckFrame(L, 1, "start_frame"), CheckFrame(L, 2, "count")));
     return 1;
 }
 
-int SeekRelative(lua_State *L) {
+static int SeekRelative(lua_State *L) {
     lua_pushboolean(L, RequireRecordPlayer(L, "record.seek_relative")->SeekRelative(static_cast<int>(luaL_checkinteger(L, 1))));
     return 1;
 }
 
-int GetProgress(lua_State *L) {
+static int GetProgress(lua_State *L) {
     lua_pushnumber(L, RequireRecordPlayer(L, "record.get_progress")->GetProgress());
     return 1;
 }
 
-int GetInputString(lua_State *L) {
+static int GetInputString(lua_State *L) {
     PushString(L, RequireRecordPlayer(L, "record.get_input_string")->GetInputString(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
-int Validate(lua_State *L) {
+static int Validate(lua_State *L) {
     lua_pushboolean(L, RequireRecordPlayer(L, "record.validate")->Validate());
     return 1;
 }
 
-int Save(lua_State *L) {
+static int Save(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     if (!path || !*path) {
         return luaL_error(L, "record.save: path cannot be empty");
@@ -180,31 +178,31 @@ int Save(lua_State *L) {
     return 1;
 }
 
-int ExportInputs(lua_State *L) {
+static int ExportInputs(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     const char *format = luaL_optstring(L, 2, "txt");
     lua_pushboolean(L, RequireRecordPlayer(L, "record.export_inputs")->ExportInputs(path ? path : "", format ? format : ""));
     return 1;
 }
 
-void SetRecordFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetRecordFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-int UnsupportedRecordFunction(lua_State *L) {
+static int UnsupportedRecordFunction(lua_State *L) {
     const char *name = lua_tostring(L, lua_upvalueindex(1));
     return luaL_error(L, "record.%s: compatibility entry exists but is not implemented in the Lua C API migration yet", name ? name : "<unknown>");
 }
 
-void SetUnsupportedRecordFunction(lua_State *L, const char *name) {
+static void SetUnsupportedRecordFunction(lua_State *L, const char *name) {
     lua_pushstring(L, name);
     lua_pushcclosure(L, UnsupportedRecordFunction, 1);
     lua_setfield(L, -2, name);
 }
 
-void RegisterMarkerType(lua_State *L) {
+static void RegisterMarkerType(lua_State *L) {
     lua_newtable(L);
     lua_pushinteger(L, static_cast<lua_Integer>(MarkerType::Bookmark));
     lua_setfield(L, -2, "BOOKMARK");
@@ -220,8 +218,6 @@ void RegisterMarkerType(lua_State *L) {
     lua_setfield(L, -2, "CUSTOM");
     lua_setfield(L, -2, "MarkerType");
 }
-
-} // namespace
 
 void LuaApi::RegisterRecordApi(lua_State *state, ScriptContext *context) {
     if (!state || !context) {

@@ -6,9 +6,7 @@
 #include "Logger.h"
 #include "TASEngine.h"
 
-namespace {
-
-std::string TrimSharedKey(const std::string &key) {
+static std::string TrimSharedKey(const std::string &key) {
     const size_t first = key.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) {
         return {};
@@ -17,8 +15,6 @@ std::string TrimSharedKey(const std::string &key) {
     const size_t last = key.find_last_not_of(" \t\r\n");
     return key.substr(first, last - first + 1);
 }
-
-} // namespace
 
 SharedDataManager::SharedDataManager(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {

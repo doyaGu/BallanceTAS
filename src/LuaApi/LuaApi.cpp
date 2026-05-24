@@ -4,9 +4,7 @@
 
 #include "ScriptContext.h"
 
-namespace {
-
-void EnsureTasTable(lua_State *state) {
+static void EnsureTasTable(lua_State *state) {
     lua_getglobal(state, "tas");
     if (lua_istable(state, -1)) {
         lua_pop(state, 1);
@@ -16,8 +14,6 @@ void EnsureTasTable(lua_State *state) {
     lua_newtable(state);
     lua_setglobal(state, "tas");
 }
-
-} // namespace
 
 void LuaApi::Register(ScriptContext *context) {
     if (!context) {

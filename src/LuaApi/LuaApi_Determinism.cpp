@@ -12,18 +12,16 @@
 #include <cstdio>
 #include <filesystem>
 
-namespace {
-
-DeterminismVerifier *GetVerifier(lua_State *L) {
+static DeterminismVerifier *GetVerifier(lua_State *L) {
     auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
     return context ? context->GetDeterminismVerifier() : nullptr;
 }
 
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-std::filesystem::path ProjectTraceDirectory(const TASProject *project) {
+static std::filesystem::path ProjectTraceDirectory(const TASProject *project) {
     if (!project) {
         return {};
     }
@@ -35,7 +33,7 @@ std::filesystem::path ProjectTraceDirectory(const TASProject *project) {
     return path;
 }
 
-Result<std::filesystem::path> ResolveTracePath(lua_State *L, int index) {
+static Result<std::filesystem::path> ResolveTracePath(lua_State *L, int index) {
     auto *context = GetContext(L);
     auto *project = context ? context->GetCurrentProject() : nullptr;
     tas::determinism::TracePathRequest request;
@@ -48,7 +46,7 @@ Result<std::filesystem::path> ResolveTracePath(lua_State *L, int index) {
     return tas::determinism::ResolveTracePath(request);
 }
 
-void PushResultErrorOrNil(lua_State *L, const Result<void> &result) {
+static void PushResultErrorOrNil(lua_State *L, const Result<void> &result) {
     if (result.IsOk()) {
         lua_pushnil(L);
         return;
@@ -57,7 +55,7 @@ void PushResultErrorOrNil(lua_State *L, const Result<void> &result) {
     lua_pushlstring(L, error.message.data(), error.message.size());
 }
 
-void PushStatus(lua_State *L, const DeterminismVerifier::Status &status) {
+static void PushStatus(lua_State *L, const DeterminismVerifier::Status &status) {
     lua_newtable(L);
 
     const char *mode = "idle";
@@ -91,13 +89,13 @@ void PushStatus(lua_State *L, const DeterminismVerifier::Status &status) {
     lua_setfield(L, -2, "current_path");
 }
 
-void SetDeterminismFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetDeterminismFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-int StartRecording(lua_State *L) {
+static int StartRecording(lua_State *L) {
     auto *verifier = GetVerifier(L);
     if (!verifier) {
         lua_pushstring(L, "DeterminismVerifier not available");
@@ -112,7 +110,7 @@ int StartRecording(lua_State *L) {
     return 1;
 }
 
-int StartVerification(lua_State *L) {
+static int StartVerification(lua_State *L) {
     auto *verifier = GetVerifier(L);
     if (!verifier) {
         lua_pushstring(L, "DeterminismVerifier not available");
@@ -127,7 +125,7 @@ int StartVerification(lua_State *L) {
     return 1;
 }
 
-int Stop(lua_State *L) {
+static int Stop(lua_State *L) {
     auto *verifier = GetVerifier(L);
     if (verifier) {
         verifier->Stop();
@@ -135,7 +133,7 @@ int Stop(lua_State *L) {
     return 0;
 }
 
-int GetCurrentHash(lua_State *L) {
+static int GetCurrentHash(lua_State *L) {
     auto *verifier = GetVerifier(L);
     char buffer[19];
     std::snprintf(buffer,
@@ -146,13 +144,13 @@ int GetCurrentHash(lua_State *L) {
     return 1;
 }
 
-int GetStatus(lua_State *L) {
+static int GetStatus(lua_State *L) {
     auto *verifier = GetVerifier(L);
     PushStatus(L, verifier ? verifier->GetStatus() : DeterminismVerifier::Status{});
     return 1;
 }
 
-int OfflineDiff(lua_State *L) {
+static int OfflineDiff(lua_State *L) {
     const char *pathA = luaL_checkstring(L, 1);
     const char *pathB = luaL_checkstring(L, 2);
     auto result = DeterminismVerifier::OfflineDiff(pathA ? pathA : "", pathB ? pathB : "");
@@ -177,8 +175,6 @@ int OfflineDiff(lua_State *L) {
     lua_setfield(L, -2, "right_ticks");
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterDeterminismApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);

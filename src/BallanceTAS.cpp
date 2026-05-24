@@ -18,10 +18,8 @@
 #include "GameEvents.h"
 #include "HookManager.h"
 
-namespace {
-
 template <typename Event>
-void PublishEngineEvent(BallanceTAS *mod, const Event &event) {
+static void PublishEngineEvent(BallanceTAS *mod, const Event &event) {
     if (!mod) {
         return;
     }
@@ -32,8 +30,6 @@ void PublishEngineEvent(BallanceTAS *mod, const Event &event) {
         eventBus->Publish(event);
     }
 }
-
-} // namespace
 
 // Global instance pointer required by BML
 BallanceTAS *g_Mod;

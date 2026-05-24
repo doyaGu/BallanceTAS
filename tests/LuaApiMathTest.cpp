@@ -5,9 +5,7 @@
 #include "LuaRuntime/LuaProtectedCall.h"
 #include "LuaRuntime/LuaState.h"
 
-namespace {
-
-void RegisterMathApis(lua_State *L) {
+static void RegisterMathApis(lua_State *L) {
     LuaApi::RegisterVxVector(L);
     LuaApi::RegisterVxColor(L);
     LuaApi::RegisterVxRect(L);
@@ -15,14 +13,12 @@ void RegisterMathApis(lua_State *L) {
     LuaApi::RegisterVxMatrix(L);
 }
 
-void RunScript(tas::lua::LuaState &state, const char *script, const char *chunkName) {
+static void RunScript(tas::lua::LuaState &state, const char *script, const char *chunkName) {
     auto load = state.LoadString(script, chunkName);
     ASSERT_TRUE(load.IsOk()) << load.GetError().Format();
     auto call = tas::lua::ProtectedCall(state.Get(), 0, 0);
     ASSERT_TRUE(call.IsOk()) << call.GetError().Format();
 }
-
-} // namespace
 
 TEST(LuaApiMathTest, VxVectorOwnedUserdataSupportsFieldsIndexMethodsAndOperators) {
     tas::lua::LuaState state;

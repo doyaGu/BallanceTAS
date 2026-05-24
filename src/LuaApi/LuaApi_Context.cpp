@@ -11,27 +11,25 @@
 
 #include <atomic>
 
-namespace {
-
 std::atomic<uint64_t> g_RequestId{0};
 
-ScriptContext *GetContext(lua_State *state) {
+static ScriptContext *GetContext(lua_State *state) {
     return static_cast<ScriptContext *>(lua_touserdata(state, lua_upvalueindex(1)));
 }
 
-SharedDataManager *GetShared(lua_State *state) {
+static SharedDataManager *GetShared(lua_State *state) {
     ScriptContext *context = GetContext(state);
     ScriptContextManager *manager = context ? context->GetScriptContextManager() : nullptr;
     return manager ? manager->GetSharedDataManager() : nullptr;
 }
 
-MessageBus *GetMessageBus(lua_State *state) {
+static MessageBus *GetMessageBus(lua_State *state) {
     ScriptContext *context = GetContext(state);
     ScriptContextManager *manager = context ? context->GetScriptContextManager() : nullptr;
     return manager ? manager->GetMessageBus() : nullptr;
 }
 
-int ContextName(lua_State *state) {
+static int ContextName(lua_State *state) {
     ScriptContext *context = GetContext(state);
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "tas.context.get_name(): expected no arguments");
@@ -45,7 +43,7 @@ int ContextName(lua_State *state) {
     return 1;
 }
 
-int ContextType(lua_State *state) {
+static int ContextType(lua_State *state) {
     ScriptContext *context = GetContext(state);
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "tas.context.get_type(): expected no arguments");
@@ -54,7 +52,7 @@ int ContextType(lua_State *state) {
     return 1;
 }
 
-std::string CheckKey(lua_State *state, int index, const char *functionName) {
+static std::string CheckKey(lua_State *state, int index, const char *functionName) {
     size_t length = 0;
     const char *key = luaL_checklstring(state, index, &length);
     if (!key || length == 0) {
@@ -63,7 +61,7 @@ std::string CheckKey(lua_State *state, int index, const char *functionName) {
     return std::string(key, length);
 }
 
-tas::lua::LuaValue CheckPortableValue(lua_State *state, int index, const char *functionName) {
+static tas::lua::LuaValue CheckPortableValue(lua_State *state, int index, const char *functionName) {
     auto value = tas::lua::LuaValue::FromStack(state, index);
     if (value.IsError()) {
         luaL_error(state, "%s: %s", functionName, value.GetError().message.c_str());
@@ -71,7 +69,7 @@ tas::lua::LuaValue CheckPortableValue(lua_State *state, int index, const char *f
     return value.Unwrap();
 }
 
-int SharedSet(lua_State *state) {
+static int SharedSet(lua_State *state) {
     const int argc = lua_gettop(state);
     if (argc != 2 && argc != 3) {
         return luaL_error(state, "tas.shared.set(key, value[, ttl_ms]): expected 2 or 3 arguments");
@@ -88,7 +86,7 @@ int SharedSet(lua_State *state) {
     return 1;
 }
 
-int SharedGet(lua_State *state) {
+static int SharedGet(lua_State *state) {
     const int argc = lua_gettop(state);
     if (argc != 1 && argc != 2) {
         return luaL_error(state, "tas.shared.get(key[, default]): expected 1 or 2 arguments");
@@ -107,7 +105,7 @@ int SharedGet(lua_State *state) {
     return 1;
 }
 
-int SharedHas(lua_State *state) {
+static int SharedHas(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "tas.shared.has(key): expected key");
     }
@@ -116,7 +114,7 @@ int SharedHas(lua_State *state) {
     return 1;
 }
 
-int SharedRemove(lua_State *state) {
+static int SharedRemove(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "tas.shared.remove(key): expected key");
     }
@@ -128,7 +126,7 @@ int SharedRemove(lua_State *state) {
     return 1;
 }
 
-int SharedClear(lua_State *state) {
+static int SharedClear(lua_State *state) {
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "tas.shared.clear(): expected no arguments");
     }
@@ -140,7 +138,7 @@ int SharedClear(lua_State *state) {
     return 0;
 }
 
-int SharedKeys(lua_State *state) {
+static int SharedKeys(lua_State *state) {
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "tas.shared.keys(): expected no arguments");
     }
@@ -163,7 +161,7 @@ int SharedKeys(lua_State *state) {
     return 1;
 }
 
-int SharedWatch(lua_State *state) {
+static int SharedWatch(lua_State *state) {
     if (lua_gettop(state) != 2 || !lua_isfunction(state, 2)) {
         return luaL_error(state, "tas.shared.watch(key, fn): expected key and function");
     }
@@ -194,7 +192,7 @@ int SharedWatch(lua_State *state) {
     return 1;
 }
 
-int SharedUnwatch(lua_State *state) {
+static int SharedUnwatch(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "tas.shared.unwatch(key): expected key");
     }
@@ -208,7 +206,7 @@ int SharedUnwatch(lua_State *state) {
     return 1;
 }
 
-int MessageSubscribe(lua_State *state) {
+static int MessageSubscribe(lua_State *state) {
     if (lua_gettop(state) != 2 || !lua_isfunction(state, 2)) {
         return luaL_error(state, "tas.message.subscribe(type, fn): expected type and function");
     }
@@ -224,7 +222,7 @@ int MessageSubscribe(lua_State *state) {
     return 1;
 }
 
-int MessageUnsubscribe(lua_State *state) {
+static int MessageUnsubscribe(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "tas.message.unsubscribe(type): expected type");
     }
@@ -238,7 +236,7 @@ int MessageUnsubscribe(lua_State *state) {
     return 1;
 }
 
-int MessageSend(lua_State *state) {
+static int MessageSend(lua_State *state) {
     const int argc = lua_gettop(state);
     if (argc != 3) {
         return luaL_error(state, "tas.message.send(target, type, payload): expected 3 arguments");
@@ -257,7 +255,7 @@ int MessageSend(lua_State *state) {
     return 1;
 }
 
-int MessageBroadcast(lua_State *state) {
+static int MessageBroadcast(lua_State *state) {
     if (lua_gettop(state) != 2) {
         return luaL_error(state, "tas.message.broadcast(type, data): expected type and data");
     }
@@ -272,7 +270,7 @@ int MessageBroadcast(lua_State *state) {
     return 1;
 }
 
-int MessageRespond(lua_State *state) {
+static int MessageRespond(lua_State *state) {
     if (lua_gettop(state) != 3) {
         return luaL_error(state, "tas.message.respond(target, correlation_id, data): expected 3 arguments");
     }
@@ -288,7 +286,7 @@ int MessageRespond(lua_State *state) {
     return 1;
 }
 
-int MessageRequestAsync(lua_State *state) {
+static int MessageRequestAsync(lua_State *state) {
     if (lua_gettop(state) != 3) {
         return luaL_error(state, "tas.message.request_async(target, type, data): expected 3 arguments");
     }
@@ -309,13 +307,13 @@ int MessageRequestAsync(lua_State *state) {
     return 1;
 }
 
-void SetClosure(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetClosure(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(state, context);
     lua_pushcclosure(state, function, 1);
     lua_setfield(state, -2, name);
 }
 
-void RegisterSharedTable(lua_State *state, ScriptContext *context) {
+static void RegisterSharedTable(lua_State *state, ScriptContext *context) {
     lua_newtable(state);
     SetClosure(state, "set", SharedSet, context);
     SetClosure(state, "get", SharedGet, context);
@@ -327,7 +325,7 @@ void RegisterSharedTable(lua_State *state, ScriptContext *context) {
     SetClosure(state, "unwatch", SharedUnwatch, context);
 }
 
-void RegisterMessageTable(lua_State *state, ScriptContext *context) {
+static void RegisterMessageTable(lua_State *state, ScriptContext *context) {
     lua_newtable(state);
     SetClosure(state, "send", MessageSend, context);
     SetClosure(state, "broadcast", MessageBroadcast, context);
@@ -336,8 +334,6 @@ void RegisterMessageTable(lua_State *state, ScriptContext *context) {
     SetClosure(state, "respond", MessageRespond, context);
     SetClosure(state, "request_async", MessageRequestAsync, context);
 }
-
-} // namespace
 
 void LuaApi::RegisterContextCommunicationApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);

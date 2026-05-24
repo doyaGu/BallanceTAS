@@ -6,28 +6,26 @@
 #include <VxMath.h>
 #include <cstdio>
 
-namespace {
-
 constexpr const char *kVxColorMt = "BallanceTAS.VxColor";
 
-VxColor *CheckVxColor(lua_State *L, int index) {
+static VxColor *CheckVxColor(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxColor>(L, index, kVxColorMt);
 }
 
-VxColor *TestVxColor(lua_State *L, int index) {
+static VxColor *TestVxColor(lua_State *L, int index) {
     auto *box = static_cast<tas::lua::UserdataBox<VxColor> *>(luaL_testudata(L, index, kVxColorMt));
     return box ? box->ptr : nullptr;
 }
 
-void PushVxColor(lua_State *L, const VxColor &value) {
+static void PushVxColor(lua_State *L, const VxColor &value) {
     tas::lua::PushOwnedUserdata<VxColor>(L, kVxColorMt, value);
 }
 
-void PushVxColor(lua_State *L, float r, float g, float b, float a) {
+static void PushVxColor(lua_State *L, float r, float g, float b, float a) {
     PushVxColor(L, VxColor(r, g, b, a));
 }
 
-int VxColorNew(lua_State *L) {
+static int VxColorNew(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         PushVxColor(L, VxColor());
@@ -48,88 +46,88 @@ int VxColorNew(lua_State *L) {
     return luaL_error(L, "VxColor(): expected 0, 1, 3, or 4 numeric arguments");
 }
 
-int VxColorCall(lua_State *L) {
+static int VxColorCall(lua_State *L) {
     lua_remove(L, 1);
     return VxColorNew(L);
 }
 
-int VxColorRGBA(lua_State *L) {
+static int VxColorRGBA(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(color->GetRGBA()));
     return 1;
 }
 
-int VxColorSetRGBA(lua_State *L) {
+static int VxColorSetRGBA(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     color->Set(static_cast<unsigned long>(luaL_checkinteger(L, 2)));
     return 0;
 }
 
-int VxColorRGB(lua_State *L) {
+static int VxColorRGB(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(color->GetRGB()));
     return 1;
 }
 
-int VxColorRed(lua_State *L) {
+static int VxColorRed(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(ColorGetRed(color->GetRGBA())));
     return 1;
 }
 
-int VxColorSetRed(lua_State *L) {
+static int VxColorSetRed(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     color->Set(ColorSetRed(color->GetRGBA(), static_cast<unsigned long>(luaL_checkinteger(L, 2))));
     return 0;
 }
 
-int VxColorGreen(lua_State *L) {
+static int VxColorGreen(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(ColorGetGreen(color->GetRGBA())));
     return 1;
 }
 
-int VxColorSetGreen(lua_State *L) {
+static int VxColorSetGreen(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     color->Set(ColorSetGreen(color->GetRGBA(), static_cast<unsigned long>(luaL_checkinteger(L, 2))));
     return 0;
 }
 
-int VxColorBlue(lua_State *L) {
+static int VxColorBlue(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(ColorGetBlue(color->GetRGBA())));
     return 1;
 }
 
-int VxColorSetBlue(lua_State *L) {
+static int VxColorSetBlue(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     color->Set(ColorSetBlue(color->GetRGBA(), static_cast<unsigned long>(luaL_checkinteger(L, 2))));
     return 0;
 }
 
-int VxColorAlpha(lua_State *L) {
+static int VxColorAlpha(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     lua_pushinteger(L, static_cast<lua_Integer>(ColorGetAlpha(color->GetRGBA())));
     return 1;
 }
 
-int VxColorSetAlpha(lua_State *L) {
+static int VxColorSetAlpha(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     color->Set(ColorSetAlpha(color->GetRGBA(), static_cast<unsigned long>(luaL_checkinteger(L, 2))));
     return 0;
 }
 
-int VxColorClear(lua_State *L) {
+static int VxColorClear(lua_State *L) {
     CheckVxColor(L, 1)->Clear();
     return 0;
 }
 
-int VxColorCheck(lua_State *L) {
+static int VxColorCheck(lua_State *L) {
     CheckVxColor(L, 1)->Check();
     return 0;
 }
 
-int VxColorSet(lua_State *L) {
+static int VxColorSet(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     const int argc = lua_gettop(L) - 1;
     if (argc == 1) {
@@ -150,14 +148,14 @@ int VxColorSet(lua_State *L) {
     return luaL_error(L, "VxColor:set(): expected 1, 3, or 4 numeric arguments");
 }
 
-int VxColorSquareDistance(lua_State *L) {
+static int VxColorSquareDistance(lua_State *L) {
     auto *a = CheckVxColor(L, 1);
     auto *b = CheckVxColor(L, 2);
     lua_pushnumber(L, a->GetSquareDistance(*b));
     return 1;
 }
 
-int VxColorConvert(lua_State *L) {
+static int VxColorConvert(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 3 || argc == 4) {
         const float r = static_cast<float>(luaL_checknumber(L, 1));
@@ -172,21 +170,21 @@ int VxColorConvert(lua_State *L) {
     return luaL_error(L, "VxColor.convert(): expected 3 or 4 numeric arguments");
 }
 
-int VxColorAdd(lua_State *L) {
+static int VxColorAdd(lua_State *L) {
     auto *a = CheckVxColor(L, 1);
     auto *b = CheckVxColor(L, 2);
     PushVxColor(L, *a + *b);
     return 1;
 }
 
-int VxColorSub(lua_State *L) {
+static int VxColorSub(lua_State *L) {
     auto *a = CheckVxColor(L, 1);
     auto *b = CheckVxColor(L, 2);
     PushVxColor(L, *a - *b);
     return 1;
 }
 
-int VxColorMul(lua_State *L) {
+static int VxColorMul(lua_State *L) {
     auto *a = TestVxColor(L, 1);
     auto *b = TestVxColor(L, 2);
     if (a && b) {
@@ -200,21 +198,21 @@ int VxColorMul(lua_State *L) {
     return luaL_error(L, "VxColor multiplication expects VxColor*VxColor or VxColor*number");
 }
 
-int VxColorDiv(lua_State *L) {
+static int VxColorDiv(lua_State *L) {
     auto *a = CheckVxColor(L, 1);
     auto *b = CheckVxColor(L, 2);
     PushVxColor(L, *a / *b);
     return 1;
 }
 
-int VxColorEq(lua_State *L) {
+static int VxColorEq(lua_State *L) {
     auto *a = TestVxColor(L, 1);
     auto *b = TestVxColor(L, 2);
     lua_pushboolean(L, a && b && *a == *b);
     return 1;
 }
 
-int VxColorToString(lua_State *L) {
+static int VxColorToString(lua_State *L) {
     auto *color = CheckVxColor(L, 1);
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "VxColor(%g, %g, %g, %g)", color->r, color->g, color->b, color->a);
@@ -222,12 +220,12 @@ int VxColorToString(lua_State *L) {
     return 1;
 }
 
-void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+static void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
     lua_pushcfunction(L, function);
     lua_setfield(L, -2, name);
 }
 
-void RegisterClassTable(lua_State *L) {
+static void RegisterClassTable(lua_State *L) {
     lua_newtable(L);
     SetFunction(L, "new", VxColorNew);
     SetFunction(L, "convert", VxColorConvert);
@@ -246,8 +244,6 @@ void RegisterClassTable(lua_State *L) {
     }
     lua_pop(L, 2);
 }
-
-} // namespace
 
 void LuaApi::RegisterVxColor(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

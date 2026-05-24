@@ -8,17 +8,15 @@
 
 #include "TASProject.h"
 
-namespace {
-
-tas::lua::LuaValue MakeValue(std::string value) {
+static tas::lua::LuaValue MakeValue(std::string value) {
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{std::move(value)});
 }
 
-tas::lua::LuaValue MakeValue(double value) {
+static tas::lua::LuaValue MakeValue(double value) {
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{static_cast<lua_Number>(value)});
 }
 
-tas::lua::LuaValue MakeManifest(std::string name,
+static tas::lua::LuaValue MakeManifest(std::string name,
                                 std::string scope,
                                 std::string trigger,
                                 std::string level = "",
@@ -41,7 +39,7 @@ tas::lua::LuaValue MakeManifest(std::string name,
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{std::move(table)});
 }
 
-std::unique_ptr<TASProject> MakeProject(std::string name,
+static std::unique_ptr<TASProject> MakeProject(std::string name,
                                         std::string scope,
                                         std::string trigger,
                                         std::string level = "") {
@@ -49,8 +47,6 @@ std::unique_ptr<TASProject> MakeProject(std::string name,
         "C:/TAS/" + name,
         MakeManifest(std::move(name), std::move(scope), std::move(trigger), std::move(level)));
 }
-
-} // namespace
 
 TEST(StartupProjectManagerTest, AutoSelectsFirstValidGlobalStartupProjectWhenNoProjectConfigured) {
     std::vector<std::unique_ptr<TASProject>> projects;

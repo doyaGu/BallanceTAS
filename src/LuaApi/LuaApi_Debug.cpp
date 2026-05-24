@@ -8,25 +8,23 @@
 
 #include <chrono>
 
-namespace {
-
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-void SetDebugFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetDebugFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-double CurrentMemoryKB(lua_State *L) {
+static double CurrentMemoryKB(lua_State *L) {
     const int kb = lua_gc(L, LUA_GCCOUNT, 0);
     const int bytes = lua_gc(L, LUA_GCCOUNTB, 0);
     return static_cast<double>(kb) + static_cast<double>(bytes) / 1024.0;
 }
 
-int Assert(lua_State *L) {
+static int Assert(lua_State *L) {
     const bool condition = lua_toboolean(L, 1) != 0;
     if (condition) {
         return 0;
@@ -35,7 +33,7 @@ int Assert(lua_State *L) {
     return luaL_error(L, "%s", message ? message : "Assertion failed!");
 }
 
-int SkipRendering(lua_State *L) {
+static int SkipRendering(lua_State *L) {
     auto *context = GetContext(L);
     auto *game = context ? context->GetGameInterface() : nullptr;
     const lua_Integer ticks = luaL_checkinteger(L, 1);
@@ -45,7 +43,7 @@ int SkipRendering(lua_State *L) {
     return 0;
 }
 
-int GetStackTrace(lua_State *L) {
+static int GetStackTrace(lua_State *L) {
     const int maxDepth = lua_gettop(L) >= 1 && !lua_isnil(L, 1) ? static_cast<int>(luaL_checkinteger(L, 1)) : 20;
     lua_newtable(L);
 
@@ -74,7 +72,7 @@ int GetStackTrace(lua_State *L) {
     return 1;
 }
 
-int MemorySnapshot(lua_State *L) {
+static int MemorySnapshot(lua_State *L) {
     const double memoryKB = CurrentMemoryKB(L);
     const auto now = std::chrono::system_clock::now().time_since_epoch();
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
@@ -89,7 +87,7 @@ int MemorySnapshot(lua_State *L) {
     return 1;
 }
 
-double ReadTableNumber(lua_State *L, int index, const char *field) {
+static double ReadTableNumber(lua_State *L, int index, const char *field) {
     index = lua_absindex(L, index);
     lua_getfield(L, index, field);
     const double value = lua_isnumber(L, -1) ? lua_tonumber(L, -1) : 0.0;
@@ -97,7 +95,7 @@ double ReadTableNumber(lua_State *L, int index, const char *field) {
     return value;
 }
 
-int MemoryDiff(lua_State *L) {
+static int MemoryDiff(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_checktype(L, 2, LUA_TTABLE);
     const double kb1 = ReadTableNumber(L, 1, "total_kb");
@@ -114,7 +112,7 @@ int MemoryDiff(lua_State *L) {
     return 1;
 }
 
-int Profile(lua_State *L) {
+static int Profile(lua_State *L) {
     if (!lua_isfunction(L, 1)) {
         return luaL_error(L, "tas.profile(function): expected function");
     }
@@ -149,17 +147,15 @@ int Profile(lua_State *L) {
     return 1;
 }
 
-int ForceGC(lua_State *L) {
+static int ForceGC(lua_State *L) {
     lua_pushinteger(L, lua_gc(L, LUA_GCCOLLECT, 0));
     return 1;
 }
 
-int GetMemoryUsage(lua_State *L) {
+static int GetMemoryUsage(lua_State *L) {
     lua_pushnumber(L, CurrentMemoryKB(L));
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterDebugApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);

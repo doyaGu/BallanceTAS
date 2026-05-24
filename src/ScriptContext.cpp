@@ -21,9 +21,7 @@
 #include "MessageBus.h"
 #include "SharedDataManager.h"
 
-namespace {
-
-void AddLuaPath(lua_State *state, const std::string &path) {
+static void AddLuaPath(lua_State *state, const std::string &path) {
     if (!state || path.empty()) {
         return;
     }
@@ -50,7 +48,7 @@ void AddLuaPath(lua_State *state, const std::string &path) {
     lua_pop(state, 1);
 }
 
-tas::lua::LuaValue MakeGameEventValue(const LuaGameEvent &event) {
+static tas::lua::LuaValue MakeGameEventValue(const LuaGameEvent &event) {
     using tas::lua::LuaValue;
 
     auto table = std::make_shared<LuaValue::Table>();
@@ -79,8 +77,6 @@ tas::lua::LuaValue MakeGameEventValue(const LuaGameEvent &event) {
 
     return LuaValue(LuaValue::Storage{table});
 }
-
-} // namespace
 
 ScriptContext::ScriptContext(TASEngine *engine, std::string name, ScriptContextType type, int priority)
     : m_Engine(engine), m_Name(std::move(name)), m_Type(type), m_Priority(priority) {

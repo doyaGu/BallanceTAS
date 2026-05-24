@@ -14,13 +14,11 @@
 #include <stdexcept>
 #include <string>
 
-namespace {
-
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
+static LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
     auto *context = GetContext(L);
     auto *scheduler = context ? context->GetScheduler() : nullptr;
     if (!scheduler) {
@@ -29,64 +27,64 @@ LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
     return scheduler;
 }
 
-void SetMenuFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetMenuFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-int MenuStubError(lua_State *L, const char *functionName) {
+static int MenuStubError(lua_State *L, const char *functionName) {
     Log::Warn("[STUB] %s - Not yet implemented", functionName);
     return luaL_error(L, "%s: Not yet implemented - stub function", functionName);
 }
 
-int IsInMenu(lua_State *L) {
+static int IsInMenu(lua_State *L) {
     auto *context = GetContext(L);
     auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushboolean(L, game && !game->IsPlaying());
     return 1;
 }
 
-int IsInGame(lua_State *L) {
+static int IsInGame(lua_State *L) {
     auto *context = GetContext(L);
     auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushboolean(L, game && game->IsPlaying());
     return 1;
 }
 
-int GetCurrent(lua_State *L) {
+static int GetCurrent(lua_State *L) {
     return MenuStubError(L, "menu.get_current");
 }
 
-int IsAt(lua_State *L) {
+static int IsAt(lua_State *L) {
     luaL_checkstring(L, 1);
     return MenuStubError(L, "menu.is_at");
 }
 
-int NavigateTo(lua_State *L) {
+static int NavigateTo(lua_State *L) {
     luaL_checkstring(L, 1);
     return MenuStubError(L, "menu.navigate_to");
 }
 
-int ClickButton(lua_State *L) {
+static int ClickButton(lua_State *L) {
     luaL_checkstring(L, 1);
     return MenuStubError(L, "menu.click_button");
 }
 
-int SelectLevel(lua_State *L) {
+static int SelectLevel(lua_State *L) {
     luaL_checkstring(L, 1);
     return MenuStubError(L, "menu.select_level");
 }
 
-int GoBack(lua_State *L) {
+static int GoBack(lua_State *L) {
     return MenuStubError(L, "menu.go_back");
 }
 
-int GoToMain(lua_State *L) {
+static int GoToMain(lua_State *L) {
     return MenuStubError(L, "menu.go_to_main");
 }
 
-int SendKey(lua_State *L) {
+static int SendKey(lua_State *L) {
     luaL_checkstring(L, 1);
     if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
         luaL_checkinteger(L, 2);
@@ -94,34 +92,34 @@ int SendKey(lua_State *L) {
     return MenuStubError(L, "menu.send_key");
 }
 
-int PressEnter(lua_State *L) {
+static int PressEnter(lua_State *L) {
     return MenuStubError(L, "menu.press_enter");
 }
 
-int PressEscape(lua_State *L) {
+static int PressEscape(lua_State *L) {
     return MenuStubError(L, "menu.press_escape");
 }
 
-int WaitForMenu(lua_State *L) {
+static int WaitForMenu(lua_State *L) {
     luaL_checkstring(L, 1);
     return MenuStubError(L, "menu.wait_for_menu");
 }
 
-int IsPlayingPredicate(lua_State *L) {
+static int IsPlayingPredicate(lua_State *L) {
     auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
     auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushboolean(L, game && game->IsPlaying());
     return 1;
 }
 
-int IsMenuPredicate(lua_State *L) {
+static int IsMenuPredicate(lua_State *L) {
     auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
     auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushboolean(L, game && !game->IsPlaying());
     return 1;
 }
 
-int WaitForGameStart(lua_State *L) {
+static int WaitForGameStart(lua_State *L) {
     lua_pushlightuserdata(L, GetContext(L));
     lua_pushcclosure(L, IsPlayingPredicate, 1);
     auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
@@ -129,7 +127,7 @@ int WaitForGameStart(lua_State *L) {
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
-int WaitForMenuEntry(lua_State *L) {
+static int WaitForMenuEntry(lua_State *L) {
     lua_pushlightuserdata(L, GetContext(L));
     lua_pushcclosure(L, IsMenuPredicate, 1);
     auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
@@ -137,11 +135,9 @@ int WaitForMenuEntry(lua_State *L) {
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
-int GetAvailableLevels(lua_State *L) {
+static int GetAvailableLevels(lua_State *L) {
     return MenuStubError(L, "menu.get_available_levels");
 }
-
-} // namespace
 
 void LuaApi::RegisterMenuApi(lua_State *state, ScriptContext *context) {
     if (!context) {

@@ -9,20 +9,18 @@
 #include "LuaRuntime/LuaState.h"
 #include "ScriptContext.h"
 
-namespace {
-
-LuaScheduler *GetScheduler(lua_State *L) {
+static LuaScheduler *GetScheduler(lua_State *L) {
     return static_cast<LuaScheduler *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-int TestWaitTicks(lua_State *L) {
+static int TestWaitTicks(lua_State *L) {
     auto *scheduler = GetScheduler(L);
     const int ticks = static_cast<int>(luaL_checkinteger(L, 1));
     scheduler->YieldTicks(ticks);
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
-int TestWaitUntil(lua_State *L) {
+static int TestWaitUntil(lua_State *L) {
     auto *scheduler = GetScheduler(L);
     luaL_checktype(L, 1, LUA_TFUNCTION);
     lua_pushvalue(L, 1);
@@ -31,7 +29,7 @@ int TestWaitUntil(lua_State *L) {
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
-void RegisterSchedulerHelpers(lua_State *L, LuaScheduler &scheduler) {
+static void RegisterSchedulerHelpers(lua_State *L, LuaScheduler &scheduler) {
     lua_pushlightuserdata(L, &scheduler);
     lua_pushcclosure(L, TestWaitTicks, 1);
     lua_setglobal(L, "wait_ticks");
@@ -41,7 +39,7 @@ void RegisterSchedulerHelpers(lua_State *L, LuaScheduler &scheduler) {
     lua_setglobal(L, "wait_until");
 }
 
-tas::lua::LuaFunction LoadFunction(tas::lua::LuaState &state, const char *script, const char *chunkName) {
+static tas::lua::LuaFunction LoadFunction(tas::lua::LuaState &state, const char *script, const char *chunkName) {
     auto load = state.LoadString(script, chunkName);
     EXPECT_TRUE(load.IsOk()) << load.GetError().Format();
     auto call = tas::lua::ProtectedCall(state.Get(), 0, 1);
@@ -49,29 +47,27 @@ tas::lua::LuaFunction LoadFunction(tas::lua::LuaState &state, const char *script
     return tas::lua::LuaFunction::FromStack(state.Get(), -1);
 }
 
-void RunScript(tas::lua::LuaState &state, const char *script, const char *chunkName) {
+static void RunScript(tas::lua::LuaState &state, const char *script, const char *chunkName) {
     auto load = state.LoadString(script, chunkName);
     ASSERT_TRUE(load.IsOk()) << load.GetError().Format();
     auto call = tas::lua::ProtectedCall(state.Get(), 0, 0);
     ASSERT_TRUE(call.IsOk()) << call.GetError().Format();
 }
 
-int EventCount(lua_State *L) {
+static int EventCount(lua_State *L) {
     lua_getglobal(L, "events");
     const int count = static_cast<int>(lua_rawlen(L, -1));
     lua_pop(L, 1);
     return count;
 }
 
-const char *EventAt(lua_State *L, int index) {
+static const char *EventAt(lua_State *L, int index) {
     lua_getglobal(L, "events");
     lua_rawgeti(L, -1, index);
     const char *event = lua_tostring(L, -1);
     lua_pop(L, 2);
     return event;
 }
-
-} // namespace
 
 TEST(LuaSchedulerTest, WaitTicksResumesCoroutineOnLaterTicks) {
     tas::lua::LuaState state;

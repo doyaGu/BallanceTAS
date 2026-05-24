@@ -5,20 +5,16 @@
 #include "LuaRuntime/LuaProtectedCall.h"
 #include "LuaRuntime/LuaState.h"
 
-namespace {
-
-void RegisterSharedBuffer(lua_State *L) {
+static void RegisterSharedBuffer(lua_State *L) {
     LuaApi::RegisterSharedBufferApi(L, reinterpret_cast<ScriptContext *>(0x1));
 }
 
-void RunScript(tas::lua::LuaState &state, const char *script, const char *chunkName) {
+static void RunScript(tas::lua::LuaState &state, const char *script, const char *chunkName) {
     auto load = state.LoadString(script, chunkName);
     ASSERT_TRUE(load.IsOk()) << load.GetError().Format();
     auto call = tas::lua::ProtectedCall(state.Get(), 0, 0);
     ASSERT_TRUE(call.IsOk()) << call.GetError().Format();
 }
-
-} // namespace
 
 TEST(SharedBufferTest, RoundTripsTableValuesWithoutLosingIntegerNumberDistinction) {
     tas::lua::LuaState state;

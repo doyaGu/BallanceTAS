@@ -13,20 +13,18 @@
 #include "RecordPlayer.h"
 #include "TASProject.h"
 
-namespace {
-
 using ::testing::HasSubstr;
 using ::testing::Not;
 
-tas::lua::LuaValue MakeValue(std::string value) {
+static tas::lua::LuaValue MakeValue(std::string value) {
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{std::move(value)});
 }
 
-tas::lua::LuaValue MakeValue(double value) {
+static tas::lua::LuaValue MakeValue(double value) {
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{static_cast<lua_Number>(value)});
 }
 
-tas::lua::LuaValue MakeManifest(std::string name,
+static tas::lua::LuaValue MakeManifest(std::string name,
                                 std::string scope,
                                 std::string trigger,
                                 std::string level = "Level_01",
@@ -49,7 +47,7 @@ tas::lua::LuaValue MakeManifest(std::string name,
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{std::move(table)});
 }
 
-tas::lua::LuaValue MakeManifestWithLegacyPreloadRng() {
+static tas::lua::LuaValue MakeManifestWithLegacyPreloadRng() {
     auto table = std::make_shared<tas::lua::LuaValue::Table>();
     auto add = [&](std::string key, tas::lua::LuaValue value) {
         table->entries.push_back({
@@ -82,25 +80,25 @@ tas::lua::LuaValue MakeManifestWithLegacyPreloadRng() {
     return tas::lua::LuaValue(tas::lua::LuaValue::Storage{std::move(table)});
 }
 
-std::filesystem::path TempRecordPath(const std::string &name) {
+static std::filesystem::path TempRecordPath(const std::string &name) {
     auto path = std::filesystem::temp_directory_path() / "BallanceTAS_MenuPresentation";
     std::filesystem::create_directories(path);
     return path / name;
 }
 
-void WriteZeroFrameRecord(const std::filesystem::path &path) {
+static void WriteZeroFrameRecord(const std::filesystem::path &path) {
     std::ofstream file(path, std::ios::binary);
     const uint32_t uncompressedSize = 0;
     file.write(reinterpret_cast<const char *>(&uncompressedSize), sizeof(uncompressedSize));
 }
 
-void WriteInvalidHeaderRecord(const std::filesystem::path &path) {
+static void WriteInvalidHeaderRecord(const std::filesystem::path &path) {
     std::ofstream file(path, std::ios::binary);
     const uint16_t shortHeader = 1;
     file.write(reinterpret_cast<const char *>(&shortHeader), sizeof(shortHeader));
 }
 
-void WritePackedRecord(const std::filesystem::path &path, const std::vector<RecordFrameData> &frames) {
+static void WritePackedRecord(const std::filesystem::path &path, const std::vector<RecordFrameData> &frames) {
     const auto uncompressedSize = static_cast<uint32_t>(frames.size() * sizeof(RecordFrameData));
     int compressedSize = 0;
     char *compressed = CKPackData(
@@ -117,7 +115,7 @@ void WritePackedRecord(const std::filesystem::path &path, const std::vector<Reco
     CKDeletePointer(compressed);
 }
 
-std::vector<RecordFrameData> MakeRecordFrames(size_t count, float firstDelta, float secondDelta) {
+static std::vector<RecordFrameData> MakeRecordFrames(size_t count, float firstDelta, float secondDelta) {
     std::vector<RecordFrameData> frames;
     frames.reserve(count);
     for (size_t i = 0; i < count; ++i) {
@@ -125,8 +123,6 @@ std::vector<RecordFrameData> MakeRecordFrames(size_t count, float firstDelta, fl
     }
     return frames;
 }
-
-} // namespace
 
 TEST(TASMenuPresentationTest, BuildsNativeScriptLabelsAndSafeTruncation) {
     TASProject project("C:/TAS/LongProject",

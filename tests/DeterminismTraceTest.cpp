@@ -7,12 +7,10 @@
 
 #include "DeterminismTrace.h"
 
-namespace {
-
 constexpr uint32_t kMagic = 0x53415442;
 constexpr uint32_t kVersion = 1;
 
-void WriteTrace(const std::filesystem::path &path, const std::vector<uint64_t> &hashes) {
+static void WriteTrace(const std::filesystem::path &path, const std::vector<uint64_t> &hashes) {
     std::filesystem::create_directories(path.parent_path());
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     const uint32_t flags = 0;
@@ -29,8 +27,6 @@ void WriteTrace(const std::filesystem::path &path, const std::vector<uint64_t> &
         file.write(reinterpret_cast<const char *>(&hashes[i]), sizeof(hashes[i]));
     }
 }
-
-} // namespace
 
 TEST(DeterminismTraceTest, ResolvesDefaultPathInsideCurrentProject) {
     tas::determinism::TracePathRequest request;

@@ -8,15 +8,13 @@
 #include <cstdio>
 #include <VxMath.h>
 
-namespace {
-
 constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
 
-CK3dEntity *CheckCK3dEntity(lua_State *L, int index) {
+static CK3dEntity *CheckCK3dEntity(lua_State *L, int index) {
     return tas::lua::CheckUserdata<CK3dEntity>(L, index, kCK3dEntityMt);
 }
 
-void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
+static void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
     if (!entity) {
         lua_pushnil(L);
         return;
@@ -24,7 +22,7 @@ void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
     tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
 }
 
-void PushVxVectorValue(lua_State *L, const VxVector &value) {
+static void PushVxVectorValue(lua_State *L, const VxVector &value) {
     lua_getglobal(L, "VxVector");
     lua_pushnumber(L, value.x);
     lua_pushnumber(L, value.y);
@@ -32,75 +30,75 @@ void PushVxVectorValue(lua_State *L, const VxVector &value) {
     lua_call(L, 3, 1);
 }
 
-int CK3dEntityName(lua_State *L) {
+static int CK3dEntityName(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushstring(L, entity && entity->GetName() ? entity->GetName() : "");
     return 1;
 }
 
-int CK3dEntitySetName(lua_State *L) {
+static int CK3dEntitySetName(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     const char *name = luaL_checkstring(L, 2);
     entity->SetName(const_cast<char *>(name));
     return 0;
 }
 
-int CK3dEntityId(lua_State *L) {
+static int CK3dEntityId(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushinteger(L, entity ? entity->GetID() : 0);
     return 1;
 }
 
-int CK3dEntityClassId(lua_State *L) {
+static int CK3dEntityClassId(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushinteger(L, entity ? entity->GetClassID() : 0);
     return 1;
 }
 
-int CK3dEntityObjectFlags(lua_State *L) {
+static int CK3dEntityObjectFlags(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushinteger(L, entity ? entity->GetObjectFlags() : 0);
     return 1;
 }
 
-int CK3dEntityIsVisible(lua_State *L) {
+static int CK3dEntityIsVisible(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushboolean(L, entity && entity->IsVisible());
     return 1;
 }
 
-int CK3dEntityChildrenCount(lua_State *L) {
+static int CK3dEntityChildrenCount(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushinteger(L, entity ? entity->GetChildrenCount() : 0);
     return 1;
 }
 
-int CK3dEntityFlags(lua_State *L) {
+static int CK3dEntityFlags(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushinteger(L, entity ? entity->GetFlags() : 0);
     return 1;
 }
 
-int CK3dEntityRadius(lua_State *L) {
+static int CK3dEntityRadius(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     lua_pushnumber(L, entity ? entity->GetRadius() : 0.0f);
     return 1;
 }
 
-int CK3dEntityParent(lua_State *L) {
+static int CK3dEntityParent(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     PushCK3dEntity(L, entity ? entity->GetParent() : nullptr);
     return 1;
 }
 
-int CK3dEntityGetChild(lua_State *L) {
+static int CK3dEntityGetChild(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     PushCK3dEntity(L, entity && index >= 0 ? entity->GetChild(index) : nullptr);
     return 1;
 }
 
-int CK3dEntityGetPosition(lua_State *L) {
+static int CK3dEntityGetPosition(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     VxVector position;
     if (entity) {
@@ -112,7 +110,7 @@ int CK3dEntityGetPosition(lua_State *L) {
     return 1;
 }
 
-int CK3dEntityGetScale(lua_State *L) {
+static int CK3dEntityGetScale(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     VxVector scale;
     if (entity) {
@@ -124,7 +122,7 @@ int CK3dEntityGetScale(lua_State *L) {
     return 1;
 }
 
-int CK3dEntityToString(lua_State *L) {
+static int CK3dEntityToString(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     char buffer[176];
     std::snprintf(buffer,
@@ -136,8 +134,6 @@ int CK3dEntityToString(lua_State *L) {
     lua_pushstring(L, buffer);
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterCK3dEntity(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

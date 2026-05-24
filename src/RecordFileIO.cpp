@@ -7,13 +7,12 @@
 #include <CKGlobals.h>
 
 namespace tas::record {
-namespace {
 
-bool IsPressed(unsigned char state) {
+static bool IsPressed(unsigned char state) {
     return (state & KS_PRESSED) != 0;
 }
 
-bool ReadPressed(const unsigned char *keyboardState, CKKEYBOARD key) {
+static bool ReadPressed(const unsigned char *keyboardState, CKKEYBOARD key) {
     if (!keyboardState) {
         return false;
     }
@@ -24,16 +23,14 @@ bool ReadPressed(const unsigned char *keyboardState, CKKEYBOARD key) {
     return IsPressed(keyboardState[index]);
 }
 
-bool RawPressed(uint8_t state) {
+static bool RawPressed(uint8_t state) {
     return (state & KS_PRESSED) != 0;
 }
 
-bool CanUseLegacyPackSize(size_t byteCount) {
+static bool CanUseLegacyPackSize(size_t byteCount) {
     return byteCount <= static_cast<size_t>((std::numeric_limits<int>::max)())
         && byteCount <= static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
 }
-
-} // namespace
 
 RecordFrameData CaptureKeyboardStateToRecordFrame(const unsigned char *keyboardState,
                                                   const RecordInputMapping &mapping,

@@ -26,9 +26,7 @@
 #include <CKTimeManager.h>
 #include <cstring>
 
-namespace {
-
-std::string ResolvePlaybackLevelName(const TASProject *project, GameInterface *game) {
+static std::string ResolvePlaybackLevelName(const TASProject *project, GameInterface *game) {
     if (!project) {
         return {};
     }
@@ -38,8 +36,6 @@ std::string ResolvePlaybackLevelName(const TASProject *project, GameInterface *g
         game ? game->GetMapName() : "",
         game ? game->GetCurrentLevel() : 0);
 }
-
-} // namespace
 
 PlaybackService::PlaybackService(ServiceProvider *provider)
     : m_ServiceProvider(provider) {

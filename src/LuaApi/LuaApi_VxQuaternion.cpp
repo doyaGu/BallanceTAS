@@ -7,30 +7,28 @@
 #include <cmath>
 #include <cstdio>
 
-namespace {
-
 constexpr const char *kVxQuaternionMt = "BallanceTAS.VxQuaternion";
 constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
 
-VxQuaternion *CheckQuat(lua_State *L, int index) {
+static VxQuaternion *CheckQuat(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxQuaternion>(L, index, kVxQuaternionMt);
 }
 
-VxQuaternion *TestQuat(lua_State *L, int index) {
+static VxQuaternion *TestQuat(lua_State *L, int index) {
     auto *box = static_cast<tas::lua::UserdataBox<VxQuaternion> *>(luaL_testudata(L, index, kVxQuaternionMt));
     return box ? box->ptr : nullptr;
 }
 
-VxVector *TestVector(lua_State *L, int index) {
+static VxVector *TestVector(lua_State *L, int index) {
     auto *box = static_cast<tas::lua::UserdataBox<VxVector> *>(luaL_testudata(L, index, kVxVectorMt));
     return box ? box->ptr : nullptr;
 }
 
-void PushQuat(lua_State *L, const VxQuaternion &value) {
+static void PushQuat(lua_State *L, const VxQuaternion &value) {
     tas::lua::PushOwnedUserdata<VxQuaternion>(L, kVxQuaternionMt, value);
 }
 
-int New(lua_State *L) {
+static int New(lua_State *L) {
     const int argc = lua_gettop(L);
     if (argc == 0) {
         PushQuat(L, VxQuaternion());
@@ -50,22 +48,22 @@ int New(lua_State *L) {
     return luaL_error(L, "VxQuaternion(): expected 0 args, VxVector+angle, or 4 numeric args");
 }
 
-int Call(lua_State *L) {
+static int Call(lua_State *L) {
     lua_remove(L, 1);
     return New(L);
 }
 
-int MagnitudeProperty(lua_State *L) {
+static int MagnitudeProperty(lua_State *L) {
     lua_pushnumber(L, Magnitude(*CheckQuat(L, 1)));
     return 1;
 }
 
-int ConjugateProperty(lua_State *L) {
+static int ConjugateProperty(lua_State *L) {
     PushQuat(L, Vx3DQuaternionConjugate(*CheckQuat(L, 1)));
     return 1;
 }
 
-int EulerAnglesProperty(lua_State *L) {
+static int EulerAnglesProperty(lua_State *L) {
     float x = 0.0f, y = 0.0f, z = 0.0f;
     CheckQuat(L, 1)->ToEulerAngles(&x, &y, &z);
     lua_newtable(L);
@@ -78,7 +76,7 @@ int EulerAnglesProperty(lua_State *L) {
     return 1;
 }
 
-int ToEulerAngles(lua_State *L) {
+static int ToEulerAngles(lua_State *L) {
     float x = 0.0f, y = 0.0f, z = 0.0f;
     CheckQuat(L, 1)->ToEulerAngles(&x, &y, &z);
     lua_pushnumber(L, x);
@@ -87,7 +85,7 @@ int ToEulerAngles(lua_State *L) {
     return 3;
 }
 
-int FromRotation(lua_State *L) {
+static int FromRotation(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     auto *axis = TestVector(L, 2);
     if (!axis) {
@@ -97,44 +95,44 @@ int FromRotation(lua_State *L) {
     return 0;
 }
 
-int FromEulerAngles(lua_State *L) {
+static int FromEulerAngles(lua_State *L) {
     CheckQuat(L, 1)->FromEulerAngles(static_cast<float>(luaL_checknumber(L, 2)),
                                      static_cast<float>(luaL_checknumber(L, 3)),
                                      static_cast<float>(luaL_checknumber(L, 4)));
     return 0;
 }
 
-int Normalize(lua_State *L) {
+static int Normalize(lua_State *L) {
     CheckQuat(L, 1)->Normalize();
     return 0;
 }
 
-int Dot(lua_State *L) {
+static int Dot(lua_State *L) {
     lua_pushnumber(L, DotProduct(*CheckQuat(L, 1), *CheckQuat(L, 2)));
     return 1;
 }
 
-int Slerp(lua_State *L) {
+static int Slerp(lua_State *L) {
     PushQuat(L, Slerp(static_cast<float>(luaL_checknumber(L, 3)), *CheckQuat(L, 1), *CheckQuat(L, 2)));
     return 1;
 }
 
-int LnMethod(lua_State *L) {
+static int LnMethod(lua_State *L) {
     PushQuat(L, Ln(*CheckQuat(L, 1)));
     return 1;
 }
 
-int ExpMethod(lua_State *L) {
+static int ExpMethod(lua_State *L) {
     PushQuat(L, Exp(*CheckQuat(L, 1)));
     return 1;
 }
 
-int LnDifMethod(lua_State *L) {
+static int LnDifMethod(lua_State *L) {
     PushQuat(L, LnDif(*CheckQuat(L, 1), *CheckQuat(L, 2)));
     return 1;
 }
 
-int NumericIndex(lua_State *L) {
+static int NumericIndex(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     if (index < 0 || index > 3) {
@@ -144,7 +142,7 @@ int NumericIndex(lua_State *L) {
     return 1;
 }
 
-int NumericNewIndex(lua_State *L) {
+static int NumericNewIndex(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     if (index < 0 || index > 3) {
@@ -154,10 +152,10 @@ int NumericNewIndex(lua_State *L) {
     return 0;
 }
 
-int Add(lua_State *L) { PushQuat(L, *CheckQuat(L, 1) + *CheckQuat(L, 2)); return 1; }
-int Sub(lua_State *L) { PushQuat(L, *CheckQuat(L, 1) - *CheckQuat(L, 2)); return 1; }
+static int Add(lua_State *L) { PushQuat(L, *CheckQuat(L, 1) + *CheckQuat(L, 2)); return 1; }
+static int Sub(lua_State *L) { PushQuat(L, *CheckQuat(L, 1) - *CheckQuat(L, 2)); return 1; }
 
-int Mul(lua_State *L) {
+static int Mul(lua_State *L) {
     auto *a = TestQuat(L, 1);
     auto *b = TestQuat(L, 2);
     if (a && b) {
@@ -175,17 +173,17 @@ int Mul(lua_State *L) {
     return luaL_error(L, "VxQuaternion multiplication expects quaternion/quaternion or quaternion/number");
 }
 
-int Div(lua_State *L) { PushQuat(L, *CheckQuat(L, 1) / *CheckQuat(L, 2)); return 1; }
-int Unm(lua_State *L) { PushQuat(L, -*CheckQuat(L, 1)); return 1; }
+static int Div(lua_State *L) { PushQuat(L, *CheckQuat(L, 1) / *CheckQuat(L, 2)); return 1; }
+static int Unm(lua_State *L) { PushQuat(L, -*CheckQuat(L, 1)); return 1; }
 
-int Eq(lua_State *L) {
+static int Eq(lua_State *L) {
     auto *a = TestQuat(L, 1);
     auto *b = TestQuat(L, 2);
     lua_pushboolean(L, a && b && *a == *b);
     return 1;
 }
 
-int ToString(lua_State *L) {
+static int ToString(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     char buffer[128];
     std::snprintf(buffer, sizeof(buffer), "VxQuaternion(%g, %g, %g, %g)", q->x, q->y, q->z, q->w);
@@ -193,12 +191,12 @@ int ToString(lua_State *L) {
     return 1;
 }
 
-void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+static void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
     lua_pushcfunction(L, function);
     lua_setfield(L, -2, name);
 }
 
-void RegisterClassTable(lua_State *L) {
+static void RegisterClassTable(lua_State *L) {
     lua_newtable(L);
     SetFunction(L, "new", New);
     lua_newtable(L);
@@ -213,8 +211,6 @@ void RegisterClassTable(lua_State *L) {
     }
     lua_pop(L, 2);
 }
-
-} // namespace
 
 void LuaApi::RegisterVxQuaternion(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

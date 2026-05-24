@@ -7,16 +7,14 @@
 #include <CKTypes.h>
 #include <string>
 
-namespace {
-
 constexpr const char *kVxIntersectionDescMt = "BallanceTAS.VxIntersectionDesc";
 constexpr const char *kCKRenderObjectMt = "BallanceTAS.CKRenderObject";
 
-VxIntersectionDesc *CheckDesc(lua_State *L, int index) {
+static VxIntersectionDesc *CheckDesc(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxIntersectionDesc>(L, index, kVxIntersectionDescMt);
 }
 
-void PushVxVector(lua_State *L, const VxVector &value) {
+static void PushVxVector(lua_State *L, const VxVector &value) {
     lua_getglobal(L, "VxVector");
     lua_pushnumber(L, value.x);
     lua_pushnumber(L, value.y);
@@ -24,7 +22,7 @@ void PushVxVector(lua_State *L, const VxVector &value) {
     lua_call(L, 3, 1);
 }
 
-int Object(lua_State *L) {
+static int Object(lua_State *L) {
     auto *desc = CheckDesc(L, 1);
     if (!desc || !desc->Object) {
         lua_pushnil(L);
@@ -34,37 +32,37 @@ int Object(lua_State *L) {
     return 1;
 }
 
-int Point(lua_State *L) {
+static int Point(lua_State *L) {
     PushVxVector(L, CheckDesc(L, 1)->IntersectionPoint);
     return 1;
 }
 
-int Normal(lua_State *L) {
+static int Normal(lua_State *L) {
     PushVxVector(L, CheckDesc(L, 1)->IntersectionNormal);
     return 1;
 }
 
-int U(lua_State *L) {
+static int U(lua_State *L) {
     lua_pushnumber(L, CheckDesc(L, 1)->TexU);
     return 1;
 }
 
-int V(lua_State *L) {
+static int V(lua_State *L) {
     lua_pushnumber(L, CheckDesc(L, 1)->TexV);
     return 1;
 }
 
-int Distance(lua_State *L) {
+static int Distance(lua_State *L) {
     lua_pushnumber(L, CheckDesc(L, 1)->Distance);
     return 1;
 }
 
-int FaceIndex(lua_State *L) {
+static int FaceIndex(lua_State *L) {
     lua_pushinteger(L, CheckDesc(L, 1)->FaceIndex);
     return 1;
 }
 
-int ToString(lua_State *L) {
+static int ToString(lua_State *L) {
     auto *desc = CheckDesc(L, 1);
     std::string objectName = "nil";
     if (desc && desc->Object) {
@@ -76,8 +74,6 @@ int ToString(lua_State *L) {
     lua_pushlstring(L, text.data(), text.size());
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterVxIntersectionDesc(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

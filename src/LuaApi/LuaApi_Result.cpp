@@ -10,8 +10,6 @@
 #include <string>
 #include <vector>
 
-namespace {
-
 constexpr const char *kResultMt = "BallanceTAS.Result";
 
 struct LuaResult {
@@ -28,28 +26,28 @@ struct LuaResult {
     LuaResult &operator=(const LuaResult &) = delete;
 };
 
-LuaResult *CheckResult(lua_State *L, int index) {
+static LuaResult *CheckResult(lua_State *L, int index) {
     return tas::lua::CheckUserdata<LuaResult>(L, index, kResultMt);
 }
 
-LuaResult *TestResult(lua_State *L, int index) {
+static LuaResult *TestResult(lua_State *L, int index) {
     auto *box = static_cast<tas::lua::UserdataBox<LuaResult> *>(luaL_testudata(L, index, kResultMt));
     return box ? box->ptr : nullptr;
 }
 
-void PushOkFromStack(lua_State *L, int index) {
+static void PushOkFromStack(lua_State *L, int index) {
     tas::lua::PushOwnedUserdata<LuaResult>(L, kResultMt, true, tas::lua::LuaRef::FromStack(L, index), std::string{});
 }
 
-void PushOkRef(lua_State *L, tas::lua::LuaRef ref) {
+static void PushOkRef(lua_State *L, tas::lua::LuaRef ref) {
     tas::lua::PushOwnedUserdata<LuaResult>(L, kResultMt, true, std::move(ref), std::string{});
 }
 
-void PushErr(lua_State *L, std::string error) {
+static void PushErr(lua_State *L, std::string error) {
     tas::lua::PushOwnedUserdata<LuaResult>(L, kResultMt, false, tas::lua::LuaRef{}, std::move(error));
 }
 
-void PushResultValue(lua_State *L, const LuaResult &result) {
+static void PushResultValue(lua_State *L, const LuaResult &result) {
     if (!result.value.State()) {
         lua_pushnil(L);
         return;
@@ -57,12 +55,12 @@ void PushResultValue(lua_State *L, const LuaResult &result) {
     result.value.Push(L);
 }
 
-std::string ToErrorString(lua_State *L, int index) {
+static std::string ToErrorString(lua_State *L, int index) {
     const char *text = lua_tostring(L, index);
     return text ? text : "<non-string Lua error>";
 }
 
-bool ProtectedCall(lua_State *L, int nargs, int nresults, std::string &error) {
+static bool ProtectedCall(lua_State *L, int nargs, int nresults, std::string &error) {
     if (lua_pcall(L, nargs, nresults, 0) == LUA_OK) {
         return true;
     }
@@ -71,17 +69,17 @@ bool ProtectedCall(lua_State *L, int nargs, int nresults, std::string &error) {
     return false;
 }
 
-int IsOk(lua_State *L) {
+static int IsOk(lua_State *L) {
     lua_pushboolean(L, CheckResult(L, 1)->isSuccess);
     return 1;
 }
 
-int IsErr(lua_State *L) {
+static int IsErr(lua_State *L) {
     lua_pushboolean(L, !CheckResult(L, 1)->isSuccess);
     return 1;
 }
 
-int Unwrap(lua_State *L) {
+static int Unwrap(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (!result->isSuccess) {
         return luaL_error(L, "Called unwrap() on Err result: %s", result->error.c_str());
@@ -90,7 +88,7 @@ int Unwrap(lua_State *L) {
     return 1;
 }
 
-int UnwrapOr(lua_State *L) {
+static int UnwrapOr(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (result->isSuccess) {
         PushResultValue(L, *result);
@@ -100,7 +98,7 @@ int UnwrapOr(lua_State *L) {
     return 1;
 }
 
-int UnwrapOrElse(lua_State *L) {
+static int UnwrapOrElse(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (result->isSuccess) {
         PushResultValue(L, *result);
@@ -115,7 +113,7 @@ int UnwrapOrElse(lua_State *L) {
     return 1;
 }
 
-int Expect(lua_State *L) {
+static int Expect(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (!result->isSuccess) {
         return luaL_error(L, "%s: %s", luaL_checkstring(L, 2), result->error.c_str());
@@ -124,7 +122,7 @@ int Expect(lua_State *L) {
     return 1;
 }
 
-int Error(lua_State *L) {
+static int Error(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (result->isSuccess) {
         lua_pushnil(L);
@@ -134,7 +132,7 @@ int Error(lua_State *L) {
     return 1;
 }
 
-int Map(lua_State *L) {
+static int Map(lua_State *L) {
     auto *result = CheckResult(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     if (!result->isSuccess) {
@@ -152,7 +150,7 @@ int Map(lua_State *L) {
     return 1;
 }
 
-int MapErr(lua_State *L) {
+static int MapErr(lua_State *L) {
     auto *result = CheckResult(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     if (result->isSuccess) {
@@ -176,7 +174,7 @@ int MapErr(lua_State *L) {
     return 1;
 }
 
-int AndThen(lua_State *L) {
+static int AndThen(lua_State *L) {
     auto *result = CheckResult(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     if (!result->isSuccess) {
@@ -197,7 +195,7 @@ int AndThen(lua_State *L) {
     return 1;
 }
 
-int OrElse(lua_State *L) {
+static int OrElse(lua_State *L) {
     auto *result = CheckResult(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     if (result->isSuccess) {
@@ -218,7 +216,7 @@ int OrElse(lua_State *L) {
     return 1;
 }
 
-int Match(lua_State *L) {
+static int Match(lua_State *L) {
     auto *result = CheckResult(L, 1);
     luaL_checktype(L, 2, LUA_TTABLE);
     lua_getfield(L, 2, result->isSuccess ? "ok" : "err");
@@ -243,7 +241,7 @@ int Match(lua_State *L) {
     return 1;
 }
 
-int ToString(lua_State *L) {
+static int ToString(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (result->isSuccess) {
         lua_pushliteral(L, "Result.Ok");
@@ -253,7 +251,7 @@ int ToString(lua_State *L) {
     return 1;
 }
 
-int Ok(lua_State *L) {
+static int Ok(lua_State *L) {
     if (lua_gettop(L) < 1) {
         lua_pushnil(L);
     }
@@ -261,12 +259,12 @@ int Ok(lua_State *L) {
     return 1;
 }
 
-int Err(lua_State *L) {
+static int Err(lua_State *L) {
     PushErr(L, luaL_checkstring(L, 1));
     return 1;
 }
 
-int Try(lua_State *L) {
+static int Try(lua_State *L) {
     luaL_checktype(L, 1, LUA_TFUNCTION);
     lua_pushvalue(L, 1);
     std::string error;
@@ -279,7 +277,7 @@ int Try(lua_State *L) {
     return 1;
 }
 
-int All(lua_State *L) {
+static int All(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     lua_newtable(L);
     int outputIndex = 1;
@@ -305,7 +303,7 @@ int All(lua_State *L) {
     return 1;
 }
 
-int Any(lua_State *L) {
+static int Any(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     std::vector<std::string> errors;
     lua_pushnil(L);
@@ -333,12 +331,12 @@ int Any(lua_State *L) {
     return 1;
 }
 
-void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+static void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
     lua_pushcfunction(L, function);
     lua_setfield(L, -2, name);
 }
 
-void RegisterResultTable(lua_State *L) {
+static void RegisterResultTable(lua_State *L) {
     lua_getglobal(L, "tas");
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
@@ -356,8 +354,6 @@ void RegisterResultTable(lua_State *L) {
     lua_setfield(L, -2, "result");
     lua_pop(L, 1);
 }
-
-} // namespace
 
 void LuaApi::RegisterResultApi(lua_State *state, ScriptContext *context) {
     if (!state || !context) {

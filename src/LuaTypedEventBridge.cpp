@@ -5,10 +5,8 @@
 #include "ScriptContextManager.h"
 #include "TASStateMachine.h"
 
-namespace {
-
 template <typename EventT>
-LuaGameEvent BuildLuaGameEvent(const EventT &, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const EventT &, size_t tick) {
     return LuaGameEvent{
         EventTypeTraits<EventT>::type,
         EventTypeTraits<EventT>::name,
@@ -17,7 +15,7 @@ LuaGameEvent BuildLuaGameEvent(const EventT &, size_t tick) {
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const PreCheckpointReachedEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const PreCheckpointReachedEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<PreCheckpointReachedEvent>::type,
                         EventTypeTraits<PreCheckpointReachedEvent>::name,
                         tick};
@@ -26,7 +24,7 @@ LuaGameEvent BuildLuaGameEvent(const PreCheckpointReachedEvent &event, size_t ti
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const PostCheckpointReachedEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const PostCheckpointReachedEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<PostCheckpointReachedEvent>::type,
                         EventTypeTraits<PostCheckpointReachedEvent>::name,
                         tick};
@@ -35,7 +33,7 @@ LuaGameEvent BuildLuaGameEvent(const PostCheckpointReachedEvent &event, size_t t
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const ExtraPointEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const ExtraPointEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<ExtraPointEvent>::type,
                         EventTypeTraits<ExtraPointEvent>::name,
                         tick};
@@ -44,7 +42,7 @@ LuaGameEvent BuildLuaGameEvent(const ExtraPointEvent &event, size_t tick) {
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const PreSubLifeEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const PreSubLifeEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<PreSubLifeEvent>::type,
                         EventTypeTraits<PreSubLifeEvent>::name,
                         tick};
@@ -53,7 +51,7 @@ LuaGameEvent BuildLuaGameEvent(const PreSubLifeEvent &event, size_t tick) {
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const PostSubLifeEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const PostSubLifeEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<PostSubLifeEvent>::type,
                         EventTypeTraits<PostSubLifeEvent>::name,
                         tick};
@@ -62,7 +60,7 @@ LuaGameEvent BuildLuaGameEvent(const PostSubLifeEvent &event, size_t tick) {
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const PreLifeUpEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const PreLifeUpEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<PreLifeUpEvent>::type,
                         EventTypeTraits<PreLifeUpEvent>::name,
                         tick};
@@ -71,15 +69,13 @@ LuaGameEvent BuildLuaGameEvent(const PreLifeUpEvent &event, size_t tick) {
 }
 
 template <>
-LuaGameEvent BuildLuaGameEvent(const PostLifeUpEvent &event, size_t tick) {
+static LuaGameEvent BuildLuaGameEvent(const PostLifeUpEvent &event, size_t tick) {
     LuaGameEvent result{EventTypeTraits<PostLifeUpEvent>::type,
                         EventTypeTraits<PostLifeUpEvent>::name,
                         tick};
     result.lifeCount = event.lifeCount;
     return result;
 }
-
-} // namespace
 
 LuaTypedEventBridge::LuaTypedEventBridge(
     EventBus &eventBus,

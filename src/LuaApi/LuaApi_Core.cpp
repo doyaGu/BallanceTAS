@@ -4,13 +4,11 @@
 #include "ScriptContext.h"
 #include "TASProject.h"
 
-namespace {
-
-ScriptContext *GetContext(lua_State *state) {
+static ScriptContext *GetContext(lua_State *state) {
     return static_cast<ScriptContext *>(lua_touserdata(state, lua_upvalueindex(1)));
 }
 
-void SetTasFunction(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetTasFunction(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_getglobal(state, "tas");
     lua_pushlightuserdata(state, context);
     lua_pushcclosure(state, function, 1);
@@ -18,7 +16,7 @@ void SetTasFunction(lua_State *state, const char *name, lua_CFunction function, 
     lua_pop(state, 1);
 }
 
-int TasLog(lua_State *state) {
+static int TasLog(lua_State *state) {
     ScriptContext *context = GetContext(state);
     if (lua_gettop(state) != 1 || !lua_isstring(state, 1)) {
         return luaL_error(state, "tas.log(message): expected one string argument");
@@ -29,7 +27,7 @@ int TasLog(lua_State *state) {
     return 0;
 }
 
-int TasGetTick(lua_State *state) {
+static int TasGetTick(lua_State *state) {
     ScriptContext *context = GetContext(state);
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "tas.get_tick(): expected no arguments");
@@ -39,7 +37,7 @@ int TasGetTick(lua_State *state) {
     return 1;
 }
 
-int TasGetManifest(lua_State *state) {
+static int TasGetManifest(lua_State *state) {
     ScriptContext *context = GetContext(state);
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "tas.get_manifest(): expected no arguments");
@@ -54,8 +52,6 @@ int TasGetManifest(lua_State *state) {
     project->GetManifestTable().Push(state);
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterCoreApi(lua_State *state, ScriptContext *context) {
     SetTasFunction(state, "log", TasLog, context);

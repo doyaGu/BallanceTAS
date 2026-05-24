@@ -5,14 +5,12 @@
 #include <CKDefines.h>
 #include <CKObject.h>
 
-namespace {
-
-void SetEnumValue(lua_State *L, const char *name, int value) {
+static void SetEnumValue(lua_State *L, const char *name, int value) {
     lua_pushinteger(L, value);
     lua_setfield(L, -2, name);
 }
 
-void RegisterObjectFlags(lua_State *L) {
+static void RegisterObjectFlags(lua_State *L) {
     lua_newtable(L);
     SetEnumValue(L, "INTERFACEOBJ", CK_OBJECT_INTERFACEOBJ);
     SetEnumValue(L, "PRIVATE", CK_OBJECT_PRIVATE);
@@ -50,7 +48,7 @@ void RegisterObjectFlags(lua_State *L) {
     lua_setglobal(L, "CK_OBJECT_FLAGS");
 }
 
-void RegisterShowOptions(lua_State *L) {
+static void RegisterShowOptions(lua_State *L) {
     lua_newtable(L);
     SetEnumValue(L, "CKHIDE", CKHIDE);
     SetEnumValue(L, "CKSHOW", CKSHOW);
@@ -58,7 +56,7 @@ void RegisterShowOptions(lua_State *L) {
     lua_setglobal(L, "CK_OBJECT_SHOWOPTION");
 }
 
-void Register3dEntityFlags(lua_State *L) {
+static void Register3dEntityFlags(lua_State *L) {
     lua_newtable(L);
     SetEnumValue(L, "DUMMY", CK_3DENTITY_DUMMY);
     SetEnumValue(L, "FRAME", CK_3DENTITY_FRAME);
@@ -80,7 +78,7 @@ void Register3dEntityFlags(lua_State *L) {
     lua_setglobal(L, "CK_3DENTITY_FLAGS");
 }
 
-void RegisterRayIntersection(lua_State *L) {
+static void RegisterRayIntersection(lua_State *L) {
     lua_newtable(L);
     SetEnumValue(L, "DEFAULT", CKRAYINTERSECTION_DEFAULT);
     SetEnumValue(L, "SEGMENT", CKRAYINTERSECTION_SEGMENT);
@@ -88,8 +86,6 @@ void RegisterRayIntersection(lua_State *L) {
     SetEnumValue(L, "FIRSTCONTACT", CKRAYINTERSECTION_FIRSTCONTACT);
     lua_setglobal(L, "CK_RAYINTERSECTION");
 }
-
-} // namespace
 
 void LuaApi::RegisterCKEnums(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

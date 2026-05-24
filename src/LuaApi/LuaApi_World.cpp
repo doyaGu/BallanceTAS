@@ -11,18 +11,16 @@
 #include <CKObject.h>
 #include <VxMath.h>
 
-namespace {
-
 constexpr const char *kCKObjectMt = "BallanceTAS.CKObject";
 constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
 constexpr const char *kCKCameraMt = "BallanceTAS.CKCamera";
 constexpr const char *kContextUpvalue = "LuaApi.World.Context";
 
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-void PushCKObject(lua_State *L, CKObject *object) {
+static void PushCKObject(lua_State *L, CKObject *object) {
     if (!object) {
         lua_pushnil(L);
         return;
@@ -30,7 +28,7 @@ void PushCKObject(lua_State *L, CKObject *object) {
     tas::lua::PushBorrowedUserdata<CKObject>(L, kCKObjectMt, object);
 }
 
-void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
+static void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
     if (!entity) {
         lua_pushnil(L);
         return;
@@ -38,7 +36,7 @@ void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
     tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
 }
 
-void PushCKCamera(lua_State *L, CKCamera *camera) {
+static void PushCKCamera(lua_State *L, CKCamera *camera) {
     if (!camera) {
         lua_pushnil(L);
         return;
@@ -46,41 +44,41 @@ void PushCKCamera(lua_State *L, CKCamera *camera) {
     tas::lua::PushBorrowedUserdata<CKCamera>(L, kCKCameraMt, camera);
 }
 
-void SetContextFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetContextFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-int IsPaused(lua_State *L) {
+static int IsPaused(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushboolean(L, game && game->IsPaused());
     return 1;
 }
 
-int IsPlaying(lua_State *L) {
+static int IsPlaying(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushboolean(L, game && game->IsPlaying());
     return 1;
 }
 
-int GetLevel(lua_State *L) {
+static int GetLevel(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushinteger(L, game ? game->GetCurrentLevel() : 0);
     return 1;
 }
 
-int GetSector(lua_State *L) {
+static int GetSector(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     lua_pushinteger(L, game ? game->GetCurrentSector() : 0);
     return 1;
 }
 
-int GetObjectById(lua_State *L) {
+static int GetObjectById(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     const int id = static_cast<int>(luaL_checkinteger(L, 1));
@@ -88,7 +86,7 @@ int GetObjectById(lua_State *L) {
     return 1;
 }
 
-int GetObject(lua_State *L) {
+static int GetObject(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     const char *name = luaL_checkstring(L, 1);
@@ -96,21 +94,21 @@ int GetObject(lua_State *L) {
     return 1;
 }
 
-int GetCamera(lua_State *L) {
+static int GetCamera(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     PushCKCamera(L, game ? game->GetActiveCamera() : nullptr);
     return 1;
 }
 
-int GetBall(lua_State *L) {
+static int GetBall(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     PushCK3dEntity(L, game ? game->GetActiveBall() : nullptr);
     return 1;
 }
 
-int GetBallPosition(lua_State *L) {
+static int GetBallPosition(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     CK3dEntity *ball = game ? game->GetActiveBall() : nullptr;
@@ -126,8 +124,6 @@ int GetBallPosition(lua_State *L) {
     lua_call(L, 3, 1);
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterWorldQueryApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);

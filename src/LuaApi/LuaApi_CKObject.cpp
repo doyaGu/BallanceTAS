@@ -6,21 +6,19 @@
 #include <CKObject.h>
 #include <cstdio>
 
-namespace {
-
 constexpr const char *kCKObjectMt = "BallanceTAS.CKObject";
 
-CKObject *CheckCKObject(lua_State *L, int index) {
+static CKObject *CheckCKObject(lua_State *L, int index) {
     return tas::lua::CheckUserdata<CKObject>(L, index, kCKObjectMt);
 }
 
-int CKObjectName(lua_State *L) {
+static int CKObjectName(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     lua_pushstring(L, object && object->GetName() ? object->GetName() : "");
     return 1;
 }
 
-int CKObjectSetName(lua_State *L) {
+static int CKObjectSetName(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     const char *name = luaL_checkstring(L, 2);
     if (!object) {
@@ -30,37 +28,37 @@ int CKObjectSetName(lua_State *L) {
     return 0;
 }
 
-int CKObjectId(lua_State *L) {
+static int CKObjectId(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     lua_pushinteger(L, object ? object->GetID() : 0);
     return 1;
 }
 
-int CKObjectClassId(lua_State *L) {
+static int CKObjectClassId(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     lua_pushinteger(L, object ? object->GetClassID() : 0);
     return 1;
 }
 
-int CKObjectFlags(lua_State *L) {
+static int CKObjectFlags(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     lua_pushinteger(L, object ? object->GetObjectFlags() : 0);
     return 1;
 }
 
-int CKObjectIsDynamic(lua_State *L) {
+static int CKObjectIsDynamic(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     lua_pushboolean(L, object && object->IsDynamic());
     return 1;
 }
 
-int CKObjectIsVisible(lua_State *L) {
+static int CKObjectIsVisible(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     lua_pushboolean(L, object && object->IsVisible());
     return 1;
 }
 
-int CKObjectToString(lua_State *L) {
+static int CKObjectToString(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     char buffer[160];
     std::snprintf(buffer,
@@ -72,8 +70,6 @@ int CKObjectToString(lua_State *L) {
     lua_pushstring(L, buffer);
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterCKObject(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

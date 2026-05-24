@@ -6,18 +6,16 @@
 #include "SavestateManager.h"
 #include "ScriptContext.h"
 
-namespace {
-
-ScriptContext *GetContext(lua_State *L) {
+static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
 }
 
-SavestateManager *GetManager(lua_State *L) {
+static SavestateManager *GetManager(lua_State *L) {
     auto *context = GetContext(L);
     return context ? context->GetSavestateManager() : nullptr;
 }
 
-void PushErrorOrNil(lua_State *L, const Result<void> &result) {
+static void PushErrorOrNil(lua_State *L, const Result<void> &result) {
     if (result.IsOk()) {
         lua_pushnil(L);
         return;
@@ -26,7 +24,7 @@ void PushErrorOrNil(lua_State *L, const Result<void> &result) {
     lua_pushlstring(L, error.message.data(), error.message.size());
 }
 
-void PushVectorTable(lua_State *L, const VxVector &value) {
+static void PushVectorTable(lua_State *L, const VxVector &value) {
     lua_newtable(L);
     lua_pushnumber(L, value.x);
     lua_setfield(L, -2, "x");
@@ -36,7 +34,7 @@ void PushVectorTable(lua_State *L, const VxVector &value) {
     lua_setfield(L, -2, "z");
 }
 
-void PushSavestateInfo(lua_State *L, const SavestateData &data) {
+static void PushSavestateInfo(lua_State *L, const SavestateData &data) {
     lua_newtable(L);
     lua_pushlstring(L, data.name.data(), data.name.size());
     lua_setfield(L, -2, "name");
@@ -66,13 +64,13 @@ void PushSavestateInfo(lua_State *L, const SavestateData &data) {
     lua_setfield(L, -2, "tick");
 }
 
-void SetSavestateFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetSavestateFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
     lua_setfield(L, -2, name);
 }
 
-int Save(lua_State *L) {
+static int Save(lua_State *L) {
     auto *manager = GetManager(L);
     if (!manager) {
         lua_pushstring(L, "SavestateManager not available");
@@ -84,7 +82,7 @@ int Save(lua_State *L) {
     return 1;
 }
 
-int Load(lua_State *L) {
+static int Load(lua_State *L) {
     auto *context = GetContext(L);
     auto *manager = context ? context->GetSavestateManager() : nullptr;
     if (!manager) {
@@ -104,7 +102,7 @@ int Load(lua_State *L) {
     return 0;
 }
 
-int Delete(lua_State *L) {
+static int Delete(lua_State *L) {
     auto *manager = GetManager(L);
     if (!manager) {
         lua_pushstring(L, "SavestateManager not available");
@@ -115,7 +113,7 @@ int Delete(lua_State *L) {
     return 1;
 }
 
-int List(lua_State *L) {
+static int List(lua_State *L) {
     auto *manager = GetManager(L);
     if (!manager) {
         lua_pushnil(L);
@@ -138,14 +136,14 @@ int List(lua_State *L) {
     return 1;
 }
 
-int Exists(lua_State *L) {
+static int Exists(lua_State *L) {
     auto *manager = GetManager(L);
     const char *name = luaL_checkstring(L, 1);
     lua_pushboolean(L, manager && manager->StateExists(name ? name : ""));
     return 1;
 }
 
-int GetInfo(lua_State *L) {
+static int GetInfo(lua_State *L) {
     auto *manager = GetManager(L);
     if (!manager) {
         lua_pushnil(L);
@@ -162,14 +160,12 @@ int GetInfo(lua_State *L) {
     return 1;
 }
 
-int GetDirectory(lua_State *L) {
+static int GetDirectory(lua_State *L) {
     auto *manager = GetManager(L);
     std::string directory = manager ? manager->GetSavestatesDirectory() : "";
     lua_pushlstring(L, directory.data(), directory.size());
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterSavestateApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);

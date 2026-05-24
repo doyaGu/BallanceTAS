@@ -10,10 +10,7 @@
 #include "MessageBus.h"
 #include "GameInterface.h"
 
-namespace {
-    constexpr const char *kGlobalCustomContextKey = "__global__";
-
-}
+constexpr const char *kGlobalCustomContextKey = "__global__";
 
 ScriptContextManager::ScriptContextManager(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {

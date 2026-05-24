@@ -4,13 +4,11 @@
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
-namespace {
-
-ScriptContext *GetContext(lua_State *state) {
+static ScriptContext *GetContext(lua_State *state) {
     return static_cast<ScriptContext *>(lua_touserdata(state, lua_upvalueindex(1)));
 }
 
-InputSystem *RequireInput(lua_State *state) {
+static InputSystem *RequireInput(lua_State *state) {
     ScriptContext *context = GetContext(state);
     InputSystem *input = context ? context->GetInputSystem() : nullptr;
     if (!input) {
@@ -19,7 +17,7 @@ InputSystem *RequireInput(lua_State *state) {
     return input;
 }
 
-std::string RequireString(lua_State *state, int index, const char *name) {
+static std::string RequireString(lua_State *state, int index, const char *name) {
     if (!lua_isstring(state, index)) {
         luaL_error(state, "%s must be a string", name);
     }
@@ -31,7 +29,7 @@ std::string RequireString(lua_State *state, int index, const char *name) {
     return std::string(value, length);
 }
 
-int KeyboardPress(lua_State *state) {
+static int KeyboardPress(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "keyboard.press(key_string): expected one argument");
     }
@@ -39,7 +37,7 @@ int KeyboardPress(lua_State *state) {
     return 0;
 }
 
-int KeyboardKeyDown(lua_State *state) {
+static int KeyboardKeyDown(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "keyboard.key_down(key_string): expected one argument");
     }
@@ -47,7 +45,7 @@ int KeyboardKeyDown(lua_State *state) {
     return 0;
 }
 
-int KeyboardHold(lua_State *state) {
+static int KeyboardHold(lua_State *state) {
     if (lua_gettop(state) != 2 || !lua_isinteger(state, 2)) {
         return luaL_error(state, "keyboard.hold(key_string, duration_ticks): expected string and integer");
     }
@@ -69,7 +67,7 @@ int KeyboardHold(lua_State *state) {
     return lua_yieldk(state, 0, 0, nullptr);
 }
 
-int KeyboardKeyUp(lua_State *state) {
+static int KeyboardKeyUp(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "keyboard.key_up(key_string): expected one argument");
     }
@@ -77,7 +75,7 @@ int KeyboardKeyUp(lua_State *state) {
     return 0;
 }
 
-int KeyboardReleaseAll(lua_State *state) {
+static int KeyboardReleaseAll(lua_State *state) {
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "keyboard.release_all(): expected no arguments");
     }
@@ -85,7 +83,7 @@ int KeyboardReleaseAll(lua_State *state) {
     return 0;
 }
 
-int KeyboardAreDown(lua_State *state) {
+static int KeyboardAreDown(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "keyboard.are_keys_down(key_string): expected one argument");
     }
@@ -93,7 +91,7 @@ int KeyboardAreDown(lua_State *state) {
     return 1;
 }
 
-int KeyboardAreUp(lua_State *state) {
+static int KeyboardAreUp(lua_State *state) {
     if (lua_gettop(state) != 1) {
         return luaL_error(state, "keyboard.are_keys_up(key_string): expected one argument");
     }
@@ -101,7 +99,7 @@ int KeyboardAreUp(lua_State *state) {
     return 1;
 }
 
-int KeyboardAvailableKeys(lua_State *state) {
+static int KeyboardAvailableKeys(lua_State *state) {
     if (lua_gettop(state) != 0) {
         return luaL_error(state, "keyboard.get_available_keys(): expected no arguments");
     }
@@ -116,21 +114,19 @@ int KeyboardAvailableKeys(lua_State *state) {
     return 1;
 }
 
-void SetClosure(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
+static void SetClosure(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(state, context);
     lua_pushcclosure(state, function, 1);
     lua_setfield(state, -2, name);
 }
 
-void Alias(lua_State *state, const char *sourceTable, const char *sourceName, const char *targetName) {
+static void Alias(lua_State *state, const char *sourceTable, const char *sourceName, const char *targetName) {
     lua_getglobal(state, "tas");
     lua_getfield(state, -1, sourceTable);
     lua_getfield(state, -1, sourceName);
     lua_setfield(state, -3, targetName);
     lua_pop(state, 2);
 }
-
-} // namespace
 
 void LuaApi::RegisterInputApi(lua_State *state, ScriptContext *context) {
     lua_getglobal(state, "tas");

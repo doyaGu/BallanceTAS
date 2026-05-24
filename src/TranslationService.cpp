@@ -25,9 +25,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace {
-
-std::string ResolveTranslationLevelName(const TASProject *project, GameInterface &game) {
+static std::string ResolveTranslationLevelName(const TASProject *project, GameInterface &game) {
     if (!project) {
         return {};
     }
@@ -38,7 +36,7 @@ std::string ResolveTranslationLevelName(const TASProject *project, GameInterface
         game.GetCurrentLevel());
 }
 
-std::string SanitizeFileStem(std::string name) {
+static std::string SanitizeFileStem(std::string name) {
     std::replace_if(name.begin(), name.end(),
                     [](char c) {
                         return c == ' ' || c == '/' || c == '\\' || c == ':' || c == '*' ||
@@ -50,8 +48,6 @@ std::string SanitizeFileStem(std::string name) {
     }
     return name;
 }
-
-} // namespace
 
 TranslationService::TranslationService(Recorder &recorder,
                                        RecordPlayer &recordPlayer,

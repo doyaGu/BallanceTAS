@@ -4,12 +4,10 @@
 #include <cstdarg>
 #include <cstdio>
 
-namespace {
-    ILogSink *g_Sink = nullptr;
-    std::mutex g_LoggerMutex;
+static ILogSink *g_Sink = nullptr;
+static std::mutex g_LoggerMutex;
 
-    constexpr size_t MAX_LOG_MESSAGE_SIZE = 4096;
-}
+constexpr size_t MAX_LOG_MESSAGE_SIZE = 4096;
 
 namespace Log {
     void Initialize(ILogSink *sink) {

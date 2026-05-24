@@ -10,11 +10,9 @@
 #include "TASProject.h"
 #include "GameInterface.h"
 
-namespace {
-
 constexpr float kDefaultFrameDeltaTimeMs = 1000.0f / 132.0f;
 
-void EnsureFrameSentinel(std::vector<RecordFrameData> &frames, size_t totalFrames) {
+static void EnsureFrameSentinel(std::vector<RecordFrameData> &frames, size_t totalFrames) {
     if (frames.size() < totalFrames) {
         frames.resize(totalFrames);
     }
@@ -23,18 +21,16 @@ void EnsureFrameSentinel(std::vector<RecordFrameData> &frames, size_t totalFrame
     frames[totalFrames] = RecordFrameData();
 }
 
-void ClampPlaybackCursor(size_t &currentFrame, size_t totalFrames) {
+static void ClampPlaybackCursor(size_t &currentFrame, size_t totalFrames) {
     if (currentFrame > totalFrames) {
         currentFrame = totalFrames;
     }
 }
 
-bool CanUseLegacyPackSize(size_t byteCount) {
+static bool CanUseLegacyPackSize(size_t byteCount) {
     return byteCount <= static_cast<size_t>((std::numeric_limits<int>::max)())
         && byteCount <= static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
 }
-
-} // namespace
 
 RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {

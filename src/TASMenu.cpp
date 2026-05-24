@@ -15,31 +15,29 @@
 #include <cstring>
 #include <utility>
 
-namespace {
-
 constexpr float kMenuTextX = 0.300f;
 constexpr float kMenuButtonX = 0.4031f;
 constexpr float kMenuWidthFraction = 0.40f;
 
-float ViewportWidth() {
+static float ViewportWidth() {
     return ImGui::GetMainViewport()->Size.x;
 }
 
-float MenuWidth(float fraction = 0.4f) {
+static float MenuWidth(float fraction = 0.4f) {
     return ViewportWidth() * fraction;
 }
 
-void TextBlock(float x, float y, const char *text, float width = 0.4f, float scale = 1.0f) {
+static void TextBlock(float x, float y, const char *text, float width = 0.4f, float scale = 1.0f) {
     Bui::At(x, y, [&]() {
         Bui::WrappedText(text, MenuWidth(width), ImGui::GetCursorPosX(), scale);
     });
 }
 
-void TextBlock(float x, float y, const std::string &text, float width = 0.4f, float scale = 1.0f) {
+static void TextBlock(float x, float y, const std::string &text, float width = 0.4f, float scale = 1.0f) {
     TextBlock(x, y, text.c_str(), width, scale);
 }
 
-ImVec4 TextColorForTone(TASMenuTone tone) {
+static ImVec4 TextColorForTone(TASMenuTone tone) {
     switch (tone) {
     case TASMenuTone::Good:
         return ImVec4(0.55f, 1.0f, 0.55f, 1.0f);
@@ -57,18 +55,18 @@ ImVec4 TextColorForTone(TASMenuTone tone) {
     }
 }
 
-void ToneText(float x, float y, const std::string &text, TASMenuTone tone, float width = 0.4f, float scale = 1.0f) {
+static void ToneText(float x, float y, const std::string &text, TASMenuTone tone, float width = 0.4f, float scale = 1.0f) {
     ImGui::PushStyleColor(ImGuiCol_Text, TextColorForTone(tone));
     TextBlock(x, y, text, width, scale);
     ImGui::PopStyleColor();
 }
 
 template <typename Draw>
-void MenuItemAt(float x, float y, Draw &&draw) {
+static void MenuItemAt(float x, float y, Draw &&draw) {
     Bui::At(x, y, std::forward<Draw>(draw));
 }
 
-void DrawStateLine(float y, const TASMenuStatePresentation &state) {
+static void DrawStateLine(float y, const TASMenuStatePresentation &state) {
     if (state.label == "Idle" && state.failureReason.empty()) {
         return;
     }
@@ -91,8 +89,6 @@ void DrawStateLine(float y, const TASMenuStatePresentation &state) {
         ToneText(kMenuTextX, y + 0.028f, "Error: " + state.failureReason, TASMenuTone::Error, kMenuWidthFraction, 0.70f);
     }
 }
-
-} // namespace
 
 // TASMenuPage Implementation
 TASMenuPage::TASMenuPage(TASMenu *menu, std::string name) : Page(std::move(name)), m_Menu(menu) {

@@ -11,8 +11,6 @@
 #include "LuaRuntime/LuaUserdata.h"
 #include "LuaRuntime/LuaValue.h"
 
-namespace {
-
 struct OwnedCounter {
     static int destroyed;
     int value = 0;
@@ -50,13 +48,13 @@ struct CountingYieldState {
 
 int CountingYieldState::alive = 0;
 
-int RegistryPointSum(lua_State *L) {
+static int RegistryPointSum(lua_State *L) {
     auto *point = tas::lua::CheckUserdata<RegistryPoint>(L, 1, "RegistryPoint");
     lua_pushnumber(L, point->x + point->y);
     return 1;
 }
 
-int RegistryPointIndex(lua_State *L) {
+static int RegistryPointIndex(lua_State *L) {
     auto *point = tas::lua::CheckUserdata<RegistryPoint>(L, 1, "RegistryPoint");
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     if (index == 0) {
@@ -71,7 +69,7 @@ int RegistryPointIndex(lua_State *L) {
     return 1;
 }
 
-int RegistryPointNewIndex(lua_State *L) {
+static int RegistryPointNewIndex(lua_State *L) {
     auto *point = tas::lua::CheckUserdata<RegistryPoint>(L, 1, "RegistryPoint");
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     const float value = static_cast<float>(luaL_checknumber(L, 3));
@@ -86,26 +84,24 @@ int RegistryPointNewIndex(lua_State *L) {
     return luaL_error(L, "RegistryPoint index out of range");
 }
 
-int RegistryPointAdd(lua_State *L) {
+static int RegistryPointAdd(lua_State *L) {
     auto *a = tas::lua::CheckUserdata<RegistryPoint>(L, 1, "RegistryPoint");
     auto *b = tas::lua::CheckUserdata<RegistryPoint>(L, 2, "RegistryPoint");
     tas::lua::PushOwnedUserdata<RegistryPoint>(L, "RegistryPoint", RegistryPoint{a->x + b->x, a->y + b->y});
     return 1;
 }
 
-int CountingYieldContinuation(lua_State *L, int, lua_KContext ctx) {
+static int CountingYieldContinuation(lua_State *L, int, lua_KContext ctx) {
     auto *state = tas::lua::LuaYieldState<CountingYieldState>::Get(L, ctx);
     lua_pushinteger(L, ++state->value);
     tas::lua::LuaYieldState<CountingYieldState>::Release(L, ctx);
     return 1;
 }
 
-int YieldCountingState(lua_State *L) {
+static int YieldCountingState(lua_State *L) {
     const auto ctx = tas::lua::LuaYieldState<CountingYieldState>::Create(L, 41);
     return lua_yieldk(L, 0, ctx, CountingYieldContinuation);
 }
-
-} // namespace
 
 TEST(LuaRuntimeTest, StackGuardDetectsBalancedStack) {
     tas::lua::LuaState state;

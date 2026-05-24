@@ -5,12 +5,11 @@
 #include <vector>
 
 namespace tas::determinism {
-namespace {
 
 constexpr uint32_t kMagic = 0x53415442;
 constexpr uint32_t kVersion = 1;
 
-std::string SanitizeFileStem(std::string value) {
+static std::string SanitizeFileStem(std::string value) {
     if (value.empty()) {
         return "trace";
     }
@@ -26,11 +25,11 @@ std::string SanitizeFileStem(std::string value) {
     return value;
 }
 
-std::filesystem::path Normalize(std::filesystem::path path) {
+static std::filesystem::path Normalize(std::filesystem::path path) {
     return path.lexically_normal();
 }
 
-Result<std::vector<uint64_t>> ReadHashes(const std::filesystem::path &path) {
+static Result<std::vector<uint64_t>> ReadHashes(const std::filesystem::path &path) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
         return Result<std::vector<uint64_t>>::Error("Failed to open: " + path.string(), "file_open_failed");
@@ -77,8 +76,6 @@ Result<std::vector<uint64_t>> ReadHashes(const std::filesystem::path &path) {
 
     return Result<std::vector<uint64_t>>::Ok(std::move(hashes));
 }
-
-} // namespace
 
 Result<std::filesystem::path> ResolveTracePath(const TracePathRequest &request) {
     std::filesystem::path base = request.projectDirectory.empty() ? request.tasRoot : request.projectDirectory;

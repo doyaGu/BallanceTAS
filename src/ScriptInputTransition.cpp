@@ -2,13 +2,11 @@
 
 #include <array>
 
-namespace {
-
 constexpr std::array<const char *, 8> kKeyNames = {
     "up", "down", "left", "right", "lshift", "space", "q", "escape"
 };
 
-uint8_t GetKeyState(const RawInputState &state, int keyIndex) {
+static uint8_t GetKeyState(const RawInputState &state, int keyIndex) {
     switch (keyIndex) {
     case 0: return state.keyUp;
     case 1: return state.keyDown;
@@ -22,11 +20,9 @@ uint8_t GetKeyState(const RawInputState &state, int keyIndex) {
     }
 }
 
-bool IsHeldAfterFrame(uint8_t state) {
+static bool IsHeldAfterFrame(uint8_t state) {
     return (state & KS_PRESSED) != 0 && (state & KS_RELEASED) == 0;
 }
-
-} // namespace
 
 std::vector<KeyEvent> DetectScriptKeyTransitions(const RawInputState &previousState,
                                                  const RawInputState &currentState,

@@ -6,29 +6,25 @@
 #include <CKBeObject.h>
 #include <CKSceneObject.h>
 
-namespace {
-
 constexpr const char *kCKSceneObjectMt = "BallanceTAS.CKSceneObject";
 
-CKSceneObject *CheckCKSceneObject(lua_State *L, int index) {
+static CKSceneObject *CheckCKSceneObject(lua_State *L, int index) {
     return tas::lua::CheckUserdata<CKSceneObject>(L, index, kCKSceneObjectMt);
 }
 
-int IsActiveInCurrentScene(lua_State *L) {
+static int IsActiveInCurrentScene(lua_State *L) {
     auto *object = CheckCKSceneObject(L, 1);
     lua_pushboolean(L, object && object->IsActiveInCurrentScene());
     return 1;
 }
 
-int ToString(lua_State *L) {
+static int ToString(lua_State *L) {
     auto *object = CheckCKSceneObject(L, 1);
     lua_pushfstring(L, "CKSceneObject(id=%d, name=%s)",
                     object ? object->GetID() : 0,
                     object && object->GetName() ? object->GetName() : "");
     return 1;
 }
-
-} // namespace
 
 void LuaApi::RegisterCKSceneObject(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);

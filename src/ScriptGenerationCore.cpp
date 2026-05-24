@@ -7,8 +7,6 @@
 #include <sstream>
 #include <variant>
 
-namespace {
-
 class LuaScriptBuilder {
 public:
     explicit LuaScriptBuilder(const GenerationOptions &options) : m_Options(options) {
@@ -82,7 +80,7 @@ private:
     const GenerationOptions &m_Options;
 };
 
-int TransitionOrder(KeyTransition transition) {
+static int TransitionOrder(KeyTransition transition) {
     switch (transition) {
     case KeyTransition::Pressed: return 0;
     case KeyTransition::PressedAndReleased: return 1;
@@ -91,7 +89,7 @@ int TransitionOrder(KeyTransition transition) {
     }
 }
 
-std::vector<KeyEvent> NormalizeKeyEvents(std::vector<KeyEvent> events) {
+static std::vector<KeyEvent> NormalizeKeyEvents(std::vector<KeyEvent> events) {
     std::sort(events.begin(), events.end(), [](const KeyEvent &a, const KeyEvent &b) {
         if (a.frame != b.frame) {
             return a.frame < b.frame;
@@ -122,8 +120,6 @@ std::vector<KeyEvent> NormalizeKeyEvents(std::vector<KeyEvent> events) {
 
     return normalized;
 }
-
-} // namespace
 
 std::string BuildGeneratedLuaScriptForTesting(const std::vector<FrameData> &frames,
                                               const GenerationOptions &options) {

@@ -15,8 +15,6 @@
 #include <string>
 #include <vector>
 
-namespace {
-
 constexpr const char *kSharedBufferMt = "BallanceTAS.SharedBuffer";
 constexpr uint8_t kValueNil = 0;
 constexpr uint8_t kValueBool = 1;
@@ -28,7 +26,7 @@ constexpr int kMaxSerializedDepth = 16;
 
 using SharedBufferHandle = std::shared_ptr<SharedBuffer>;
 
-SharedBufferHandle *CheckBufferHandle(lua_State *L, int index) {
+static SharedBufferHandle *CheckBufferHandle(lua_State *L, int index) {
     auto *handle = tas::lua::CheckUserdata<SharedBufferHandle>(L, index, kSharedBufferMt);
     if (!handle || !*handle) {
         luaL_error(L, "SharedBuffer: invalid buffer");
@@ -36,30 +34,30 @@ SharedBufferHandle *CheckBufferHandle(lua_State *L, int index) {
     return handle;
 }
 
-SharedBuffer &CheckBuffer(lua_State *L, int index) {
+static SharedBuffer &CheckBuffer(lua_State *L, int index) {
     return **CheckBufferHandle(L, index);
 }
 
-const SharedBuffer &CheckConstBuffer(lua_State *L, int index) {
+static const SharedBuffer &CheckConstBuffer(lua_State *L, int index) {
     return **CheckBufferHandle(L, index);
 }
 
-void PushBuffer(lua_State *L, SharedBufferHandle buffer) {
+static void PushBuffer(lua_State *L, SharedBufferHandle buffer) {
     tas::lua::PushOwnedUserdata<SharedBufferHandle>(L, kSharedBufferMt, std::move(buffer));
 }
 
 template <typename T>
-void AppendPod(std::vector<uint8_t> &out, T value) {
+static void AppendPod(std::vector<uint8_t> &out, T value) {
     const auto *bytes = reinterpret_cast<const uint8_t *>(&value);
     out.insert(out.end(), bytes, bytes + sizeof(T));
 }
 
-void AppendString(std::vector<uint8_t> &out, const char *data, size_t length) {
+static void AppendString(std::vector<uint8_t> &out, const char *data, size_t length) {
     AppendPod<uint32_t>(out, static_cast<uint32_t>(length));
     out.insert(out.end(), reinterpret_cast<const uint8_t *>(data), reinterpret_cast<const uint8_t *>(data) + length);
 }
 
-bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out, int depth) {
+static bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out, int depth) {
     if (depth <= 0) {
         luaL_error(L, "shared_buffer.from_table: table nesting exceeds limit");
         return false;
@@ -117,7 +115,7 @@ bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out, int d
 }
 
 template <typename T>
-T ReadPodValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, const char *context) {
+static T ReadPodValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, const char *context) {
     if (static_cast<size_t>(end - cursor) < sizeof(T)) {
         luaL_error(L, "%s: truncated buffer", context);
     }
@@ -127,7 +125,7 @@ T ReadPodValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, const c
     return value;
 }
 
-void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, int depth) {
+static void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, int depth) {
     if (depth <= 0) {
         luaL_error(L, "shared_buffer.to_table: table nesting exceeds limit");
     }
@@ -176,7 +174,7 @@ void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint8_t *en
     }
 }
 
-size_t CheckSize(lua_State *L, int index, const char *name) {
+static size_t CheckSize(lua_State *L, int index, const char *name) {
     const lua_Integer value = luaL_checkinteger(L, index);
     if (value < 0) {
         luaL_error(L, "%s must be non-negative", name);
@@ -184,21 +182,21 @@ size_t CheckSize(lua_State *L, int index, const char *name) {
     return static_cast<size_t>(value);
 }
 
-size_t OptionalSize(lua_State *L, int index, size_t fallback, const char *name) {
+static size_t OptionalSize(lua_State *L, int index, size_t fallback, const char *name) {
     if (lua_isnoneornil(L, index)) {
         return fallback;
     }
     return CheckSize(L, index, name);
 }
 
-void CheckRange(lua_State *L, const SharedBuffer &buffer, size_t offset, size_t width, const char *functionName) {
+static void CheckRange(lua_State *L, const SharedBuffer &buffer, size_t offset, size_t width, const char *functionName) {
     if (offset > buffer.Size() || width > buffer.Size() - offset) {
         luaL_error(L, "%s: offset out of bounds", functionName);
     }
 }
 
 template <typename T>
-int ReadPod(lua_State *L, const char *functionName) {
+static int ReadPod(lua_State *L, const char *functionName) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     CheckRange(L, buffer, offset, sizeof(T), functionName);
@@ -214,7 +212,7 @@ int ReadPod(lua_State *L, const char *functionName) {
 }
 
 template <typename T>
-int WritePod(lua_State *L, const char *functionName) {
+static int WritePod(lua_State *L, const char *functionName) {
     auto &buffer = CheckBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     CheckRange(L, buffer, offset, sizeof(T), functionName);
@@ -229,12 +227,12 @@ int WritePod(lua_State *L, const char *functionName) {
     return 0;
 }
 
-int BufferSize(lua_State *L) {
+static int BufferSize(lua_State *L) {
     lua_pushinteger(L, static_cast<lua_Integer>(CheckConstBuffer(L, 1).Size()));
     return 1;
 }
 
-int ReadU8(lua_State *L) {
+static int ReadU8(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     CheckRange(L, buffer, offset, 1, "SharedBuffer read_u8");
@@ -242,7 +240,7 @@ int ReadU8(lua_State *L) {
     return 1;
 }
 
-int WriteU8(lua_State *L) {
+static int WriteU8(lua_State *L) {
     auto &buffer = CheckBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     CheckRange(L, buffer, offset, 1, "SharedBuffer write_u8");
@@ -250,18 +248,18 @@ int WriteU8(lua_State *L) {
     return 0;
 }
 
-int ReadU16(lua_State *L) { return ReadPod<uint16_t>(L, "SharedBuffer read_u16"); }
-int WriteU16(lua_State *L) { return WritePod<uint16_t>(L, "SharedBuffer write_u16"); }
-int ReadU32(lua_State *L) { return ReadPod<uint32_t>(L, "SharedBuffer read_u32"); }
-int WriteU32(lua_State *L) { return WritePod<uint32_t>(L, "SharedBuffer write_u32"); }
-int ReadI32(lua_State *L) { return ReadPod<int32_t>(L, "SharedBuffer read_i32"); }
-int WriteI32(lua_State *L) { return WritePod<int32_t>(L, "SharedBuffer write_i32"); }
-int ReadF32(lua_State *L) { return ReadPod<float>(L, "SharedBuffer read_f32"); }
-int WriteF32(lua_State *L) { return WritePod<float>(L, "SharedBuffer write_f32"); }
-int ReadF64(lua_State *L) { return ReadPod<double>(L, "SharedBuffer read_f64"); }
-int WriteF64(lua_State *L) { return WritePod<double>(L, "SharedBuffer write_f64"); }
+static int ReadU16(lua_State *L) { return ReadPod<uint16_t>(L, "SharedBuffer read_u16"); }
+static int WriteU16(lua_State *L) { return WritePod<uint16_t>(L, "SharedBuffer write_u16"); }
+static int ReadU32(lua_State *L) { return ReadPod<uint32_t>(L, "SharedBuffer read_u32"); }
+static int WriteU32(lua_State *L) { return WritePod<uint32_t>(L, "SharedBuffer write_u32"); }
+static int ReadI32(lua_State *L) { return ReadPod<int32_t>(L, "SharedBuffer read_i32"); }
+static int WriteI32(lua_State *L) { return WritePod<int32_t>(L, "SharedBuffer write_i32"); }
+static int ReadF32(lua_State *L) { return ReadPod<float>(L, "SharedBuffer read_f32"); }
+static int WriteF32(lua_State *L) { return WritePod<float>(L, "SharedBuffer write_f32"); }
+static int ReadF64(lua_State *L) { return ReadPod<double>(L, "SharedBuffer read_f64"); }
+static int WriteF64(lua_State *L) { return WritePod<double>(L, "SharedBuffer write_f64"); }
 
-int ReadString(lua_State *L) {
+static int ReadString(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     if (offset >= buffer.Size()) {
@@ -284,7 +282,7 @@ int ReadString(lua_State *L) {
     return 1;
 }
 
-int WriteString(lua_State *L) {
+static int WriteString(lua_State *L) {
     auto &buffer = CheckBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     size_t length = 0;
@@ -294,7 +292,7 @@ int WriteString(lua_State *L) {
     return 0;
 }
 
-int WriteStringZ(lua_State *L) {
+static int WriteStringZ(lua_State *L) {
     auto &buffer = CheckBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     size_t length = 0;
@@ -305,7 +303,7 @@ int WriteStringZ(lua_State *L) {
     return 0;
 }
 
-int Fill(lua_State *L) {
+static int Fill(lua_State *L) {
     auto &buffer = CheckBuffer(L, 1);
     const auto value = static_cast<uint8_t>(luaL_checkinteger(L, 2));
     const size_t offset = OptionalSize(L, 3, 0, "offset");
@@ -318,12 +316,12 @@ int Fill(lua_State *L) {
     return 0;
 }
 
-int Clone(lua_State *L) {
+static int Clone(lua_State *L) {
     PushBuffer(L, CheckConstBuffer(L, 1).Clone());
     return 1;
 }
 
-int ToHex(lua_State *L) {
+static int ToHex(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = OptionalSize(L, 2, 0, "offset");
     if (offset >= buffer.Size()) {
@@ -344,13 +342,13 @@ int ToHex(lua_State *L) {
     return 1;
 }
 
-int ToString(lua_State *L) {
+static int ToString(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     lua_pushfstring(L, "SharedBuffer(size=%d)", static_cast<int>(buffer.Size()));
     return 1;
 }
 
-int ToTable(lua_State *L) {
+static int ToTable(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const uint8_t *cursor = buffer.Data();
     const uint8_t *end = cursor + buffer.Size();
@@ -361,7 +359,7 @@ int ToTable(lua_State *L) {
     return 1;
 }
 
-int Create(lua_State *L) {
+static int Create(lua_State *L) {
     const size_t size = CheckSize(L, 1, "size");
     try {
         PushBuffer(L, SharedBuffer::Create(size));
@@ -372,7 +370,7 @@ int Create(lua_State *L) {
     }
 }
 
-int FromString(lua_State *L) {
+static int FromString(lua_State *L) {
     size_t length = 0;
     const char *data = luaL_checklstring(L, 1, &length);
     try {
@@ -384,7 +382,7 @@ int FromString(lua_State *L) {
     }
 }
 
-int HexNibble(lua_State *L, char c) {
+static int HexNibble(lua_State *L, char c) {
     if (c >= '0' && c <= '9') {
         return c - '0';
     }
@@ -398,7 +396,7 @@ int HexNibble(lua_State *L, char c) {
     return 0;
 }
 
-int FromHex(lua_State *L) {
+static int FromHex(lua_State *L) {
     size_t hexLength = 0;
     const char *hex = luaL_checklstring(L, 1, &hexLength);
     if ((hexLength % 2) != 0) {
@@ -421,7 +419,7 @@ int FromHex(lua_State *L) {
     }
 }
 
-int FromTable(lua_State *L) {
+static int FromTable(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
     std::vector<uint8_t> encoded;
     encoded.reserve(256);
@@ -435,24 +433,24 @@ int FromTable(lua_State *L) {
     }
 }
 
-int GetMaxSize(lua_State *L) {
+static int GetMaxSize(lua_State *L) {
     lua_pushinteger(L, static_cast<lua_Integer>(SharedBuffer::GetMaxSize()));
     return 1;
 }
 
-int SetMaxSize(lua_State *L) {
+static int SetMaxSize(lua_State *L) {
     const size_t size = CheckSize(L, 1, "size");
     SharedBuffer::SetMaxSize(size);
     Log::Info("SharedBuffer max size set to %zu bytes", size);
     return 0;
 }
 
-void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+static void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
     lua_pushcfunction(L, function);
     lua_setfield(L, -2, name);
 }
 
-void RegisterFactoryTable(lua_State *L) {
+static void RegisterFactoryTable(lua_State *L) {
     lua_getglobal(L, "tas");
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
@@ -473,8 +471,6 @@ void RegisterFactoryTable(lua_State *L) {
     lua_setfield(L, -2, "shared_buffer");
     lua_pop(L, 1);
 }
-
-} // namespace
 
 void LuaApi::RegisterSharedBufferApi(lua_State *state, ScriptContext *context) {
     if (!state || !context) {

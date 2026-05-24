@@ -11,21 +11,19 @@
 #include "ScriptContext.h"
 #include "TASEngine.h"
 
-namespace {
-
 using tas::lua::LuaFunction;
 using tas::lua::LuaThread;
 using tas::lua::LuaThreadStatus;
 using tas::lua::LuaValue;
 
-std::shared_ptr<LuaFunction> MakeFunction(LuaFunction function) {
+static std::shared_ptr<LuaFunction> MakeFunction(LuaFunction function) {
     if (!function.IsValid()) {
         return {};
     }
     return std::make_shared<LuaFunction>(std::move(function));
 }
 
-bool CallFunctionNoResults(const std::shared_ptr<LuaFunction> &function, const char *context) {
+static bool CallFunctionNoResults(const std::shared_ptr<LuaFunction> &function, const char *context) {
     if (!function || !function->IsValid()) {
         return false;
     }
@@ -38,7 +36,7 @@ bool CallFunctionNoResults(const std::shared_ptr<LuaFunction> &function, const c
     return true;
 }
 
-bool CallFunctionBool(const std::shared_ptr<LuaFunction> &function, bool defaultValue, const char *context) {
+static bool CallFunctionBool(const std::shared_ptr<LuaFunction> &function, bool defaultValue, const char *context) {
     if (!function || !function->IsValid()) {
         return defaultValue;
     }
@@ -322,8 +320,6 @@ private:
     int m_RemainingTicks;
     bool m_TaskExecuted = false;
 };
-
-} // namespace
 
 class EventWaitTask final : public SchedulerTask {
 public:

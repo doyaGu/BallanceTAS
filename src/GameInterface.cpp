@@ -6,10 +6,8 @@
 #include "BallanceTAS.h"
 #include "UIManager.h"
 
-namespace {
-
 template <typename T>
-bool SetDataArrayValue(CKDataArray *array, int row, int column, const T &value) {
+static bool SetDataArrayValue(CKDataArray *array, int row, int column, const T &value) {
     if (!array) {
         return false;
     }
@@ -18,7 +16,7 @@ bool SetDataArrayValue(CKDataArray *array, int row, int column, const T &value) 
 }
 
 template <typename T>
-bool SetParameterValue(CKParameter *parameter, const T &value) {
+static bool SetParameterValue(CKParameter *parameter, const T &value) {
     if (!parameter) {
         return false;
     }
@@ -26,8 +24,6 @@ bool SetParameterValue(CKParameter *parameter, const T &value) {
     parameter->SetValue(&value, sizeof(T));
     return true;
 }
-
-} // namespace
 
 // ========================================
 // Construction & Destruction

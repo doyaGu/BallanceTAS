@@ -10,6 +10,9 @@
 #include <Windows.h>
 #include <Psapi.h>
 
+#include <cassert>
+#include <stdexcept>
+
 // ============================================================================
 // METHOD POINTER MACROS
 // ============================================================================
@@ -48,6 +51,7 @@ CP_DECLARE_METHOD_PTR(IVP_U_Quat, void, set_quaternion, (const IVP_U_Matrix3 *ma
 CP_DECLARE_METHOD_PTR(IVP_Real_Object, void, ensure_in_simulation, ());
 CP_DECLARE_METHOD_PTR(IVP_Real_Object, void, enable_collision_detection, (IVP_BOOL enable));
 CP_DECLARE_METHOD_PTR(IVP_Real_Object, void, get_m_world_f_object_AT, (IVP_U_Matrix * m_world_f_object_out));
+CP_DECLARE_METHOD_PTR(CKIpionManager, PhysicsObject *, get_physics_object_internal, (CK3dEntity *entity, int warn_if_missing));
 
 // ============================================================================
 // GLOBAL VARIABLES
@@ -61,22 +65,37 @@ static int (*qh_rand_ptr)() = nullptr;
 
 static void *(*p_malloc_ptr)(unsigned int size);
 static void (*p_free_ptr)(void *data);
+static bool g_PhysicsAddressesInitialized = false;
 
 // ============================================================================
 // ADDRESS INITIALIZATION
 // ============================================================================
 
 void InitPhysicsAddresses() {
+    if (g_PhysicsAddressesInitialized) {
+        return;
+    }
+
     HMODULE hModule = ::GetModuleHandleA("physics_RT.dll");
+    if (!hModule) {
+        throw std::runtime_error("physics_RT.dll is not loaded");
+    }
+
     MODULEINFO moduleInfo;
-    ::GetModuleInformation(::GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo));
+    if (!::GetModuleInformation(::GetCurrentProcess(), hModule, &moduleInfo, sizeof(moduleInfo))) {
+        throw std::runtime_error("GetModuleInformation failed for physics_RT.dll");
+    }
+
     void *base = moduleInfo.lpBaseOfDll;
 
     // Load method pointers
     CP_LOAD_METHOD_PTR(IVP_U_Quat, set_quaternion, base, 0x191B0);
     CP_LOAD_METHOD_PTR(IVP_Real_Object, ensure_in_simulation, base, 0xA460);
     CP_LOAD_METHOD_PTR(IVP_Real_Object, enable_collision_detection, base, 0x9350);
+    // Binary thunk that forwards to IVP_Real_Object::calc_at_matrix using the environment's current time.
     CP_LOAD_METHOD_PTR(IVP_Real_Object, get_m_world_f_object_AT, base, 0x9C40);
+    // The binary method accepts an extra "warn if missing" flag that the wrapper suppresses.
+    CP_LOAD_METHOD_PTR(CKIpionManager, get_physics_object_internal, base, 0x7800);
 
     // Load global variables
     IVP_RAND_SEED = ForceReinterpretCast<decltype(IVP_RAND_SEED)>(base, 0x685B4);
@@ -88,6 +107,8 @@ void InitPhysicsAddresses() {
 
     p_malloc_ptr = ForceReinterpretCast<decltype(p_malloc_ptr)>(base, 0x200C0);
     p_free_ptr = ForceReinterpretCast<decltype(p_free_ptr)>(base, 0x60770);
+
+    g_PhysicsAddressesInitialized = true;
 }
 
 // ============================================================================
@@ -95,11 +116,17 @@ void InitPhysicsAddresses() {
 // ============================================================================
 
 void *p_malloc(unsigned int size) {
+    assert(p_malloc_ptr && "InitPhysicsAddresses() must be called before p_malloc");
+    if (!p_malloc_ptr) {
+        return nullptr;
+    }
     return p_malloc_ptr(size);
 }
 
 void p_free(void *data) {
-    p_free_ptr(data);
+    if (p_free_ptr && data) {
+        p_free_ptr(data);
+    }
 }
 
 // ============================================================================
@@ -107,19 +134,35 @@ void p_free(void *data) {
 // ============================================================================
 
 void ivp_srand(int seed) {
+    assert(IVP_RAND_SEED && "InitPhysicsAddresses() must be called before ivp_srand");
+    if (!IVP_RAND_SEED) {
+        return;
+    }
     if (seed == 0) seed = 1;
     *IVP_RAND_SEED = seed;
 }
 
 int ivp_srand_read() {
+    assert(IVP_RAND_SEED && "InitPhysicsAddresses() must be called before ivp_srand_read");
+    if (!IVP_RAND_SEED) {
+        return 1;
+    }
     return *IVP_RAND_SEED;
 }
 
 float ivp_rand() {
+    assert(ivp_rand_ptr && "InitPhysicsAddresses() must be called before ivp_rand");
+    if (!ivp_rand_ptr) {
+        return 0.0f;
+    }
     return ivp_rand_ptr();
 }
 
 void qh_srand(int seed) {
+    assert(qh_rand_seed && "InitPhysicsAddresses() must be called before qh_srand");
+    if (!qh_rand_seed) {
+        return;
+    }
     if (seed < 1)
         *qh_rand_seed = 1;
     else if (seed >= qh_rand_m)
@@ -129,10 +172,18 @@ void qh_srand(int seed) {
 }
 
 int qh_srand_read() {
+    assert(qh_rand_seed && "InitPhysicsAddresses() must be called before qh_srand_read");
+    if (!qh_rand_seed) {
+        return 1;
+    }
     return *qh_rand_seed;
 }
 
 int qh_rand() {
+    assert(qh_rand_ptr && "InitPhysicsAddresses() must be called before qh_rand");
+    if (!qh_rand_ptr) {
+        return 1;
+    }
     return qh_rand_ptr();
 }
 
@@ -286,10 +337,16 @@ inline void VxConvertMatrix(const VxMatrix &in, IVP_U_Matrix3 &out) {
 // ============================================================================
 
 void PhysicsObject::Wake() {
-    m_RealObject->ensure_in_simulation();
+    if (m_RealObject) {
+        m_RealObject->ensure_in_simulation();
+    }
 }
 
 void PhysicsObject::EnableCollisions(bool enable) {
+    if (!m_RealObject) {
+        return;
+    }
+
     if (enable) {
         m_RealObject->enable_collision_detection(IVP_TRUE);
     } else {
@@ -298,24 +355,44 @@ void PhysicsObject::EnableCollisions(bool enable) {
 }
 
 float PhysicsObject::GetMass() const {
-    return m_RealObject->get_core()->get_mass();
+    return m_RealObject ? m_RealObject->get_core()->get_mass() : 0.0f;
 }
 
 float PhysicsObject::GetInvMass() const {
-    return m_RealObject->get_core()->get_inv_mass();
+    return m_RealObject ? m_RealObject->get_core()->get_inv_mass() : 0.0f;
 }
 
 void PhysicsObject::GetInertia(VxVector &inertia) const {
+    inertia.Set(0.0f, 0.0f, 0.0f);
+    if (!m_RealObject) {
+        return;
+    }
+
     const IVP_U_Float_Point *pRI = m_RealObject->get_core()->get_rot_inertia();
     VxConvertVector(*pRI, inertia);
 }
 
 void PhysicsObject::GetInvInertia(VxVector &inertia) const {
+    inertia.Set(0.0f, 0.0f, 0.0f);
+    if (!m_RealObject) {
+        return;
+    }
+
     const IVP_U_Float_Point *pRI = m_RealObject->get_core()->get_inv_rot_inertia();
     VxConvertVector(*pRI, inertia);
 }
 
 void PhysicsObject::GetDamping(float *speed, float *rot) {
+    if (!m_RealObject) {
+        if (speed) {
+            *speed = 0.0f;
+        }
+        if (rot) {
+            *rot = 0.0f;
+        }
+        return;
+    }
+
     IVP_Core *core = m_RealObject->get_core();
     if (speed) {
         *speed = core->speed_damp_factor;
@@ -326,6 +403,16 @@ void PhysicsObject::GetDamping(float *speed, float *rot) {
 }
 
 void PhysicsObject::GetPosition(VxVector *worldPosition, VxVector *angles) {
+    if (!m_RealObject) {
+        if (worldPosition) {
+            worldPosition->Set(0.0f, 0.0f, 0.0f);
+        }
+        if (angles) {
+            angles->Set(0.0f, 0.0f, 0.0f);
+        }
+        return;
+    }
+
     IVP_U_Matrix matrix;
     m_RealObject->get_m_world_f_object_AT(&matrix);
 
@@ -345,6 +432,11 @@ void PhysicsObject::GetPosition(VxVector *worldPosition, VxVector *angles) {
 }
 
 void PhysicsObject::GetPositionMatrix(VxMatrix &positionMatrix) {
+    if (!m_RealObject) {
+        positionMatrix.Identity();
+        return;
+    }
+
     IVP_U_Matrix matrix;
     m_RealObject->get_m_world_f_object_AT(&matrix);
     VxConvertMatrix(matrix, positionMatrix);
@@ -353,6 +445,15 @@ void PhysicsObject::GetPositionMatrix(VxMatrix &positionMatrix) {
 void PhysicsObject::GetVelocity(VxVector *velocity, VxVector *angularVelocity) {
     if (!velocity && !angularVelocity)
         return;
+    if (!m_RealObject) {
+        if (velocity) {
+            velocity->Set(0.0f, 0.0f, 0.0f);
+        }
+        if (angularVelocity) {
+            angularVelocity->Set(0.0f, 0.0f, 0.0f);
+        }
+        return;
+    }
 
     IVP_Core *core = m_RealObject->get_core();
 
@@ -372,6 +473,10 @@ void PhysicsObject::GetVelocity(VxVector *velocity, VxVector *angularVelocity) {
 }
 
 void PhysicsObject::SetVelocity(const VxVector *velocity, const VxVector *angularVelocity) {
+    if (!m_RealObject) {
+        return;
+    }
+
     IVP_Core *core = m_RealObject->get_core();
 
     if (velocity) {
@@ -394,9 +499,7 @@ void PhysicsObject::SetVelocity(const VxVector *velocity, const VxVector *angula
 }
 
 bool PhysicsObject::IsStatic() const {
-    if (m_RealObject->get_core()->physical_unmoveable)
-        return true;
-    return false;
+    return m_RealObject && m_RealObject->get_core()->physical_unmoveable;
 }
 
 // ============================================================================
@@ -406,12 +509,5 @@ bool PhysicsObject::IsStatic() const {
 PhysicsObject *CKIpionManager::GetPhysicsObject(CK3dEntity *entity) {
     if (!entity)
         return nullptr;
-
-    typedef XNHashTable<PhysicsObject, CK_ID> PhysicsObjectTable;
-    auto *objs = reinterpret_cast<PhysicsObjectTable *>(reinterpret_cast<CKBYTE *>(this) + 0x2CD8);
-    PhysicsObjectTable::Iterator it = objs->Find(entity->GetID());
-    if (it == objs->End())
-        return nullptr;
-
-    return &*it;
+    return CP_CALL_METHOD_PTR(this, CP_METHOD_PTR_NAME(CKIpionManager, get_physics_object_internal), entity, 0);
 }

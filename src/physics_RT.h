@@ -1,6 +1,14 @@
 #ifndef BML_PHYSICS_RT_H
 #define BML_PHYSICS_RT_H
 
+#include <cstddef>
+#include <cstdint>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
+
 #include "VxMatrix.h"
 #include "CK3dEntity.h"
 
@@ -29,6 +37,9 @@
 
 class IVP_Environment;
 class IVP_Real_Object;
+class IVP_Material;
+class PhysicsContactData;
+struct PhysicsStruct;
 
 // ============================================================================
 // BASIC TYPE DEFINITIONS
@@ -1143,18 +1154,16 @@ public:
 struct PhysicsObject {
     CKBehavior *m_Behavior;
     IVP_Real_Object *m_RealObject;
-    int field_8;
-    int field_C;
-    int field_10;
-    int field_14;
+    PhysicsStruct *m_Struct;
+    VxVector m_Scale;
     CKDWORD m_FrictionCount;
-    int m_1C;
-    IVP_Time m_FrictionTime;
+    CK_ID m_ID;
+    IVP_Time m_CurrentTime;
     int field_28;
-    void *m_ContactData;
+    PhysicsContactData *m_ContactData;
 
-    const char *GetName() const { return m_RealObject->get_name(); }
-    CK3dEntity *GetEntity() const { return (CK3dEntity *) m_RealObject->client_data; }
+    const char *GetName() const { return m_RealObject ? m_RealObject->get_name() : nullptr; }
+    CK3dEntity *GetEntity() const { return m_RealObject ? reinterpret_cast<CK3dEntity *>(m_RealObject->client_data) : nullptr; }
     void Wake();
     bool IsStatic() const;
     void EnableCollisions(bool enable);
@@ -1167,6 +1176,37 @@ struct PhysicsObject {
     void GetPositionMatrix(VxMatrix &positionMatrix);
     void GetVelocity(VxVector *velocity, VxVector *angularVelocity);
     void SetVelocity(const VxVector *velocity, const VxVector *angularVelocity);
+};
+
+// Binary-backed storage pool entry used by the runtime's internal object container.
+struct PhysicsStruct {
+    std::uint8_t reserved_00[0x1C];
+    CK_ID m_ID;
+    IVP_Time m_CurrentTime;
+    int field_28;
+    PhysicsContactData *m_ContactData;
+    PhysicsStruct *m_Next;
+    PhysicsContactData *m_ContactData2;
+};
+
+struct XArrayPointerTable {
+    void *m_Begin;
+    void *m_End;
+    void *m_AllocatedEnd;
+};
+
+struct PhysicsObjectHashTable {
+    XArrayPointerTable m_Table;
+    int m_Count;
+    int m_Threshold;
+    float m_LoadFactor;
+};
+
+struct PhysicsObjectContainer {
+    PhysicsStruct *m_Begin;
+    PhysicsStruct *m_End;
+    PhysicsStruct m_Data[200];
+    PhysicsObjectHashTable m_Table;
 };
 
 class CKIpionManager : public CKBaseManager {
@@ -1215,14 +1255,99 @@ public:
     int field_AC;
     int field_B0;
     int field_B4;
-    int field_B8;
-    void *m_CollisionSurfaces;
+    void *m_StringHash1;
+    void *m_SurfaceManagers;
     IVP_Environment *m_Environment;
     int field_C8;
     float m_DeltaTime;
     float m_PhysicsDeltaTime;
     float m_PhysicsTimeFactor;
+    int field_D4;
+    int field_D8;
+    int m_HasPhysicsCalls;
+    int m_PhysicalizeCalls;
+    int m_DePhysicalizeCalls;
+    LARGE_INTEGER m_HasPhysicsTime;
+    LARGE_INTEGER m_DePhysicalizeTime;
+    std::uint64_t field_F8;
+    std::uint64_t field_100;
+    void *m_ProfilerCounter;
+    PhysicsObjectContainer m_PhysicsObjects;
 };
+
+static_assert(sizeof(IVP_Time) == 0x8, "IVP_Time layout mismatch");
+static_assert(sizeof(IVP_U_Vector_Base) == 0x8, "IVP_U_Vector_Base layout mismatch");
+static_assert(sizeof(IVP_U_Point) == 0x20, "IVP_U_Point layout mismatch");
+static_assert(sizeof(IVP_U_Matrix3) == 0x60, "IVP_U_Matrix3 layout mismatch");
+static_assert(sizeof(IVP_U_Matrix) == 0x80, "IVP_U_Matrix layout mismatch");
+static_assert(sizeof(IVP_U_Quat) == 0x20, "IVP_U_Quat layout mismatch");
+
+static_assert(sizeof(PhysicsObject) == 0x30, "PhysicsObject layout mismatch");
+static_assert(offsetof(PhysicsObject, m_Behavior) == 0x0, "PhysicsObject::m_Behavior offset mismatch");
+static_assert(offsetof(PhysicsObject, m_RealObject) == 0x4, "PhysicsObject::m_RealObject offset mismatch");
+static_assert(offsetof(PhysicsObject, m_Struct) == 0x8, "PhysicsObject::m_Struct offset mismatch");
+static_assert(offsetof(PhysicsObject, m_FrictionCount) == 0x18, "PhysicsObject::m_FrictionCount offset mismatch");
+static_assert(offsetof(PhysicsObject, m_ID) == 0x1C, "PhysicsObject::m_ID offset mismatch");
+static_assert(offsetof(PhysicsObject, m_CurrentTime) == 0x20, "PhysicsObject::m_CurrentTime offset mismatch");
+static_assert(offsetof(PhysicsObject, m_ContactData) == 0x2C, "PhysicsObject::m_ContactData offset mismatch");
+
+static_assert(sizeof(PhysicsStruct) == 0x38, "PhysicsStruct layout mismatch");
+static_assert(offsetof(PhysicsStruct, m_ID) == 0x1C, "PhysicsStruct::m_ID offset mismatch");
+static_assert(offsetof(PhysicsStruct, m_CurrentTime) == 0x20, "PhysicsStruct::m_CurrentTime offset mismatch");
+static_assert(offsetof(PhysicsStruct, m_ContactData) == 0x2C, "PhysicsStruct::m_ContactData offset mismatch");
+static_assert(offsetof(PhysicsStruct, m_Next) == 0x30, "PhysicsStruct::m_Next offset mismatch");
+static_assert(offsetof(PhysicsStruct, m_ContactData2) == 0x34, "PhysicsStruct::m_ContactData2 offset mismatch");
+
+static_assert(sizeof(PhysicsObjectHashTable) == 0x18, "PhysicsObjectHashTable layout mismatch");
+static_assert(sizeof(PhysicsObjectContainer) == 0x2BE0, "PhysicsObjectContainer layout mismatch");
+static_assert(offsetof(PhysicsObjectContainer, m_Table) == 0x2BC8, "PhysicsObjectContainer::m_Table offset mismatch");
+
+static_assert(sizeof(IVP_Time_Manager) == 0x20, "IVP_Time_Manager layout mismatch");
+static_assert(offsetof(IVP_Time_Manager, base_time) == 0x18, "IVP_Time_Manager::base_time offset mismatch");
+
+static_assert(sizeof(IVP_Environment) == 0x178, "IVP_Environment layout mismatch");
+static_assert(offsetof(IVP_Environment, time_manager) == 0x4, "IVP_Environment::time_manager offset mismatch");
+static_assert(offsetof(IVP_Environment, current_time) == 0x120, "IVP_Environment::current_time offset mismatch");
+static_assert(offsetof(IVP_Environment, time_of_next_psi) == 0x128, "IVP_Environment::time_of_next_psi offset mismatch");
+static_assert(offsetof(IVP_Environment, time_of_last_psi) == 0x130, "IVP_Environment::time_of_last_psi offset mismatch");
+static_assert(offsetof(IVP_Environment, next_movement_check) == 0x140, "IVP_Environment::next_movement_check offset mismatch");
+
+static_assert(sizeof(IVP_Core_Fast_Static) == 0x60, "IVP_Core_Fast_Static layout mismatch");
+static_assert(offsetof(IVP_Core_Fast_Static, rot_inertia) == 0x14, "IVP_Core_Fast_Static::rot_inertia offset mismatch");
+static_assert(offsetof(IVP_Core_Fast_Static, rot_speed_damp_factor) == 0x24, "IVP_Core_Fast_Static::rot_speed_damp_factor offset mismatch");
+static_assert(offsetof(IVP_Core_Fast_Static, inv_rot_inertia) == 0x34, "IVP_Core_Fast_Static::inv_rot_inertia offset mismatch");
+static_assert(offsetof(IVP_Core_Fast_Static, speed_damp_factor) == 0x44, "IVP_Core_Fast_Static::speed_damp_factor offset mismatch");
+
+static_assert(sizeof(IVP_Core_Fast_PSI) == 0x1A8, "IVP_Core_Fast_PSI layout mismatch");
+static_assert(offsetof(IVP_Core_Fast_PSI, rot_speed_change) == 0x74, "IVP_Core_Fast_PSI::rot_speed_change offset mismatch");
+static_assert(offsetof(IVP_Core_Fast_PSI, speed_change) == 0x84, "IVP_Core_Fast_PSI::speed_change offset mismatch");
+static_assert(offsetof(IVP_Core_Fast_PSI, rot_speed) == 0x94, "IVP_Core_Fast_PSI::rot_speed offset mismatch");
+static_assert(offsetof(IVP_Core_Fast_PSI, speed) == 0xA4, "IVP_Core_Fast_PSI::speed offset mismatch");
+
+static_assert(sizeof(IVP_Core) == 0x238, "IVP_Core layout mismatch");
+static_assert(offsetof(IVP_Core, controllers_of_core) == 0x1C8, "IVP_Core::controllers_of_core offset mismatch");
+
+static_assert(sizeof(IVP_Real_Object_Fast_Static) == 0x40, "IVP_Real_Object_Fast_Static layout mismatch");
+static_assert(offsetof(IVP_Real_Object_Fast_Static, q_core_f_object) == 0x2C, "IVP_Real_Object_Fast_Static::q_core_f_object offset mismatch");
+static_assert(offsetof(IVP_Real_Object_Fast_Static, shift_core_f_object) == 0x30, "IVP_Real_Object_Fast_Static::shift_core_f_object offset mismatch");
+
+static_assert(sizeof(IVP_Real_Object_Fast) == 0x88, "IVP_Real_Object_Fast layout mismatch");
+static_assert(offsetof(IVP_Real_Object_Fast, flags) == 0x80, "IVP_Real_Object_Fast::flags offset mismatch");
+
+static_assert(sizeof(IVP_Real_Object) == 0xB8, "IVP_Real_Object layout mismatch");
+static_assert(offsetof(IVP_Real_Object, physical_core) == 0xA4, "IVP_Real_Object::physical_core offset mismatch");
+static_assert(offsetof(IVP_Real_Object, original_core) == 0xAC, "IVP_Real_Object::original_core offset mismatch");
+static_assert(offsetof(IVP_Real_Object, client_data) == 0xB0, "IVP_Real_Object::client_data offset mismatch");
+
+static_assert(sizeof(CKBaseManager) == 0x28, "CKBaseManager layout mismatch");
+static_assert(offsetof(CKIpionManager, m_MovableObjects) == 0x28, "CKIpionManager::m_MovableObjects offset mismatch");
+static_assert(offsetof(CKIpionManager, m_Environment) == 0xC0, "CKIpionManager::m_Environment offset mismatch");
+static_assert(offsetof(CKIpionManager, m_DeltaTime) == 0xC8, "CKIpionManager::m_DeltaTime offset mismatch");
+static_assert(offsetof(CKIpionManager, m_PhysicsDeltaTime) == 0xCC, "CKIpionManager::m_PhysicsDeltaTime offset mismatch");
+static_assert(offsetof(CKIpionManager, m_PhysicsTimeFactor) == 0xD0, "CKIpionManager::m_PhysicsTimeFactor offset mismatch");
+static_assert(offsetof(CKIpionManager, m_HasPhysicsCalls) == 0xDC, "CKIpionManager::m_HasPhysicsCalls offset mismatch");
+static_assert(offsetof(CKIpionManager, m_PhysicsObjects) == 0x110, "CKIpionManager::m_PhysicsObjects offset mismatch");
+static_assert(sizeof(CKIpionManager) == 0x2CF0, "CKIpionManager layout mismatch");
 
 void InitPhysicsAddresses();
 

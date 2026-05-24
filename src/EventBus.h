@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
@@ -137,12 +136,14 @@ public:
         auto it = m_Handlers.find(typeIdx);
         if (it == m_Handlers.end()) return;
 
-        // Snapshot handler list — safe if handlers add/remove subscriptions during dispatch
-        auto snapshot = it->second;
-        for (auto &entry : snapshot) {
-            // Check the handler still exists (may have been removed during dispatch)
-            if (IsHandlerAlive(typeIdx, entry.id)) {
-                entry.handler(&event);
+        // Index-based iteration with size snapshot — avoids copying the vector.
+        // Safe if handlers add/remove subscriptions during dispatch because we
+        // re-check liveness and only iterate up to the original count.
+        auto &vec = it->second;
+        const size_t count = vec.size();
+        for (size_t i = 0; i < count; ++i) {
+            if (i < vec.size() && IsHandlerAlive(typeIdx, vec[i].id)) {
+                vec[i].handler(&event);
             }
         }
     }

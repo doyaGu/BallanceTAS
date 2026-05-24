@@ -1,71 +1,49 @@
 #pragma once
 
-#include <sol/sol.hpp>
+#include <string>
+
+#include "LuaRuntime/LuaHeaders.h"
 
 class ScriptContext;
-class TASEngine;
+class LuaScheduler;
 
-/**
- * @class LuaApi
- * @brief A static class for registering all C++ functions and types with the Lua state.
- *
- * This class provides a centralized location for all sol2 bindings. It creates
- * the global 'tas' table and populates it with functions that call into the
- * various subsystems of the TASEngine.
- *
- * The Register function requires a specific ScriptContext to ensure proper context
- * isolation in the multi-context system.
- */
 class LuaApi {
 public:
-    // LuaApi is a static class and should not be instantiated.
     LuaApi() = delete;
 
-    /**
-     * @brief Registers the 'tas' library for a specific script context.
-     * Uses context's local subsystems (Lua VM, Scheduler, EventManager, InputSystem)
-     * for complete isolation between contexts.
-     * @param context A pointer to the ScriptContext instance for context-local systems.
-     */
     static void Register(ScriptContext *context);
-
-    static void AddLuaPath(sol::state_view lua, const std::string &path);
+    static void AddLuaPath(lua_State *state, const std::string &path);
+    static void RegisterVxVector(lua_State *state);
+    static void RegisterVxColor(lua_State *state);
+    static void RegisterVxRect(lua_State *state);
+    static void RegisterVxQuaternion(lua_State *state);
+    static void RegisterVxMatrix(lua_State *state);
+    static void RegisterSharedBufferApi(lua_State *state, ScriptContext *context);
+    static void RegisterConcurrencyApi(lua_State *state, ScriptContext *context, LuaScheduler *scheduler = nullptr);
+    static void RegisterAsyncApi(lua_State *state, ScriptContext *context, LuaScheduler *scheduler = nullptr);
 
 private:
-    // --- Private helper methods for organized registration ---
-    static void RegisterDataTypes(sol::state_view lua);
-    static void RegisterVxColor(sol::state_view lua);
-    static void RegisterVxMatrix(sol::state_view lua);
-    static void RegisterVxQuaternion(sol::state_view lua);
-    static void RegisterVxRect(sol::state_view lua);
-    static void RegisterVxVector(sol::state_view lua);
-    static void RegisterVxIntersectionDesc(sol::state_view lua);
-    static void RegisterCKEnums(sol::state_view lua);
-    static void RegisterCKObject(sol::state_view lua);
-    static void RegisterCKSceneObject(sol::state_view lua);
-    static void RegisterCKBeObject(sol::state_view lua);
-    static void RegisterCKRenderObject(sol::state_view lua);
-    static void RegisterCK3dEntity(sol::state_view lua);
-    static void RegisterCKCamera(sol::state_view lua);
-    static void RegisterPhysicsObject(sol::state_view lua);
-
-    // Context-aware API registration methods
-    // Uses context's local subsystems for proper isolation between contexts
-    static void RegisterCoreApi(sol::table &tas, ScriptContext *context);
-    static void RegisterInputApi(sol::table &tas, ScriptContext *context);
-    static void RegisterWorldQueryApi(sol::table &tas, ScriptContext *context);
-    static void RegisterConcurrencyApi(sol::table &tas, ScriptContext *context);
-    static void RegisterEventApi(sol::table &tas, ScriptContext *context);
-    static void RegisterDebugApi(sol::table &tas, ScriptContext *context);
-    static void RegisterRecordApi(sol::table &tas, ScriptContext *context);
-    static void RegisterProjectApi(sol::table &tas, ScriptContext *context);
-    static void RegisterLevelApi(sol::table &tas, ScriptContext *context);
-    static void RegisterMenuApi(sol::table &tas, ScriptContext *context);
-    static void RegisterGlobalApi(sol::table &tas, ScriptContext *context);
-    static void RegisterContextCommunicationApi(sol::table &tas, ScriptContext *context);
-    static void RegisterGCApi(sol::table &tas, ScriptContext *context);
-    static void RegisterSharedBufferApi(sol::table &tas, ScriptContext *context);
-    static void RegisterResultApi(sol::table &tas, ScriptContext *context);
-    static void RegisterAsyncApi(sol::table &tas, ScriptContext *context);
-    static void RegisterSavestateApi(sol::table &tas, ScriptContext *context);
+    static void RegisterCoreApi(lua_State *state, ScriptContext *context);
+    static void RegisterInputApi(lua_State *state, ScriptContext *context);
+    static void RegisterContextCommunicationApi(lua_State *state, ScriptContext *context);
+    static void RegisterVxIntersectionDesc(lua_State *state);
+    static void RegisterCKObject(lua_State *state);
+    static void RegisterCKSceneObject(lua_State *state);
+    static void RegisterCKBeObject(lua_State *state);
+    static void RegisterCKRenderObject(lua_State *state);
+    static void RegisterCK3dEntity(lua_State *state);
+    static void RegisterCKCamera(lua_State *state);
+    static void RegisterPhysicsObject(lua_State *state);
+    static void RegisterCKEnums(lua_State *state);
+    static void RegisterWorldQueryApi(lua_State *state, ScriptContext *context);
+    static void RegisterDeterminismApi(lua_State *state, ScriptContext *context);
+    static void RegisterSavestateApi(lua_State *state, ScriptContext *context);
+    static void RegisterGCApi(lua_State *state, ScriptContext *context);
+    static void RegisterDebugApi(lua_State *state, ScriptContext *context);
+    static void RegisterResultApi(lua_State *state, ScriptContext *context);
+    static void RegisterProjectApi(lua_State *state, ScriptContext *context);
+    static void RegisterRecordApi(lua_State *state, ScriptContext *context);
+    static void RegisterLevelApi(lua_State *state, ScriptContext *context);
+    static void RegisterGlobalApi(lua_State *state, ScriptContext *context);
+    static void RegisterMenuApi(lua_State *state, ScriptContext *context);
 };

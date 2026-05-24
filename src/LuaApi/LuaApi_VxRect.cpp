@@ -1,111 +1,281 @@
 #include "LuaApi.h"
 
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaUserdata.h"
+
 #include <VxMath.h>
+#include <cstdio>
 
-void LuaApi::RegisterVxRect(sol::state_view lua) {
-    // ===================================================================
-    //  VxRect Registration
-    // ===================================================================
-    auto rectType = lua.new_usertype<VxRect>(
-        "VxRect",
-        sol::constructors<VxRect(), VxRect(Vx2DVector &, Vx2DVector &), VxRect(float, float, float, float)>(),
+namespace {
 
-        // Members as properties
-        "left", &VxRect::left,
-        "top", &VxRect::top,
-        "right", &VxRect::right,
-        "bottom", &VxRect::bottom,
+constexpr const char *kVxRectMt = "BallanceTAS.VxRect";
+constexpr const char *kVx2DVectorMt = "BallanceTAS.Vx2DVector";
 
-        // Computed properties
-        "width", sol::property(
-            [](const VxRect &r) { return r.GetWidth(); },
-            [](VxRect &r, float w) { r.SetWidth(w); }
-        ),
-        "height", sol::property(
-            [](const VxRect &r) { return r.GetHeight(); },
-            [](VxRect &r, float h) { r.SetHeight(h); }
-        ),
-        "h_center", sol::property([](const VxRect &r) { return r.GetHCenter(); }),
-        "v_center", sol::property([](const VxRect &r) { return r.GetVCenter(); }),
-        "size", sol::property(
-            [](const VxRect &r) { return r.GetSize(); },
-            [](VxRect &r, const Vx2DVector &v) { r.SetSize(v); }
-        ),
-        "half_size", sol::property(
-            [](const VxRect &r) { return r.GetHalfSize(); },
-            [](VxRect &r, const Vx2DVector &v) { r.SetHalfSize(v); }
-        ),
-        "center", sol::property(
-            [](const VxRect &r) { return r.GetCenter(); },
-            [](VxRect &r, const Vx2DVector &v) { r.SetCenter(v); }
-        ),
-        "top_left", sol::property(
-            [](const VxRect &r) { return r.GetTopLeft(); },
-            [](VxRect &r, const Vx2DVector &v) { r.SetTopLeft(v); }
-        ),
-        "bottom_right", sol::property(
-            [](const VxRect &r) { return r.GetBottomRight(); },
-            [](VxRect &r, const Vx2DVector &v) { r.SetBottomRight(v); }
-        ),
+VxRect *CheckVxRect(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<VxRect>(L, index, kVxRectMt);
+}
 
-        // Methods
-        "clear", &VxRect::Clear,
-        "set_corners", sol::overload(
-            [](VxRect &r, const Vx2DVector &tl, const Vx2DVector &br) { r.SetCorners(tl, br); },
-            [](VxRect &r, float l, float t, float rt, float b) { r.SetCorners(l, t, rt, b); }
-        ),
-        "set_dimension", sol::overload(
-            [](VxRect &r, const Vx2DVector &pos, const Vx2DVector &size) { r.SetDimension(pos, size); },
-            [](VxRect &r, float x, float y, float w, float h) { r.SetDimension(x, y, w, h); }
-        ),
-        "set_center", sol::overload(
-            [](VxRect &r, const Vx2DVector &center, const Vx2DVector &halfsize) { r.SetCenter(center, halfsize); },
-            [](VxRect &r, float cx, float cy, float hw, float hh) { r.SetCenter(cx, cy, hw, hh); }
-        ),
-        // "copy_from", &VxRect::CopyFrom,
-        // "copy_to", &VxRect::CopyTo,
-        "bounding", &VxRect::Bounding,
-        "normalize", &VxRect::Normalize,
-        "move", &VxRect::Move,
-        "translate", &VxRect::Translate,
-        "h_move", &VxRect::HMove,
-        "v_move", &VxRect::VMove,
-        "h_translate", &VxRect::HTranslate,
-        "v_translate", &VxRect::VTranslate,
-        "transform_to_homogeneous", &VxRect::TransformToHomogeneous,
-        "transform_from_homogeneous", sol::overload(
-            [](VxRect &r, Vx2DVector &dest, const Vx2DVector &srchom) {
-                r.TransformFromHomogeneous(dest, srchom);
-            },
-            [](VxRect &r, const VxRect &screen) {
-                r.TransformFromHomogeneous(screen);
-            }
-        ),
-        "scale", &VxRect::Scale,
-        "inflate", &VxRect::Inflate,
-        "interpolate", &VxRect::Interpolate,
-        "merge", &VxRect::Merge,
-        "is_inside", sol::overload(
-            [](const VxRect &r, const VxRect &other) -> bool { return r.IsInside(other); },
-            [](const VxRect &r, const Vx2DVector &pt) -> bool { return r.IsInside(pt); }
-        ),
-        "is_outside", [](const VxRect &r, const VxRect &other) -> bool { return r.IsOutside(other); },
-        "is_null", [](const VxRect &r) -> bool { return r.IsNull(); },
-        "is_empty", [](const VxRect &r) -> bool { return r.IsEmpty(); },
-        "clip", sol::overload(
-            [](VxRect &r, const VxRect &cliprect) -> bool { return r.Clip(cliprect); },
-            [](const VxRect &r, Vx2DVector &pt, bool exclude) { r.Clip(pt, exclude); }
-        ),
-        "transform", sol::overload(
-            [](VxRect &r, const VxRect &dest, const VxRect &src) { r.Transform(dest, src); },
-            [](VxRect &r, const Vx2DVector &dest_size, const Vx2DVector &src_size) { r.Transform(dest_size, src_size); }
-        ),
+VxRect *TestVxRect(lua_State *L, int index) {
+    auto *box = static_cast<tas::lua::UserdataBox<VxRect> *>(luaL_testudata(L, index, kVxRectMt));
+    return box ? box->ptr : nullptr;
+}
 
-        // Operators
-        sol::meta_function::equal_to, [](const VxRect &a, const VxRect &b) { return a == b; },
-        sol::meta_function::to_string, [](const VxRect &r) {
-            return "VxRect(" + std::to_string(r.left) + ", " + std::to_string(r.top) +
-                ", " + std::to_string(r.right) + ", " + std::to_string(r.bottom) + ")";
-        }
-    );
+Vx2DVector *CheckVx2DVector(lua_State *L, int index) {
+    return tas::lua::CheckUserdata<Vx2DVector>(L, index, kVx2DVectorMt);
+}
+
+Vx2DVector *TestVx2DVector(lua_State *L, int index) {
+    auto *box = static_cast<tas::lua::UserdataBox<Vx2DVector> *>(luaL_testudata(L, index, kVx2DVectorMt));
+    return box ? box->ptr : nullptr;
+}
+
+void PushVxRect(lua_State *L, const VxRect &value) {
+    tas::lua::PushOwnedUserdata<VxRect>(L, kVxRectMt, value);
+}
+
+void PushVx2DVector(lua_State *L, const Vx2DVector &value) {
+    tas::lua::PushOwnedUserdata<Vx2DVector>(L, kVx2DVectorMt, value);
+}
+
+int VxRectNew(lua_State *L) {
+    const int argc = lua_gettop(L);
+    if (argc == 0) {
+        PushVxRect(L, VxRect());
+        return 1;
+    }
+    if (argc == 2 && TestVx2DVector(L, 1) && TestVx2DVector(L, 2)) {
+        PushVxRect(L, VxRect(*CheckVx2DVector(L, 1), *CheckVx2DVector(L, 2)));
+        return 1;
+    }
+    if (argc == 4) {
+        PushVxRect(L, VxRect(static_cast<float>(luaL_checknumber(L, 1)),
+                             static_cast<float>(luaL_checknumber(L, 2)),
+                             static_cast<float>(luaL_checknumber(L, 3)),
+                             static_cast<float>(luaL_checknumber(L, 4))));
+        return 1;
+    }
+    return luaL_error(L, "VxRect(): expected 0 args, 2 Vx2DVector args, or 4 numeric args");
+}
+
+int VxRectCall(lua_State *L) {
+    lua_remove(L, 1);
+    return VxRectNew(L);
+}
+
+int Width(lua_State *L) { lua_pushnumber(L, CheckVxRect(L, 1)->GetWidth()); return 1; }
+int SetWidth(lua_State *L) { CheckVxRect(L, 1)->SetWidth(static_cast<float>(luaL_checknumber(L, 2))); return 0; }
+int Height(lua_State *L) { lua_pushnumber(L, CheckVxRect(L, 1)->GetHeight()); return 1; }
+int SetHeight(lua_State *L) { CheckVxRect(L, 1)->SetHeight(static_cast<float>(luaL_checknumber(L, 2))); return 0; }
+int HCenter(lua_State *L) { lua_pushnumber(L, CheckVxRect(L, 1)->GetHCenter()); return 1; }
+int VCenter(lua_State *L) { lua_pushnumber(L, CheckVxRect(L, 1)->GetVCenter()); return 1; }
+
+int Size(lua_State *L) { PushVx2DVector(L, CheckVxRect(L, 1)->GetSize()); return 1; }
+int SetSize(lua_State *L) { CheckVxRect(L, 1)->SetSize(*CheckVx2DVector(L, 2)); return 0; }
+int HalfSize(lua_State *L) { PushVx2DVector(L, CheckVxRect(L, 1)->GetHalfSize()); return 1; }
+int SetHalfSize(lua_State *L) { CheckVxRect(L, 1)->SetHalfSize(*CheckVx2DVector(L, 2)); return 0; }
+int Center(lua_State *L) { PushVx2DVector(L, CheckVxRect(L, 1)->GetCenter()); return 1; }
+int SetCenterProperty(lua_State *L) { CheckVxRect(L, 1)->SetCenter(*CheckVx2DVector(L, 2)); return 0; }
+int TopLeft(lua_State *L) { PushVx2DVector(L, CheckVxRect(L, 1)->GetTopLeft()); return 1; }
+int SetTopLeft(lua_State *L) { CheckVxRect(L, 1)->SetTopLeft(*CheckVx2DVector(L, 2)); return 0; }
+int BottomRight(lua_State *L) { PushVx2DVector(L, CheckVxRect(L, 1)->GetBottomRight()); return 1; }
+int SetBottomRight(lua_State *L) { CheckVxRect(L, 1)->SetBottomRight(*CheckVx2DVector(L, 2)); return 0; }
+
+int Clear(lua_State *L) { CheckVxRect(L, 1)->Clear(); return 0; }
+
+int SetCorners(lua_State *L) {
+    auto *rect = CheckVxRect(L, 1);
+    if (lua_gettop(L) == 3 && TestVx2DVector(L, 2) && TestVx2DVector(L, 3)) {
+        rect->SetCorners(*CheckVx2DVector(L, 2), *CheckVx2DVector(L, 3));
+        return 0;
+    }
+    if (lua_gettop(L) == 5) {
+        rect->SetCorners(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)),
+                         static_cast<float>(luaL_checknumber(L, 4)), static_cast<float>(luaL_checknumber(L, 5)));
+        return 0;
+    }
+    return luaL_error(L, "VxRect:set_corners(): expected 2 Vx2DVector args or 4 numeric args");
+}
+
+int SetDimension(lua_State *L) {
+    auto *rect = CheckVxRect(L, 1);
+    if (lua_gettop(L) == 3 && TestVx2DVector(L, 2) && TestVx2DVector(L, 3)) {
+        rect->SetDimension(*CheckVx2DVector(L, 2), *CheckVx2DVector(L, 3));
+        return 0;
+    }
+    if (lua_gettop(L) == 5) {
+        rect->SetDimension(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)),
+                           static_cast<float>(luaL_checknumber(L, 4)), static_cast<float>(luaL_checknumber(L, 5)));
+        return 0;
+    }
+    return luaL_error(L, "VxRect:set_dimension(): expected 2 Vx2DVector args or 4 numeric args");
+}
+
+int SetCenter(lua_State *L) {
+    auto *rect = CheckVxRect(L, 1);
+    if (lua_gettop(L) == 3 && TestVx2DVector(L, 2) && TestVx2DVector(L, 3)) {
+        rect->SetCenter(*CheckVx2DVector(L, 2), *CheckVx2DVector(L, 3));
+        return 0;
+    }
+    if (lua_gettop(L) == 5) {
+        rect->SetCenter(static_cast<float>(luaL_checknumber(L, 2)), static_cast<float>(luaL_checknumber(L, 3)),
+                        static_cast<float>(luaL_checknumber(L, 4)), static_cast<float>(luaL_checknumber(L, 5)));
+        return 0;
+    }
+    return luaL_error(L, "VxRect:set_center(): expected 2 Vx2DVector args or 4 numeric args");
+}
+
+bool ReadVector2(lua_State *L, int index, Vx2DVector &out) {
+    if (auto *value = TestVx2DVector(L, index)) {
+        out = *value;
+        return true;
+    }
+    if (lua_isnumber(L, index) && lua_isnumber(L, index + 1)) {
+        out.x = static_cast<float>(lua_tonumber(L, index));
+        out.y = static_cast<float>(lua_tonumber(L, index + 1));
+        return true;
+    }
+    return false;
+}
+
+int Bounding(lua_State *L) {
+    Vx2DVector p1;
+    Vx2DVector p2;
+    if (lua_gettop(L) == 3 && TestVx2DVector(L, 2) && TestVx2DVector(L, 3)) {
+        CheckVxRect(L, 1)->Bounding(*CheckVx2DVector(L, 2), *CheckVx2DVector(L, 3));
+        return 0;
+    }
+    if (lua_gettop(L) == 5 && ReadVector2(L, 2, p1) && ReadVector2(L, 4, p2)) {
+        CheckVxRect(L, 1)->Bounding(p1, p2);
+        return 0;
+    }
+    return luaL_error(L, "VxRect:bounding(): expected 2 Vx2DVector args or 4 numeric args");
+}
+int Normalize(lua_State *L) { CheckVxRect(L, 1)->Normalize(); return 0; }
+int Move(lua_State *L) {
+    Vx2DVector value;
+    if (!ReadVector2(L, 2, value)) return luaL_error(L, "VxRect:move(): expected Vx2DVector or x, y");
+    CheckVxRect(L, 1)->Move(value);
+    return 0;
+}
+int Translate(lua_State *L) {
+    Vx2DVector value;
+    if (!ReadVector2(L, 2, value)) return luaL_error(L, "VxRect:translate(): expected Vx2DVector or x, y");
+    CheckVxRect(L, 1)->Translate(value);
+    return 0;
+}
+int HMove(lua_State *L) { CheckVxRect(L, 1)->HMove(static_cast<float>(luaL_checknumber(L, 2))); return 0; }
+int VMove(lua_State *L) { CheckVxRect(L, 1)->VMove(static_cast<float>(luaL_checknumber(L, 2))); return 0; }
+int HTranslate(lua_State *L) { CheckVxRect(L, 1)->HTranslate(static_cast<float>(luaL_checknumber(L, 2))); return 0; }
+int VTranslate(lua_State *L) { CheckVxRect(L, 1)->VTranslate(static_cast<float>(luaL_checknumber(L, 2))); return 0; }
+int Scale(lua_State *L) {
+    Vx2DVector value;
+    if (!ReadVector2(L, 2, value)) return luaL_error(L, "VxRect:scale(): expected Vx2DVector or x, y");
+    CheckVxRect(L, 1)->Scale(value);
+    return 0;
+}
+int Inflate(lua_State *L) {
+    Vx2DVector value;
+    if (!ReadVector2(L, 2, value)) return luaL_error(L, "VxRect:inflate(): expected Vx2DVector or x, y");
+    CheckVxRect(L, 1)->Inflate(value);
+    return 0;
+}
+int Merge(lua_State *L) { CheckVxRect(L, 1)->Merge(*CheckVxRect(L, 2)); return 0; }
+
+int IsInside(lua_State *L) {
+    auto *rect = CheckVxRect(L, 1);
+    if (auto *other = TestVxRect(L, 2)) {
+        lua_pushboolean(L, rect->IsInside(*other));
+        return 1;
+    }
+    if (auto *point = TestVx2DVector(L, 2)) {
+        lua_pushboolean(L, rect->IsInside(*point));
+        return 1;
+    }
+    return luaL_error(L, "VxRect:is_inside(): expected VxRect or Vx2DVector");
+}
+
+int IsOutside(lua_State *L) { lua_pushboolean(L, CheckVxRect(L, 1)->IsOutside(*CheckVxRect(L, 2))); return 1; }
+int IsNull(lua_State *L) { lua_pushboolean(L, CheckVxRect(L, 1)->IsNull()); return 1; }
+int IsEmpty(lua_State *L) { lua_pushboolean(L, CheckVxRect(L, 1)->IsEmpty()); return 1; }
+int Clip(lua_State *L) { lua_pushboolean(L, CheckVxRect(L, 1)->Clip(*CheckVxRect(L, 2))); return 1; }
+
+int Eq(lua_State *L) {
+    auto *a = TestVxRect(L, 1);
+    auto *b = TestVxRect(L, 2);
+    lua_pushboolean(L, a && b && *a == *b);
+    return 1;
+}
+
+int ToString(lua_State *L) {
+    auto *rect = CheckVxRect(L, 1);
+    char buffer[128];
+    std::snprintf(buffer, sizeof(buffer), "VxRect(%g, %g, %g, %g)", rect->left, rect->top, rect->right, rect->bottom);
+    lua_pushstring(L, buffer);
+    return 1;
+}
+
+void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
+    lua_pushcfunction(L, function);
+    lua_setfield(L, -2, name);
+}
+
+void RegisterClassTable(lua_State *L) {
+    lua_newtable(L);
+    SetFunction(L, "new", VxRectNew);
+    lua_newtable(L);
+    SetFunction(L, "__call", VxRectCall);
+    lua_setmetatable(L, -2);
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, "VxRect");
+    lua_getglobal(L, "tas");
+    if (lua_istable(L, -1)) {
+        lua_pushvalue(L, -2);
+        lua_setfield(L, -2, "VxRect");
+    }
+    lua_pop(L, 2);
+}
+
+} // namespace
+
+void LuaApi::RegisterVxRect(lua_State *state) {
+    tas::lua::LuaStackGuard guard(state);
+
+    tas::lua::LuaUserdataRegistry<VxRect>(state, kVxRectMt)
+        .Property<&VxRect::left>("left")
+        .Property<&VxRect::top>("top")
+        .Property<&VxRect::right>("right")
+        .Property<&VxRect::bottom>("bottom")
+        .Property("width", Width, SetWidth)
+        .Property("height", Height, SetHeight)
+        .ReadonlyProperty("h_center", HCenter)
+        .ReadonlyProperty("v_center", VCenter)
+        .Property("size", Size, SetSize)
+        .Property("half_size", HalfSize, SetHalfSize)
+        .Property("center", Center, SetCenterProperty)
+        .Property("top_left", TopLeft, SetTopLeft)
+        .Property("bottom_right", BottomRight, SetBottomRight)
+        .Method("clear", Clear)
+        .Method("set_corners", SetCorners)
+        .Method("set_dimension", SetDimension)
+        .Method("set_center", SetCenter)
+        .Method("bounding", Bounding)
+        .Method("normalize", Normalize)
+        .Method("move", Move)
+        .Method("translate", Translate)
+        .Method("h_move", HMove)
+        .Method("v_move", VMove)
+        .Method("h_translate", HTranslate)
+        .Method("v_translate", VTranslate)
+        .Method("scale", Scale)
+        .Method("inflate", Inflate)
+        .Method("merge", Merge)
+        .Method("is_inside", IsInside)
+        .Method("is_outside", IsOutside)
+        .Method("is_null", IsNull)
+        .Method("is_empty", IsEmpty)
+        .Method("clip", Clip)
+        .MetaMethod("__eq", Eq)
+        .MetaMethod("__tostring", ToString);
+
+    RegisterClassTable(state);
 }

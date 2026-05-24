@@ -1,8 +1,9 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
-#include <sol/sol.hpp>
+#include "LuaRuntime/LuaValue.h"
 
 /**
  * @enum ProjectType
@@ -38,7 +39,7 @@ public:
     static constexpr float kDefaultUpdateRate = 132.0f;
 
     // Constructor for script-based projects
-    explicit TASProject(std::string projectPath, sol::table manifest);
+    explicit TASProject(std::string projectPath, tas::lua::LuaValue manifest);
 
     // Constructor for record-based projects (.tas files)
     explicit TASProject(std::string tasFilePath);
@@ -54,7 +55,7 @@ public:
     bool IsGlobalProject() const { return m_ProjectScope == ProjectScope::Global; }
 
     // --- Accessors for Manifest Data ---
-    sol::table GetManifestTable() const { return m_Manifest; }
+    const tas::lua::LuaValue &GetManifestTable() const { return m_Manifest; }
 
     const std::string &GetName() const { return m_Name; }
     const std::string &GetAuthor() const { return m_Author; }
@@ -99,6 +100,7 @@ public:
     std::string GetProjectFilePath(const std::string &fileName, const std::string &executionBasePath = "") const;
 
     bool IsValid() const { return m_IsValid; }
+    const std::string &GetValidationMessage() const { return m_ValidationMessage; }
 
     bool IsZipProject() const { return m_IsZipProject; }
     void SetIsZipProject(bool isZip) { m_IsZipProject = isZip; }
@@ -146,12 +148,16 @@ public:
      * @return True if delta time is constant (required for accurate translation).
      */
     bool HasConstantDeltaTime() const { return m_HasConstantDeltaTime; }
+    size_t GetRecordFrameCount() const { return m_RecordFrameCount; }
+    bool CanPlayRecord() const { return IsRecordProject() && IsValid() && m_RecordFrameCount > 0; }
+    bool CanTranslateToRecord() const;
 
     /**
      * @brief Gets a detailed message about translation compatibility.
      * @return Explanation of why translation may not be possible.
      */
     std::string GetTranslationCompatibilityMessage() const;
+    std::string GetScriptToRecordCompatibilityMessage() const;
 
     /**
      * @brief Gets all requirement strings for UI display.
@@ -160,12 +166,12 @@ public:
     std::vector<std::string> GetRequirements() const;
 
 private:
-    void ParseManifest(const sol::table &manifest);
+    void ParseManifest(const tas::lua::LuaValue &manifest);
     void ParseRecordProject(const std::string &tasFilePath);
 
     std::string m_ProjectPath;       // Original path (zip file path for zip projects, .tas file for record projects)
     std::string m_ExecutionBasePath; // Path for execution (temp directory for zip projects)
-    sol::table m_Manifest;           // Keep a copy of the raw manifest table (invalid for record projects)
+    tas::lua::LuaValue m_Manifest;   // Serialized manifest table (invalid for record projects)
 
     ProjectType m_ProjectType;
 
@@ -184,4 +190,6 @@ private:
     bool m_IsValid = false;
     bool m_IsZipProject = false;
     bool m_HasConstantDeltaTime = true; // Whether delta time is constant across frames
+    size_t m_RecordFrameCount = 0;
+    std::string m_ValidationMessage;
 };

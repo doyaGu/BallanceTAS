@@ -4,8 +4,9 @@
 #include "TASEngine.h"
 #include "TASProject.h"
 #include "ProjectManager.h"
-#include "ScriptContextManager.h"
 #include "ScriptContext.h"
+#include "ScriptContextManager.h"
+#include "ServiceContainer.h"
 
 StartupProjectManager::StartupProjectManager(TASEngine *engine) : m_Engine(engine) {}
 
@@ -72,12 +73,14 @@ void StartupProjectManager::OnGameStart() {
 }
 
 void StartupProjectManager::OnEnterMainMenu() {
-    if (!m_Initialized || !m_StartupEnabled || m_HasExecutedStartup) {
+    if (!m_Initialized || !m_StartupEnabled) {
         return;
     }
 
     // Execute projects that should trigger on menu entry
-    ExecuteStartupProjectIfAppropriate("menu");
+    if (LoadProjectForContext("menu")) {
+        ExecuteStartupProjectIfAppropriate("menu");
+    }
 }
 
 void StartupProjectManager::OnEnterLevel(const std::string &levelName) {
@@ -87,16 +90,39 @@ void StartupProjectManager::OnEnterLevel(const std::string &levelName) {
 
     // Execute projects that should trigger on level entry
     // This allows global projects to work in specific levels too
-    ExecuteStartupProjectIfAppropriate("level", levelName);
+    if (LoadProjectForContext("level", levelName)) {
+        ExecuteStartupProjectIfAppropriate("level", levelName);
+    }
 }
 
 bool StartupProjectManager::RefreshStartupProject() {
-    if (!m_Initialized || m_StartupProjectName.empty()) {
+    if (!m_Initialized) {
         m_StartupProject.reset();
         return false;
     }
 
-    return LoadStartupProject();
+    if (m_StartupProjectName.empty()) {
+        m_StartupProject.reset();
+        return false;
+    }
+
+    auto *projectManager = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
+    if (!projectManager) {
+        m_StartupProject.reset();
+        return false;
+    }
+
+    const auto &allProjects = projectManager->GetProjects();
+    for (const auto &project : allProjects) {
+        if (project && project->GetName() == m_StartupProjectName &&
+            project->IsScriptProject() && project->IsGlobalProject() && project->IsValid()) {
+            m_StartupProject = std::make_unique<TASProject>(*project);
+            return true;
+        }
+    }
+
+    m_StartupProject.reset();
+    return false;
 }
 
 std::vector<std::string> StartupProjectManager::GetAvailableGlobalProjects() const {
@@ -106,7 +132,7 @@ std::vector<std::string> StartupProjectManager::GetAvailableGlobalProjects() con
         return globalProjects;
     }
 
-    auto *projectManager = m_Engine->GetProjectManager();
+    auto *projectManager = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
     if (!projectManager) {
         return globalProjects;
     }
@@ -123,29 +149,33 @@ std::vector<std::string> StartupProjectManager::GetAvailableGlobalProjects() con
 }
 
 bool StartupProjectManager::LoadStartupProject() {
-    if (!m_Initialized || m_StartupProjectName.empty()) {
+    return LoadProjectForContext("startup");
+}
+
+bool StartupProjectManager::LoadProjectForContext(const std::string &context, const std::string &levelName) {
+    if (!m_Initialized) {
         return false;
     }
 
-    auto *projectManager = m_Engine->GetProjectManager();
+    auto *projectManager = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
     if (!projectManager) {
         return false;
     }
 
-    // Try to find the project by name
     const auto &allProjects = projectManager->GetProjects();
-    for (const auto &project : allProjects) {
-        if (project && project->GetName() == m_StartupProjectName &&
-            project->IsGlobalProject() && project->IsValid()) {
-            // Create a copy of the project for startup use
-            m_StartupProject = std::make_unique<TASProject>(*project);
-            return true;
-        }
+    if (m_StartupProjectName.empty() && context != "startup") {
+        m_StartupProject.reset();
+        return false;
     }
 
-    // Project not found, clear the current startup project
-    m_StartupProject.reset();
-    return false;
+    TASProject *selected = SelectProjectForContext(allProjects, m_StartupProjectName, context, levelName);
+    if (!selected) {
+        m_StartupProject.reset();
+        return false;
+    }
+
+    m_StartupProject = std::make_unique<TASProject>(*selected);
+    return true;
 }
 
 bool StartupProjectManager::ExecuteStartupProjectIfAppropriate(const std::string &context, const std::string &levelName) {
@@ -153,17 +183,11 @@ bool StartupProjectManager::ExecuteStartupProjectIfAppropriate(const std::string
         return false;
     }
 
-    // Only script projects are supported for global context (record playback not supported in multi-context)
-    if (!m_StartupProject->IsScriptProject()) {
-        Log::Warn(
-            "Startup project '%s' is not a script project. Only script projects are supported for global context.",
-            m_StartupProjectName.c_str());
+    if (!IsProjectEligibleForContext(*m_StartupProject, context, levelName)) {
         return false;
     }
 
-    // Simplified: Load startup project into the global context
-    // The global context is automatically created by TASEngine at game start
-    auto *contextManager = m_Engine->GetScriptContextManager();
+    auto *contextManager = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>();
     if (!contextManager) {
         Log::Error("ScriptContextManager not available for startup project execution.");
         return false;
@@ -182,16 +206,16 @@ bool StartupProjectManager::ExecuteStartupProjectIfAppropriate(const std::string
         if (success) {
             m_HasExecutedStartup = true;
             Log::Info("Successfully loaded startup project '%s' into global context.",
-                      m_StartupProjectName.c_str());
+                      m_StartupProject->GetName().c_str());
             return true;
         } else {
             Log::Error("Failed to load startup project '%s' into global context.",
-                       m_StartupProjectName.c_str());
+                       m_StartupProject->GetName().c_str());
         }
     } catch (const std::exception &e) {
         // Log error but don't crash
         Log::Error("Exception while executing startup project '%s': %s",
-                   m_StartupProjectName.c_str(), e.what());
+                   m_StartupProject->GetName().c_str(), e.what());
     }
 
     return false;

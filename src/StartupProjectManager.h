@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "ContextIdentity.h"
 #include "TASProject.h"
 
 class TASEngine;
@@ -120,12 +121,32 @@ public:
      */
     std::vector<std::string> GetAvailableGlobalProjects() const;
 
+    /**
+     * @brief Checks whether a project can execute in a startup manager context.
+     */
+    static bool IsProjectEligibleForContext(const TASProject &project,
+                                            const std::string &context,
+                                            const std::string &levelName = "");
+
+    /**
+     * @brief Selects the project to execute for a context.
+     *
+     * If configuredName is empty, the first eligible project in the discovered project
+     * order is selected. If configuredName is set, only that named project may run.
+     */
+    static TASProject *SelectProjectForContext(const std::vector<std::unique_ptr<TASProject>> &projects,
+                                               const std::string &configuredName,
+                                               const std::string &context,
+                                               const std::string &levelName = "");
+
 private:
     /**
      * @brief Loads the startup project from the configured name.
      * @return True if the project was successfully loaded, false otherwise.
      */
     bool LoadStartupProject();
+
+    bool LoadProjectForContext(const std::string &context, const std::string &levelName = "");
 
     /**
      * @brief Executes the current startup project if it's appropriate for the current context.
@@ -143,3 +164,49 @@ private:
     bool m_Initialized = false;
     bool m_HasExecutedStartup = false; // Prevent multiple executions
 };
+
+inline bool StartupProjectManager::IsProjectEligibleForContext(const TASProject &project,
+                                                               const std::string &context,
+                                                               const std::string &levelName) {
+    if (!project.IsValid() || !project.IsScriptProject() || !project.IsGlobalProject()) {
+        return false;
+    }
+
+    if (project.GetExecutionTrigger() != context) {
+        return false;
+    }
+
+    if (context == "level" && !project.GetTargetLevel().empty()) {
+        const std::string expectedLevel = tas::context::ResolveLevelKey(
+            project.GetTargetLevel(), "", 0);
+        const std::string actualLevel = tas::context::ResolveLevelKey("", levelName, 0);
+        if (!expectedLevel.empty() && expectedLevel != actualLevel) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+inline TASProject *StartupProjectManager::SelectProjectForContext(
+    const std::vector<std::unique_ptr<TASProject>> &projects,
+    const std::string &configuredName,
+    const std::string &context,
+    const std::string &levelName) {
+    for (const auto &project : projects) {
+        if (!project) {
+            continue;
+        }
+        if (!configuredName.empty() && project->GetName() != configuredName) {
+            continue;
+        }
+        if (IsProjectEligibleForContext(*project, context, levelName)) {
+            return project.get();
+        }
+        if (!configuredName.empty()) {
+            return nullptr;
+        }
+    }
+
+    return nullptr;
+}

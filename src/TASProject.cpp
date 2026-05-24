@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <cmath>
+#include <sstream>
 
 #include <CKGlobals.h>
 
@@ -11,7 +12,7 @@
 namespace fs = std::filesystem;
 
 // Constructor for script-based projects
-TASProject::TASProject(std::string projectPath, sol::table manifest)
+TASProject::TASProject(std::string projectPath, tas::lua::LuaValue manifest)
     : m_ProjectPath(std::move(projectPath)), m_Manifest(std::move(manifest)), m_ProjectType(ProjectType::Script) {
     ParseManifest(m_Manifest);
 }
@@ -22,25 +23,25 @@ TASProject::TASProject(std::string tasFilePath)
     ParseRecordProject(m_ProjectPath);
 }
 
-void TASProject::ParseManifest(const sol::table &manifest) {
-    if (!manifest.valid()) {
+void TASProject::ParseManifest(const tas::lua::LuaValue &manifest) {
+    if (!manifest.IsTable()) {
         m_IsValid = false;
+        m_ValidationMessage = "Manifest is not a table";
         return;
     }
 
-    // Safely extract fields from the Lua table using sol2's `get_or`
-    m_Name = manifest.get_or<std::string>("name", "Unnamed TAS");
-    m_Author = manifest.get_or<std::string>("author", "Unknown");
-    m_TargetLevel = manifest.get_or<std::string>("level", "");
-    m_EntryScript = manifest.get_or<std::string>("entry_script", "main.lua");
-    m_Description = manifest.get_or<std::string>("description", "No description.");
-    m_UpdateRate = manifest.get_or<float>("update_rate", kDefaultUpdateRate);
+    m_Name = manifest.GetStringField("name", "Unnamed TAS");
+    m_Author = manifest.GetStringField("author", "Unknown");
+    m_TargetLevel = manifest.GetStringField("level", "");
+    m_EntryScript = manifest.GetStringField("entry_script", "main.lua");
+    m_Description = manifest.GetStringField("description", "No description.");
+    m_UpdateRate = static_cast<float>(manifest.GetNumberField("update_rate", kDefaultUpdateRate));
     if (!std::isfinite(m_UpdateRate) || m_UpdateRate <= 0.0f) {
         m_UpdateRate = kDefaultUpdateRate;
     }
 
     // Parse project scope (default to Level for backward compatibility)
-    std::string scopeStr = manifest.get_or<std::string>("scope", "level");
+    std::string scopeStr = manifest.GetStringField("scope", "level");
     if (scopeStr == "global") {
         m_ProjectScope = ProjectScope::Global;
     } else {
@@ -48,9 +49,27 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     }
 
     // Parse execution trigger (default to level for backward compatibility)
-    m_ExecutionTrigger = manifest.get_or<std::string>("trigger", "level");
+    m_ExecutionTrigger = manifest.GetStringField("trigger", "level");
     if (m_ExecutionTrigger != "startup" && m_ExecutionTrigger != "menu" && m_ExecutionTrigger != "level") {
         m_ExecutionTrigger = "level"; // Default if invalid
+    }
+
+    if (m_Name.empty()) {
+        m_IsValid = false;
+        m_ValidationMessage = "Manifest requires a project name";
+        return;
+    }
+
+    if (m_Author.empty()) {
+        m_IsValid = false;
+        m_ValidationMessage = "Manifest requires an author";
+        return;
+    }
+
+    if (m_EntryScript.empty()) {
+        m_IsValid = false;
+        m_ValidationMessage = "Project entry script is missing";
+        return;
     }
 
     // Validation rules:
@@ -58,14 +77,19 @@ void TASProject::ParseManifest(const sol::table &manifest) {
     // - Global projects can work without a specific target level
     if (m_ProjectScope == ProjectScope::Level) {
         // Level projects require a target level to be valid
-        if (!m_TargetLevel.empty() && !m_Name.empty() && !m_Author.empty()) {
+        if (!m_TargetLevel.empty()) {
             m_IsValid = true;
+        } else {
+            m_IsValid = false;
+            m_ValidationMessage = "Level project requires a target level";
         }
     } else {
         // Global projects are valid with just name and author (level is optional)
-        if (!m_Name.empty() && !m_Author.empty()) {
-            m_IsValid = true;
-        }
+        m_IsValid = true;
+    }
+
+    if (m_IsValid) {
+        m_ValidationMessage.clear();
     }
 }
 
@@ -73,6 +97,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
     // Validate that the .tas file exists
     if (!fs::exists(tasFilePath) || !fs::is_regular_file(tasFilePath)) {
         m_IsValid = false;
+        m_ValidationMessage = "Record file does not exist";
         return;
     }
 
@@ -91,6 +116,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         std::ifstream file(tasFilePath, std::ios::binary);
         if (!file.is_open()) {
             m_IsValid = false;
+            m_ValidationMessage = "Record file cannot be opened";
             return;
         }
 
@@ -99,25 +125,29 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
         if (file.gcount() != sizeof(uncompressedSize)) {
             m_IsValid = false;
+            m_ValidationMessage = "Record header is incomplete";
             return;
         }
 
         if (uncompressedSize == 0) {
-            // Empty file - technically valid but no useful data
             m_Description = "Empty TAS record file";
-            m_IsValid = true;
+            m_IsValid = false;
+            m_RecordFrameCount = 0;
+            m_ValidationMessage = "Record has no frames";
             return;
         }
 
         // Validate that uncompressed size makes sense
-        const size_t frameDataSize = sizeof(float) + sizeof(int); // deltaTime + keyStates
+        const size_t frameDataSize = sizeof(RecordFrameData);
         if (uncompressedSize % frameDataSize != 0) {
             m_IsValid = false;
+            m_ValidationMessage = "Record frame data size is invalid";
             return;
         }
 
         // Calculate frame count
         size_t frameCount = uncompressedSize / frameDataSize;
+        m_RecordFrameCount = frameCount;
 
         // Read the compressed payload
         file.seekg(0, std::ios::end);
@@ -127,6 +157,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         size_t compressedSize = static_cast<size_t>(fileSize) - sizeof(uncompressedSize);
         if (compressedSize == 0) {
             m_IsValid = false;
+            m_ValidationMessage = "Record payload is empty";
             return;
         }
 
@@ -134,6 +165,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         file.read(compressedData.data(), compressedSize);
         if (static_cast<size_t>(file.gcount()) != compressedSize) {
             m_IsValid = false;
+            m_ValidationMessage = "Record payload is incomplete";
             return;
         }
         file.close();
@@ -142,6 +174,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         char *uncompressedData = CKUnPackData(static_cast<int>(uncompressedSize), compressedData.data(), compressedSize);
         if (!uncompressedData) {
             m_IsValid = false;
+            m_ValidationMessage = "Record payload could not be decompressed";
             return;
         }
 
@@ -164,6 +197,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
                 CKDeletePointer(uncompressedData);
                 m_IsValid = false;
                 m_HasConstantDeltaTime = false;
+                m_ValidationMessage = "Record contains invalid frame timing";
                 return;
             }
 
@@ -184,10 +218,17 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         m_Description = desc.str();
 
         m_IsValid = true;
+        if (m_HasConstantDeltaTime) {
+            m_ValidationMessage.clear();
+        } else {
+            m_ValidationMessage = "Variable timing detected; translation disabled";
+        }
     } catch (const std::exception &) {
         // If we can't read the file properly, mark as invalid
         m_IsValid = false;
         m_HasConstantDeltaTime = false;
+        m_RecordFrameCount = 0;
+        m_ValidationMessage = "Invalid TAS record file";
         m_Description = "Invalid TAS record file";
     }
 }
@@ -247,7 +288,11 @@ std::string TASProject::GetTranslationCompatibilityMessage() const {
     }
 
     if (!IsValid()) {
-        return "Invalid record file";
+        return m_ValidationMessage.empty() ? "Invalid record file" : m_ValidationMessage;
+    }
+
+    if (m_RecordFrameCount == 0) {
+        return "Record has no frames";
     }
 
     if (!m_HasConstantDeltaTime) {
@@ -258,6 +303,34 @@ std::string TASProject::GetTranslationCompatibilityMessage() const {
     }
 
     return "Compatible - constant timing detected";
+}
+
+bool TASProject::CanTranslateToRecord() const {
+    return IsScriptProject() &&
+           IsValid() &&
+           IsLevelProject() &&
+           ShouldExecuteOnLevel() &&
+           !GetEntryScript().empty();
+}
+
+std::string TASProject::GetScriptToRecordCompatibilityMessage() const {
+    if (!IsScriptProject()) {
+        return "Only script projects can be translated to record";
+    }
+
+    if (!IsValid()) {
+        return m_ValidationMessage.empty() ? "Invalid script project" : m_ValidationMessage;
+    }
+
+    if (!IsLevelProject() || !ShouldExecuteOnLevel()) {
+        return "Only level script projects can be translated to record";
+    }
+
+    if (GetEntryScript().empty()) {
+        return "Project entry script is missing";
+    }
+
+    return "Compatible - can be captured to record";
 }
 
 std::vector<std::string> TASProject::GetRequirements() const {

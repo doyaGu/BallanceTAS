@@ -5,8 +5,8 @@
 #include <string>
 #include <unordered_map>
 
-#include <sol/sol.hpp>
-
+#include "LuaRuntime/LuaState.h"
+#include "LuaRuntime/LuaValue.h"
 #include "TASProject.h"
 
 class TASEngine;
@@ -103,9 +103,9 @@ private:
     /**
      * @brief Parses a manifest.lua file in a secure, sandboxed Lua environment.
      * @param path The full path to the manifest.lua file.
-     * @return A sol::table containing the manifest data, or an invalid table on error.
+     * @return Serialized manifest data, or nil on error.
      */
-    sol::table ParseManifestFile(const std::string &path);
+    tas::lua::LuaValue ParseManifestFile(const std::string &path);
 
     /**
      * @brief Reads a file from within a zip archive.
@@ -155,7 +155,7 @@ private:
     std::string m_TASRootPath;
     std::string m_TempDir; // Base directory for temporary extractions
 
-    sol::state m_ManifestState; // Dedicated Lua state for manifest parsing
+    tas::lua::LuaState m_ManifestState; // Dedicated Lua state for manifest parsing
 
     std::vector<std::unique_ptr<TASProject>> m_Projects;
     TASProject *m_CurrentProject = nullptr; // Current project being worked on, if any.

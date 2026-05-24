@@ -9,6 +9,7 @@
 #include <zip.h>
 
 #include "Logger.h"
+#include "LuaRuntime/LuaProtectedCall.h"
 #include "TASEngine.h"
 
 namespace fs = std::filesystem;
@@ -19,7 +20,7 @@ ProjectManager::ProjectManager(TASEngine *engine) : m_Engine(engine) {
     }
 
     // Initialize dedicated Lua state for manifest parsing
-    m_ManifestState.open_libraries(sol::lib::base, sol::lib::string, sol::lib::table, sol::lib::math);
+    m_ManifestState.OpenStandardLibraries();
 
     // Define the root directory for all TAS projects.
     m_TASRootPath = m_Engine->GetPath();
@@ -110,9 +111,9 @@ void ProjectManager::RefreshProjects() {
 
 std::unique_ptr<TASProject> ProjectManager::LoadDirectoryProject(const std::string &projectPath) {
     std::string manifestPath = projectPath + "\\manifest.lua";
-    sol::table manifest_table = ParseManifestFile(manifestPath);
+    tas::lua::LuaValue manifest_table = ParseManifestFile(manifestPath);
 
-    if (!manifest_table.valid()) {
+    if (!manifest_table.IsTable()) {
         Log::Warn("Could not parse manifest for directory project at: %s", projectPath.c_str());
         return nullptr;
     }
@@ -145,12 +146,12 @@ std::unique_ptr<TASProject> ProjectManager::LoadZipProject(const std::string &zi
         tempFile.close();
 
         // Parse the temporary manifest
-        sol::table manifest_table = ParseManifestFile(tempManifest);
+        tas::lua::LuaValue manifest_table = ParseManifestFile(tempManifest);
 
         // Clean up temporary file
         fs::remove(tempManifest);
 
-        if (!manifest_table.valid()) {
+        if (!manifest_table.IsTable()) {
             Log::Warn("Could not parse manifest for zip project: %s", zipPath.c_str());
             return nullptr;
         }
@@ -178,7 +179,7 @@ std::unique_ptr<TASProject> ProjectManager::LoadRecordProject(const std::string 
         if (project->IsValid()) {
             Log::Info("Record project loaded: %s (%zu frames)",
                                         project->GetName().c_str(),
-                                        project->IsValid() ? 0 : 0); // We could parse frame count here if needed
+                                        project->GetRecordFrameCount());
             return project;
         } else {
             Log::Warn("Invalid record project: %s", recordPath.c_str());
@@ -622,31 +623,38 @@ bool ProjectManager::ValidateProjectStructure(const std::string &projectPath) {
         fs::is_regular_file(manifestPath) && fs::is_regular_file(mainScriptPath);
 }
 
-sol::table ProjectManager::ParseManifestFile(const std::string &path) {
-    try {
-        sol::table envTable = m_ManifestState.create_table();
-        envTable[sol::metatable_key] = m_ManifestState.create_table_with(
-            sol::meta_method::index, m_ManifestState.globals()
-        );
+tas::lua::LuaValue ProjectManager::ParseManifestFile(const std::string &path) {
+    lua_State *state = m_ManifestState.Get();
+    const int top = lua_gettop(state);
 
-        sol::environment env(m_ManifestState, envTable);
-
-        sol::protected_function_result result = m_ManifestState.safe_script_file(path, env);
-
-        if (!result.valid()) {
-            sol::error err = result;
-            Log::Error("Error parsing manifest file '%s': %s", path.c_str(), err.what());
-            return sol::table();
-        }
-
-        if (result.get_type() == sol::type::table) {
-            return result.get<sol::table>();
-        }
-
-        Log::Warn("Manifest file '%s' did not return a table.", path.c_str());
-        return sol::table();
-    } catch (const sol::error &e) {
-        Log::Error("Exception while parsing manifest '%s': %s", path.c_str(), e.what());
-        return sol::table();
+    auto loadResult = m_ManifestState.LoadFile(path);
+    if (loadResult.IsError()) {
+        lua_settop(state, top);
+        Log::Error("Error loading manifest file '%s': %s",
+                   path.c_str(), loadResult.GetError().message.c_str());
+        return tas::lua::LuaValue();
     }
+
+    auto callResult = tas::lua::ProtectedCall(state, 0, 1);
+    if (callResult.IsError()) {
+        lua_settop(state, top);
+        Log::Error("Error parsing manifest file '%s': %s",
+                   path.c_str(), callResult.GetError().message.c_str());
+        return tas::lua::LuaValue();
+    }
+
+    if (!lua_istable(state, -1)) {
+        lua_settop(state, top);
+        Log::Warn("Manifest file '%s' did not return a table.", path.c_str());
+        return tas::lua::LuaValue();
+    }
+
+    auto manifest = tas::lua::LuaValue::FromStack(state, -1);
+    lua_settop(state, top);
+    if (manifest.IsError()) {
+        Log::Error("Error serializing manifest file '%s': %s",
+                   path.c_str(), manifest.GetError().message.c_str());
+        return tas::lua::LuaValue();
+    }
+    return std::move(manifest.Unwrap());
 }

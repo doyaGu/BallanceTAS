@@ -111,6 +111,7 @@ TEST(StateMachineTest, StateToString) {
 TEST(StateMachineTest, EventToString) {
     ASSERT_EQ(std::string(TASStateMachine::EventToString(TASStateMachine::Event::StartRecording)), "StartRecording");
     ASSERT_EQ(std::string(TASStateMachine::EventToString(TASStateMachine::Event::Stop)), "Stop");
+    ASSERT_EQ(std::string(TASStateMachine::EventToString(TASStateMachine::Event::LevelLoadStart)), "LevelLoadStart");
     ASSERT_EQ(std::string(TASStateMachine::EventToString(TASStateMachine::Event::LevelStart)), "LevelStart");
     ASSERT_EQ(std::string(TASStateMachine::EventToString(TASStateMachine::Event::LevelEnd)), "LevelEnd");
 }
@@ -136,7 +137,7 @@ TEST(TransitionTest, IdleToPendingRecord) {
     ASSERT_TRUE(pendingPtr->enterCalled);
 }
 
-TEST(TransitionTest, PendingRecordToRecordingOnLevelStart) {
+TEST(TransitionTest, PendingRecordToRecordingOnLevelLoadStart) {
     TASStateMachine sm(nullptr);
 
     sm.RegisterHandler(TASStateMachine::State::Idle, std::make_unique<MockIdleHandler>());
@@ -146,9 +147,41 @@ TEST(TransitionTest, PendingRecordToRecordingOnLevelStart) {
     sm.Transition(TASStateMachine::Event::StartRecording);
     ASSERT_TRUE(sm.IsPendingRecord());
 
-    auto result = sm.Transition(TASStateMachine::Event::LevelStart);
+    auto result = sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(result.IsOk());
     ASSERT_TRUE(sm.IsRecording());
+}
+
+TEST(TransitionTest, PendingRecordPlaybackToPlayingRecordOnLevelLoadStart) {
+    TASStateMachine sm(nullptr);
+
+    sm.RegisterHandler(TASStateMachine::State::Idle, std::make_unique<MockIdleHandler>());
+    sm.RegisterHandler(TASStateMachine::State::PendingRecordPlayback, std::make_unique<MockPendingRecordHandler>());
+    sm.RegisterHandler(TASStateMachine::State::PlayingRecord, std::make_unique<MockPendingRecordHandler>());
+
+    auto startResult = sm.Transition(TASStateMachine::Event::StartRecordPlayback);
+    ASSERT_TRUE(startResult.IsOk());
+    ASSERT_EQ(sm.GetCurrentState(), TASStateMachine::State::PendingRecordPlayback);
+
+    auto result = sm.Transition(TASStateMachine::Event::LevelLoadStart);
+    ASSERT_TRUE(result.IsOk());
+    ASSERT_EQ(sm.GetCurrentState(), TASStateMachine::State::PlayingRecord);
+}
+
+TEST(TransitionTest, PendingScriptPlaybackToPlayingScriptOnLevelLoadStart) {
+    TASStateMachine sm(nullptr);
+
+    sm.RegisterHandler(TASStateMachine::State::Idle, std::make_unique<MockIdleHandler>());
+    sm.RegisterHandler(TASStateMachine::State::PendingScriptPlayback, std::make_unique<MockPendingRecordHandler>());
+    sm.RegisterHandler(TASStateMachine::State::PlayingScript, std::make_unique<MockPendingRecordHandler>());
+
+    auto startResult = sm.Transition(TASStateMachine::Event::StartScriptPlayback);
+    ASSERT_TRUE(startResult.IsOk());
+    ASSERT_EQ(sm.GetCurrentState(), TASStateMachine::State::PendingScriptPlayback);
+
+    auto result = sm.Transition(TASStateMachine::Event::LevelLoadStart);
+    ASSERT_TRUE(result.IsOk());
+    ASSERT_EQ(sm.GetCurrentState(), TASStateMachine::State::PlayingScript);
 }
 
 TEST(TransitionTest, InvalidTransition) {
@@ -181,7 +214,7 @@ TEST(TransitionTest, StopTransition) {
     sm.RegisterHandler(TASStateMachine::State::Recording, std::make_unique<MockRecordingHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 
     auto result = sm.Transition(TASStateMachine::Event::Stop);
@@ -197,7 +230,7 @@ TEST(TransitionTest, LevelEndStopsActive) {
     sm.RegisterHandler(TASStateMachine::State::Recording, std::make_unique<MockRecordingHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 
     auto result = sm.Transition(TASStateMachine::Event::LevelEnd);
@@ -213,14 +246,14 @@ TEST(TransitionTest, MultipleTransitions) {
     sm.RegisterHandler(TASStateMachine::State::Recording, std::make_unique<MockRecordingHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 
     sm.Transition(TASStateMachine::Event::Stop);
     ASSERT_TRUE(sm.IsIdle());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 }
 
@@ -242,7 +275,7 @@ TEST(TransitionTest, ShutdownFromRecording) {
     sm.RegisterHandler(TASStateMachine::State::Recording, std::make_unique<MockRecordingHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 
     auto result = sm.Transition(TASStateMachine::Event::Shutdown);
@@ -258,7 +291,7 @@ TEST(HandlerTest, Blocking) {
     sm.RegisterHandler(TASStateMachine::State::Recording, std::make_unique<MockRecordingHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 
     auto result = sm.Transition(TASStateMachine::Event::Stop);
@@ -276,7 +309,7 @@ TEST(HandlerTest, TickCalling) {
     sm.RegisterHandler(TASStateMachine::State::PendingRecord, std::make_unique<MockPendingRecordHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     ASSERT_TRUE(sm.IsRecording());
 
     sm.Tick();
@@ -291,7 +324,7 @@ TEST(HistoryTest, TransitionHistory) {
     sm.RegisterHandler(TASStateMachine::State::Recording, std::make_unique<MockRecordingHandler>());
 
     sm.Transition(TASStateMachine::Event::StartRecording);
-    sm.Transition(TASStateMachine::Event::LevelStart);
+    sm.Transition(TASStateMachine::Event::LevelLoadStart);
     sm.Transition(TASStateMachine::Event::Stop);
 
     const auto &history = sm.GetTransitionHistory();
@@ -303,7 +336,7 @@ TEST(HistoryTest, TransitionHistory) {
     ASSERT_TRUE(history[0].succeeded);
 
     ASSERT_EQ(history[1].fromState, TASStateMachine::State::PendingRecord);
-    ASSERT_EQ(history[1].event, TASStateMachine::Event::LevelStart);
+    ASSERT_EQ(history[1].event, TASStateMachine::Event::LevelLoadStart);
     ASSERT_EQ(history[1].toState, TASStateMachine::State::Recording);
     ASSERT_TRUE(history[1].succeeded);
 

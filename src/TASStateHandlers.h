@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Result.h"
+#include "ServiceContainer.h"
 #include "TASStateMachine.h"
 
 class TASEngine;
@@ -23,6 +24,7 @@ public:
 
 protected:
     TASEngine *m_Engine;
+    ServiceProvider &Services() const;
 
     Recorder *GetRecorder() const;
     RecordPlayer *GetRecordPlayer() const;

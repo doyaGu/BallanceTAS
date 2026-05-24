@@ -23,44 +23,48 @@ BaseTASStateHandler::BaseTASStateHandler(TASEngine *engine)
     }
 }
 
+ServiceProvider &BaseTASStateHandler::Services() const {
+    return m_Engine->GetServiceProvider();
+}
+
 Recorder *BaseTASStateHandler::GetRecorder() const {
-    return m_Engine ? m_Engine->GetRecorder() : nullptr;
+    return Services().Resolve<Recorder>();
 }
 
 RecordPlayer *BaseTASStateHandler::GetRecordPlayer() const {
-    return m_Engine ? m_Engine->GetRecordPlayer() : nullptr;
+    return Services().Resolve<RecordPlayer>();
 }
 
 ScriptContextManager *BaseTASStateHandler::GetScriptContextManager() const {
-    return m_Engine ? m_Engine->GetScriptContextManager() : nullptr;
+    return Services().Resolve<ScriptContextManager>();
 }
 
 InputSystem *BaseTASStateHandler::GetInputSystem() const {
-    return m_Engine ? m_Engine->GetInputSystem() : nullptr;
+    return Services().Resolve<InputSystem>();
 }
 
 GameInterface *BaseTASStateHandler::GetGameInterface() const {
-    return m_Engine ? m_Engine->GetGameInterface() : nullptr;
+    return Services().Resolve<GameInterface>();
 }
 
 ProjectManager *BaseTASStateHandler::GetProjectManager() const {
-    return m_Engine ? m_Engine->GetProjectManager() : nullptr;
+    return Services().Resolve<ProjectManager>();
 }
 
 RecordingService *BaseTASStateHandler::GetRecordingService() const {
-    return m_Engine ? m_Engine->GetRecordingService() : nullptr;
+    return Services().Resolve<RecordingService>();
 }
 
 PlaybackService *BaseTASStateHandler::GetPlaybackService() const {
-    return m_Engine ? m_Engine->GetPlaybackService() : nullptr;
+    return Services().Resolve<PlaybackService>();
 }
 
 TranslationService *BaseTASStateHandler::GetTranslationService() const {
-    return m_Engine ? m_Engine->GetTranslationService() : nullptr;
+    return Services().Resolve<TranslationService>();
 }
 
 ValidationService *BaseTASStateHandler::GetValidationService() const {
-    return m_Engine ? m_Engine->GetValidationService() : nullptr;
+    return Services().Resolve<ValidationService>();
 }
 
 void BaseTASStateHandler::SetUIMode(UIMode mode) const {

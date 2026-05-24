@@ -2,11 +2,11 @@
 
 #include <chrono>
 
+#include "EventBus.h"
 #include "GameEvents.h"
-#include "TASEngine.h"
 
-TASStateMachine::TASStateMachine(TASEngine *engine)
-    : m_Engine(engine), m_CurrentState(State::Idle), m_PreviousState(State::Idle) {
+TASStateMachine::TASStateMachine(EventBus *eventBus)
+    : m_EventBus(eventBus), m_CurrentState(State::Idle), m_PausedFromState(State::Idle) {
     InitializeTransitionTable();
 }
 
@@ -16,10 +16,11 @@ void TASStateMachine::InitializeTransitionTable() {
     m_TransitionTable[{State::Idle, Event::StartRecordPlayback}] = State::PendingRecordPlayback;
     m_TransitionTable[{State::Idle, Event::StartTranslation}] = State::PendingTranslation;
 
-    m_TransitionTable[{State::PendingRecord, Event::LevelStart}] = State::Recording;
+    m_TransitionTable[{State::PendingRecord, Event::LevelLoadStart}] = State::Recording;
+    m_TransitionTable[{State::PendingScriptPlayback, Event::LevelLoadStart}] = State::PlayingScript;
     m_TransitionTable[{State::PendingScriptPlayback, Event::LevelStart}] = State::PlayingScript;
-    m_TransitionTable[{State::PendingRecordPlayback, Event::LevelStart}] = State::PlayingRecord;
-    m_TransitionTable[{State::PendingTranslation, Event::LevelStart}] = State::Translating;
+    m_TransitionTable[{State::PendingRecordPlayback, Event::LevelLoadStart}] = State::PlayingRecord;
+    m_TransitionTable[{State::PendingTranslation, Event::LevelLoadStart}] = State::Translating;
 
     m_TransitionTable[{State::PendingRecord, Event::Stop}] = State::Idle;
     m_TransitionTable[{State::PendingScriptPlayback, Event::Stop}] = State::Idle;
@@ -34,7 +35,7 @@ void TASStateMachine::InitializeTransitionTable() {
 
     m_TransitionTable[{State::PlayingScript, Event::Pause}] = State::Paused;
     m_TransitionTable[{State::PlayingRecord, Event::Pause}] = State::Paused;
-    m_TransitionTable[{State::Paused, Event::Resume}] = State::PlayingScript;
+    // Resume from Paused is handled dynamically in TransitionToState using m_PausedFromState
 
     m_TransitionTable[{State::PendingRecord, Event::LevelEnd}] = State::Idle;
     m_TransitionTable[{State::PendingScriptPlayback, Event::LevelEnd}] = State::Idle;
@@ -118,9 +119,7 @@ Result<void> TASStateMachine::TransitionToState(State newState) {
     }
 
     if (newState == State::Paused) {
-        m_PreviousState = oldState;
-    } else if (oldState == State::Paused && newState != State::Idle && newState != State::ShuttingDown) {
-        newState = m_PreviousState;
+        m_PausedFromState = oldState;
     }
 
     m_CurrentState = newState;
@@ -139,8 +138,8 @@ Result<void> TASStateMachine::TransitionToState(State newState) {
         }
     }
 
-    if (m_Engine && m_Engine->GetEventBus()) {
-        m_Engine->GetEventBus()->Publish(TASStateChangedEvent{
+    if (m_EventBus) {
+        m_EventBus->Publish(TASStateChangedEvent{
             static_cast<int>(oldState),
             static_cast<int>(m_CurrentState)
         });
@@ -150,6 +149,11 @@ Result<void> TASStateMachine::TransitionToState(State newState) {
 }
 
 TASStateMachine::State TASStateMachine::FindTransitionTarget(State currentState, Event event) const {
+    // Dynamic resume: return to the state we paused from
+    if (currentState == State::Paused && event == Event::Resume) {
+        return m_PausedFromState;
+    }
+
     auto it = m_TransitionTable.find({currentState, event});
     if (it != m_TransitionTable.end()) {
         return it->second;

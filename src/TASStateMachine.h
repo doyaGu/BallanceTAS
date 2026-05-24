@@ -1,12 +1,14 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "Result.h"
 
-class TASEngine;
+class EventBus;
 
 class TASStateMachine {
 public:
@@ -32,6 +34,7 @@ public:
         Stop,
         Pause,
         Resume,
+        LevelLoadStart,
         LevelStart,
         LevelEnd,
         Shutdown,
@@ -53,14 +56,15 @@ public:
         virtual const char *GetStateName() const = 0;
     };
 
-    explicit TASStateMachine(TASEngine *engine);
+    explicit TASStateMachine(EventBus *eventBus);
     ~TASStateMachine() = default;
 
     Result<void> Transition(Event event);
     Result<void> ForceSetState(State newState);
 
     State GetCurrentState() const { return m_CurrentState; }
-    State GetPreviousState() const { return m_PreviousState; }
+    State GetPreviousState() const { return m_PausedFromState; }
+    State GetPausedFromState() const { return m_PausedFromState; }
     const char *GetCurrentStateName() const;
 
     bool IsIdle() const { return m_CurrentState == State::Idle; }
@@ -110,9 +114,9 @@ private:
     State FindTransitionTarget(State currentState, Event event) const;
     bool IsTransitionValid(State from, State to) const;
 
-    TASEngine *m_Engine;
+    EventBus *m_EventBus;
     State m_CurrentState;
-    State m_PreviousState;
+    State m_PausedFromState;
 
     std::unordered_map<State, std::unique_ptr<IStateHandler>> m_Handlers;
 
@@ -166,6 +170,7 @@ inline const char *TASStateMachine::EventToString(Event event) {
     case Event::Stop: return "Stop";
     case Event::Pause: return "Pause";
     case Event::Resume: return "Resume";
+    case Event::LevelLoadStart: return "LevelLoadStart";
     case Event::LevelStart: return "LevelStart";
     case Event::LevelEnd: return "LevelEnd";
     case Event::Shutdown: return "Shutdown";

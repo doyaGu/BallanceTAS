@@ -1,474 +1,358 @@
 #include "LuaApi.h"
 
-#include <stdexcept>
-#include <atomic>
-#include <sstream>
-#include <iomanip>
-#include <algorithm>
+#include "../LuaRuntime/LuaFunction.h"
+#include "../LuaRuntime/LuaStackGuard.h"
+#include "../LuaRuntime/LuaValue.h"
 
-#include "Logger.h"
-#include "TASEngine.h"
+#include "MessageBus.h"
 #include "ScriptContext.h"
 #include "ScriptContextManager.h"
 #include "SharedDataManager.h"
-#include "MessageBus.h"
-#include "LuaScheduler.h"
 
-// ===================================================================
-//  Context Communication API Registration
-// ===================================================================
+#include <atomic>
 
-void LuaApi::RegisterContextCommunicationApi(sol::table &tas, ScriptContext *context) {
+namespace {
+
+std::atomic<uint64_t> g_RequestId{0};
+
+ScriptContext *GetContext(lua_State *state) {
+    return static_cast<ScriptContext *>(lua_touserdata(state, lua_upvalueindex(1)));
+}
+
+SharedDataManager *GetShared(lua_State *state) {
+    ScriptContext *context = GetContext(state);
+    ScriptContextManager *manager = context ? context->GetScriptContextManager() : nullptr;
+    return manager ? manager->GetSharedDataManager() : nullptr;
+}
+
+MessageBus *GetMessageBus(lua_State *state) {
+    ScriptContext *context = GetContext(state);
+    ScriptContextManager *manager = context ? context->GetScriptContextManager() : nullptr;
+    return manager ? manager->GetMessageBus() : nullptr;
+}
+
+int ContextName(lua_State *state) {
+    ScriptContext *context = GetContext(state);
+    if (lua_gettop(state) != 0) {
+        return luaL_error(state, "tas.context.get_name(): expected no arguments");
+    }
     if (!context) {
-        throw std::runtime_error("LuaApi::RegisterContextCommunicationApi requires a valid ScriptContext");
+        lua_pushliteral(state, "");
+        return 1;
+    }
+    const std::string &name = context->GetName();
+    lua_pushlstring(state, name.data(), name.size());
+    return 1;
+}
+
+int ContextType(lua_State *state) {
+    ScriptContext *context = GetContext(state);
+    if (lua_gettop(state) != 0) {
+        return luaL_error(state, "tas.context.get_type(): expected no arguments");
+    }
+    lua_pushinteger(state, context ? static_cast<lua_Integer>(context->GetType()) : 0);
+    return 1;
+}
+
+std::string CheckKey(lua_State *state, int index, const char *functionName) {
+    size_t length = 0;
+    const char *key = luaL_checklstring(state, index, &length);
+    if (!key || length == 0) {
+        luaL_error(state, "%s: key cannot be empty", functionName);
+    }
+    return std::string(key, length);
+}
+
+tas::lua::LuaValue CheckPortableValue(lua_State *state, int index, const char *functionName) {
+    auto value = tas::lua::LuaValue::FromStack(state, index);
+    if (value.IsError()) {
+        luaL_error(state, "%s: %s", functionName, value.GetError().message.c_str());
+    }
+    return value.Unwrap();
+}
+
+int SharedSet(lua_State *state) {
+    const int argc = lua_gettop(state);
+    if (argc != 2 && argc != 3) {
+        return luaL_error(state, "tas.shared.set(key, value[, ttl_ms]): expected 2 or 3 arguments");
+    }
+    SharedDataManager *shared = GetShared(state);
+    if (!shared) {
+        return luaL_error(state, "tas.shared.set(): shared data manager is unavailable");
     }
 
-    auto *contextManager = context->GetScriptContextManager();
-    if (!contextManager) {
-        Log::Warn("[%s] ScriptContextManager not available for context communication APIs.", context->GetName().c_str());
-        return;
+    const std::string key = SharedDataManager::MakeSharedKey(CheckKey(state, 1, "tas.shared.set"));
+    tas::lua::LuaValue value = CheckPortableValue(state, 2, "tas.shared.set");
+    const int ttl = argc == 3 ? static_cast<int>(luaL_checkinteger(state, 3)) : 0;
+    lua_pushboolean(state, shared->Set(key, value, SharedDataManager::SetOptions(ttl)) ? 1 : 0);
+    return 1;
+}
+
+int SharedGet(lua_State *state) {
+    const int argc = lua_gettop(state);
+    if (argc != 1 && argc != 2) {
+        return luaL_error(state, "tas.shared.get(key[, default]): expected 1 or 2 arguments");
+    }
+    SharedDataManager *shared = GetShared(state);
+    if (!shared) {
+        return luaL_error(state, "tas.shared.get(): shared data manager is unavailable");
     }
 
-    auto *sharedData = contextManager->GetSharedData();
-    auto *messageBus = contextManager->GetMessageBus();
+    const std::string key = CheckKey(state, 1, "tas.shared.get");
+    tas::lua::LuaValue fallback;
+    if (argc == 2) {
+        fallback = CheckPortableValue(state, 2, "tas.shared.get");
+    }
+    shared->Get(SharedDataManager::MakeSharedKey(key), fallback).Push(state);
+    return 1;
+}
 
-    if (!sharedData || !messageBus) {
-        Log::Warn("[%s] SharedDataManager or MessageBus not available.", context->GetName().c_str());
-        return;
+int SharedHas(lua_State *state) {
+    if (lua_gettop(state) != 1) {
+        return luaL_error(state, "tas.shared.has(key): expected key");
+    }
+    SharedDataManager *shared = GetShared(state);
+    lua_pushboolean(state, shared && shared->Has(SharedDataManager::MakeSharedKey(CheckKey(state, 1, "tas.shared.has"))) ? 1 : 0);
+    return 1;
+}
+
+int SharedRemove(lua_State *state) {
+    if (lua_gettop(state) != 1) {
+        return luaL_error(state, "tas.shared.remove(key): expected key");
+    }
+    SharedDataManager *shared = GetShared(state);
+    if (!shared) {
+        return luaL_error(state, "tas.shared.remove(): shared data manager is unavailable");
+    }
+    lua_pushboolean(state, shared->Remove(SharedDataManager::MakeSharedKey(CheckKey(state, 1, "tas.shared.remove"))) ? 1 : 0);
+    return 1;
+}
+
+int SharedClear(lua_State *state) {
+    if (lua_gettop(state) != 0) {
+        return luaL_error(state, "tas.shared.clear(): expected no arguments");
+    }
+    SharedDataManager *shared = GetShared(state);
+    if (!shared) {
+        return luaL_error(state, "tas.shared.clear(): shared data manager is unavailable");
+    }
+    shared->ClearNamespace("shared:");
+    return 0;
+}
+
+int SharedKeys(lua_State *state) {
+    if (lua_gettop(state) != 0) {
+        return luaL_error(state, "tas.shared.keys(): expected no arguments");
+    }
+    SharedDataManager *shared = GetShared(state);
+    lua_newtable(state);
+    if (!shared) {
+        return 1;
     }
 
-    std::string contextName = context->GetName();
-
-    // ===================================================================
-    // Shared Data API (tas.shared.*)
-    // ===================================================================
-
-    sol::table shared = tas["shared"] = tas.create();
-
-    // tas.shared.set(key, value, options?) - Set shared data
-    shared["set"] = sol::overload(
-        [sharedData](const std::string &key, sol::object value) -> bool {
-            if (!sharedData) {
-                throw sol::error("shared.set: SharedDataManager not available");
-            }
-            if (key.empty()) {
-                throw sol::error("shared.set: key cannot be empty");
-            }
-            SharedDataManager::SetOptions options;
-            return sharedData->Set(key, value, options);
-        },
-        [sharedData](const std::string &key, sol::object value, sol::table options) -> bool {
-            if (!sharedData) {
-                throw sol::error("shared.set: SharedDataManager not available");
-            }
-            if (key.empty()) {
-                throw sol::error("shared.set: key cannot be empty");
-            }
-            SharedDataManager::SetOptions setOpts;
-            if (options["ttl"].valid()) {
-                setOpts.ttl_ms = options["ttl"].get<int>();
-            }
-            return sharedData->Set(key, value, setOpts);
+    int index = 1;
+    for (const std::string &key : shared->GetKeys()) {
+        static constexpr const char *prefix = "shared:";
+        if (key.rfind(prefix, 0) != 0) {
+            continue;
         }
-    );
+        const std::string userKey = key.substr(7);
+        lua_pushlstring(state, userKey.data(), userKey.size());
+        lua_seti(state, -2, index++);
+    }
+    return 1;
+}
 
-    // tas.shared.get(key, default?) - Get shared data
-    shared["get"] = sol::overload(
-        [sharedData, context](const std::string &key) -> sol::object {
-            if (!sharedData || !context) {
-                return sol::nil;
-            }
-            if (key.empty()) {
-                return sol::nil;
-            }
-            sol::state_view lua = context->GetLuaState();
-            return sharedData->Get(lua, key, sol::nil);
-        },
-        [sharedData, context](const std::string &key, sol::object defaultValue) -> sol::object {
-            if (!sharedData || !context) {
-                return defaultValue;
-            }
-            if (key.empty()) {
-                return defaultValue;
-            }
-            sol::state_view lua = context->GetLuaState();
-            return sharedData->Get(lua, key, defaultValue);
+int SharedWatch(lua_State *state) {
+    if (lua_gettop(state) != 2 || !lua_isfunction(state, 2)) {
+        return luaL_error(state, "tas.shared.watch(key, fn): expected key and function");
+    }
+    ScriptContext *context = GetContext(state);
+    SharedDataManager *shared = GetShared(state);
+    if (!context || !shared) {
+        return luaL_error(state, "tas.shared.watch(): context shared data manager is unavailable");
+    }
+
+    const std::string key = CheckKey(state, 1, "tas.shared.watch");
+    lua_pushvalue(state, 2);
+    lua_pushlstring(state, key.data(), key.size());
+    lua_pushcclosure(state, [](lua_State *L) -> int {
+        if (lua_gettop(L) < 2) {
+            return luaL_error(L, "tas.shared.watch dispatch: expected new and old values");
         }
-    );
+        lua_pushvalue(L, lua_upvalueindex(1));
+        lua_pushvalue(L, 1);
+        lua_pushvalue(L, 2);
+        lua_pushvalue(L, lua_upvalueindex(2));
+        lua_call(L, 3, 0);
+        return 0;
+    }, 2);
+    shared->Watch(context->GetName(), std::weak_ptr<ScriptContext>(),
+                  SharedDataManager::MakeSharedKey(key), tas::lua::LuaFunction::FromStack(state, -1));
+    lua_pop(state, 1);
+    lua_pushboolean(state, 1);
+    return 1;
+}
 
-    // tas.shared.delete(key) - Delete shared data
-    shared["delete"] = [sharedData](const std::string &key) -> bool {
-        if (!sharedData) {
-            return false;
-        }
-        if (key.empty()) {
-            return false;
-        }
-        return sharedData->Remove(key);
-    };
+int SharedUnwatch(lua_State *state) {
+    if (lua_gettop(state) != 1) {
+        return luaL_error(state, "tas.shared.unwatch(key): expected key");
+    }
+    ScriptContext *context = GetContext(state);
+    SharedDataManager *shared = GetShared(state);
+    if (!context || !shared) {
+        return luaL_error(state, "tas.shared.unwatch(): context shared data manager is unavailable");
+    }
+    shared->Unwatch(context->GetName(), SharedDataManager::MakeSharedKey(CheckKey(state, 1, "tas.shared.unwatch")));
+    lua_pushboolean(state, 1);
+    return 1;
+}
 
-    // tas.shared.exists(key) - Check if key exists
-    shared["exists"] = [sharedData](const std::string &key) -> bool {
-        if (!sharedData) {
-            return false;
-        }
-        if (key.empty()) {
-            return false;
-        }
-        return sharedData->Has(key);
-    };
+int MessageSubscribe(lua_State *state) {
+    if (lua_gettop(state) != 2 || !lua_isfunction(state, 2)) {
+        return luaL_error(state, "tas.message.subscribe(type, fn): expected type and function");
+    }
+    ScriptContext *context = GetContext(state);
+    MessageBus *bus = GetMessageBus(state);
+    if (!context || !bus) {
+        return luaL_error(state, "tas.message.subscribe(): message bus is unavailable");
+    }
 
-    // tas.shared.watch(key, callback) - Watch for changes to a key
-    shared["watch"] = [sharedData, contextManager, contextName](const std::string &key, sol::function callback) {
-        if (!sharedData || !contextManager) {
-            throw sol::error("shared.watch: SharedDataManager or ContextManager not available");
-        }
-        if (key.empty()) {
-            throw sol::error("shared.watch: key cannot be empty");
-        }
-        if (!callback.valid()) {
-            throw sol::error("shared.watch: callback must be a valid function");
-        }
-        // Get shared_ptr to context for lifetime tracking
-        auto contextPtr = contextManager->GetContext(contextName);
-        if (!contextPtr) {
-            throw sol::error("shared.watch: context no longer exists");
-        }
-        sharedData->Watch(contextName, contextPtr, key, callback);
-    };
+    const std::string type = CheckKey(state, 1, "tas.message.subscribe");
+    bus->RegisterLuaHandler(context->GetName(), std::weak_ptr<ScriptContext>(), type, tas::lua::LuaFunction::FromStack(state, 2));
+    lua_pushboolean(state, 1);
+    return 1;
+}
 
-    // tas.shared.unwatch(key) - Stop watching a key
-    shared["unwatch"] = [sharedData, contextName](const std::string &key) {
-        if (!sharedData) {
-            return;
-        }
-        if (key.empty()) {
-            return;
-        }
-        sharedData->Unwatch(contextName, key);
-    };
+int MessageUnsubscribe(lua_State *state) {
+    if (lua_gettop(state) != 1) {
+        return luaL_error(state, "tas.message.unsubscribe(type): expected type");
+    }
+    ScriptContext *context = GetContext(state);
+    MessageBus *bus = GetMessageBus(state);
+    if (!context || !bus) {
+        return luaL_error(state, "tas.message.unsubscribe(): message bus is unavailable");
+    }
+    bus->RemoveHandler(context->GetName(), CheckKey(state, 1, "tas.message.unsubscribe"));
+    lua_pushboolean(state, 1);
+    return 1;
+}
 
-    // tas.shared.clear() - Clear all shared data
-    shared["clear"] = [sharedData]() {
-        if (!sharedData) {
-            return;
-        }
-        sharedData->Clear();
-    };
+int MessageSend(lua_State *state) {
+    const int argc = lua_gettop(state);
+    if (argc != 3) {
+        return luaL_error(state, "tas.message.send(target, type, payload): expected 3 arguments");
+    }
+    ScriptContext *context = GetContext(state);
+    MessageBus *bus = GetMessageBus(state);
+    if (!context || !bus) {
+        return luaL_error(state, "tas.message.send(): message bus is unavailable");
+    }
 
-    // tas.shared.keys() - Get all keys
-    shared["keys"] = [sharedData, context]() -> sol::table {
-        if (!sharedData || !context) {
-            throw sol::error("shared.keys: SharedDataManager or Context not available");
-        }
-        sol::state_view lua = context->GetLuaState();
-        sol::table keysTable = lua.create_table();
-        auto keys = sharedData->GetKeys();
-        for (size_t i = 0; i < keys.size(); ++i) {
-            keysTable[i + 1] = keys[i];
-        }
-        return keysTable;
-    };
+    const std::string target = CheckKey(state, 1, "tas.message.send");
+    const std::string type = CheckKey(state, 2, "tas.message.send");
+    tas::lua::LuaValue data = CheckPortableValue(state, 3, "tas.message.send");
+    const bool ok = bus->SendMessage(context->GetName(), target, type, data);
+    lua_pushboolean(state, ok ? 1 : 0);
+    return 1;
+}
 
-    // tas.shared.size() - Get number of entries
-    shared["size"] = [sharedData]() -> size_t {
-        if (!sharedData) {
-            return 0;
-        }
-        return sharedData->GetSize();
-    };
+int MessageBroadcast(lua_State *state) {
+    if (lua_gettop(state) != 2) {
+        return luaL_error(state, "tas.message.broadcast(type, data): expected type and data");
+    }
+    ScriptContext *context = GetContext(state);
+    MessageBus *bus = GetMessageBus(state);
+    if (!context || !bus) {
+        return luaL_error(state, "tas.message.broadcast(): message bus is unavailable");
+    }
+    const std::string type = CheckKey(state, 1, "tas.message.broadcast");
+    tas::lua::LuaValue data = CheckPortableValue(state, 2, "tas.message.broadcast");
+    lua_pushboolean(state, bus->BroadcastMessage(context->GetName(), type, data) ? 1 : 0);
+    return 1;
+}
 
-    // ===================================================================
-    // Message API (tas.message.*)
-    // ===================================================================
+int MessageRespond(lua_State *state) {
+    if (lua_gettop(state) != 3) {
+        return luaL_error(state, "tas.message.respond(target, correlation_id, data): expected 3 arguments");
+    }
+    ScriptContext *context = GetContext(state);
+    MessageBus *bus = GetMessageBus(state);
+    if (!context || !bus) {
+        return luaL_error(state, "tas.message.respond(): message bus is unavailable");
+    }
+    const std::string target = CheckKey(state, 1, "tas.message.respond");
+    const std::string correlation = CheckKey(state, 2, "tas.message.respond");
+    tas::lua::LuaValue data = CheckPortableValue(state, 3, "tas.message.respond");
+    lua_pushboolean(state, bus->SendResponse(context->GetName(), target, correlation, data) ? 1 : 0);
+    return 1;
+}
 
-    sol::table message = tas["message"] = tas.create();
+int MessageRequestAsync(lua_State *state) {
+    if (lua_gettop(state) != 3) {
+        return luaL_error(state, "tas.message.request_async(target, type, data): expected 3 arguments");
+    }
+    ScriptContext *context = GetContext(state);
+    MessageBus *bus = GetMessageBus(state);
+    if (!context || !bus) {
+        return luaL_error(state, "tas.message.request_async(): message bus is unavailable");
+    }
+    const std::string target = CheckKey(state, 1, "tas.message.request_async");
+    const std::string type = CheckKey(state, 2, "tas.message.request_async");
+    tas::lua::LuaValue data = CheckPortableValue(state, 3, "tas.message.request_async");
+    const std::string correlation = context->GetName() + ":req_" + std::to_string(g_RequestId.fetch_add(1));
+    if (!bus->SendRequestAsync(context->GetName(), target, type, data, correlation)) {
+        lua_pushnil(state);
+        return 1;
+    }
+    lua_pushlstring(state, correlation.data(), correlation.size());
+    return 1;
+}
 
-    // Helper to convert priority string to enum (case-insensitive)
-    auto getPriority = [](sol::optional<std::string> priorityStr) -> MessageBus::Priority {
-        if (!priorityStr.has_value()) {
-            return MessageBus::Priority::Normal;
-        }
-        std::string p = priorityStr.value();
-        // Convert to lowercase for case-insensitive comparison
-        std::transform(p.begin(), p.end(), p.begin(), ::tolower);
-        if (p == "low") return MessageBus::Priority::Low;
-        if (p == "high") return MessageBus::Priority::High;
-        if (p == "critical") return MessageBus::Priority::Critical;
-        return MessageBus::Priority::Normal;
-    };
+void SetClosure(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
+    lua_pushlightuserdata(state, context);
+    lua_pushcclosure(state, function, 1);
+    lua_setfield(state, -2, name);
+}
 
-    // tas.message.send(target, type, data, priority?) - Send message to specific context
-    message["send"] = sol::overload(
-        [messageBus, contextName](const std::string &target, const std::string &type, sol::object data) -> bool {
-            if (!messageBus) {
-                throw sol::error("message.send: MessageBus not available");
-            }
-            if (target.empty() || type.empty()) {
-                throw sol::error("message.send: target and type cannot be empty");
-            }
-            return messageBus->SendMessage(contextName, target, type, data);
-        },
-        [messageBus, contextName, getPriority](const std::string &target, const std::string &type,
-                                               sol::object data, std::string priority) -> bool {
-            if (!messageBus) {
-                throw sol::error("message.send: MessageBus not available");
-            }
-            if (target.empty() || type.empty()) {
-                throw sol::error("message.send: target and type cannot be empty");
-            }
-            return messageBus->SendMessage(contextName, target, type, data, getPriority(priority));
-        }
-    );
+void RegisterSharedTable(lua_State *state, ScriptContext *context) {
+    lua_newtable(state);
+    SetClosure(state, "set", SharedSet, context);
+    SetClosure(state, "get", SharedGet, context);
+    SetClosure(state, "has", SharedHas, context);
+    SetClosure(state, "remove", SharedRemove, context);
+    SetClosure(state, "clear", SharedClear, context);
+    SetClosure(state, "keys", SharedKeys, context);
+    SetClosure(state, "watch", SharedWatch, context);
+    SetClosure(state, "unwatch", SharedUnwatch, context);
+}
 
-    // tas.message.broadcast(type, data, priority?) - Broadcast message to all contexts
-    message["broadcast"] = sol::overload(
-        [messageBus, contextName](const std::string &type, sol::object data) -> bool {
-            if (!messageBus) {
-                throw sol::error("message.broadcast: MessageBus not available");
-            }
-            if (type.empty()) {
-                throw sol::error("message.broadcast: type cannot be empty");
-            }
-            return messageBus->BroadcastMessage(contextName, type, data);
-        },
-        [messageBus, contextName, getPriority](const std::string &type, sol::object data,
-                                               std::string priority) -> bool {
-            if (!messageBus) {
-                throw sol::error("message.broadcast: MessageBus not available");
-            }
-            if (type.empty()) {
-                throw sol::error("message.broadcast: type cannot be empty");
-            }
-            return messageBus->BroadcastMessage(contextName, type, data, getPriority(priority));
-        }
-    );
+void RegisterMessageTable(lua_State *state, ScriptContext *context) {
+    lua_newtable(state);
+    SetClosure(state, "send", MessageSend, context);
+    SetClosure(state, "broadcast", MessageBroadcast, context);
+    SetClosure(state, "subscribe", MessageSubscribe, context);
+    SetClosure(state, "unsubscribe", MessageUnsubscribe, context);
+    SetClosure(state, "respond", MessageRespond, context);
+    SetClosure(state, "request_async", MessageRequestAsync, context);
+}
 
-    // tas.message.request(target, type, data, timeout?) - Send request and wait for response (async)
-    message["request"] = sol::overload(
-        [messageBus, context, contextName](const std::string &target, const std::string &type, sol::object data) -> sol::object {
-            if (!messageBus || !context) {
-                throw sol::error("message.request: MessageBus or Context not available");
-            }
-            if (target.empty() || type.empty()) {
-                throw sol::error("message.request: target and type cannot be empty");
-            }
+} // namespace
 
-            // Generate correlation ID for this request
-            static std::atomic<uint64_t> s_NextCorrelationId{1};
-            uint64_t id = s_NextCorrelationId.fetch_add(1, std::memory_order_relaxed);
-            std::ostringstream oss;
-            oss << "req_" << std::setw(16) << std::setfill('0') << id;
-            std::string correlationId = oss.str();
+void LuaApi::RegisterContextCommunicationApi(lua_State *state, ScriptContext *context) {
+    tas::lua::LuaStackGuard guard(state);
+    lua_getglobal(state, "tas");
 
-            // Send request message async
-            if (!messageBus->SendRequestAsync(contextName, target, type, data, correlationId)) {
-                throw sol::error("message.request: Failed to send request message");
-            }
+    lua_newtable(state);
+    SetClosure(state, "get_name", ContextName, context);
+    SetClosure(state, "get_type", ContextType, context);
+    lua_setfield(state, -2, "context");
 
-            // Yield and wait for response (default 5000ms timeout)
-            auto *scheduler = context->GetScheduler();
-            if (!scheduler) {
-                throw sol::error("message.request: Scheduler not available");
-            }
+    RegisterSharedTable(state, context);
+    lua_setfield(state, -2, "shared");
 
-            return scheduler->YieldWaitForMessageResponse(correlationId, 5000);
-        },
-        [messageBus, context, contextName](const std::string &target, const std::string &type,
-                                           sol::object data, int timeout) -> sol::object {
-            if (!messageBus || !context) {
-                throw sol::error("message.request: MessageBus or Context not available");
-            }
-            if (target.empty() || type.empty()) {
-                throw sol::error("message.request: target and type cannot be empty");
-            }
+    RegisterMessageTable(state, context);
+    lua_setfield(state, -2, "message");
 
-            // Generate correlation ID
-            static std::atomic<uint64_t> s_NextCorrelationId{1};
-            uint64_t id = s_NextCorrelationId.fetch_add(1, std::memory_order_relaxed);
-            std::ostringstream oss;
-            oss << "req_" << std::setw(16) << std::setfill('0') << id;
-            std::string correlationId = oss.str();
-
-            // Send request message async
-            if (!messageBus->SendRequestAsync(contextName, target, type, data, correlationId)) {
-                throw sol::error("message.request: Failed to send request message");
-            }
-
-            // Yield and wait for response
-            auto *scheduler = context->GetScheduler();
-            if (!scheduler) {
-                throw sol::error("message.request: Scheduler not available");
-            }
-
-            return scheduler->YieldWaitForMessageResponse(correlationId, timeout);
-        }
-    );
-
-    // tas.message.on(type, callback) - Register handler for message type
-    message["on"] = [messageBus, contextManager, contextName](const std::string &type, sol::function callback) {
-        if (!messageBus || !contextManager) {
-            throw sol::error("message.on: MessageBus or ContextManager not available");
-        }
-        if (type.empty()) {
-            throw sol::error("message.on: type cannot be empty");
-        }
-        if (!callback.valid()) {
-            throw sol::error("message.on: callback must be a valid function");
-        }
-        // Get shared_ptr to context for lifetime tracking
-        auto contextPtr = contextManager->GetContext(contextName);
-        if (!contextPtr) {
-            throw sol::error("message.on: context no longer exists");
-        }
-        messageBus->RegisterLuaHandler(contextName, contextPtr, type, callback);
-    };
-
-    // tas.message.off(type) - Remove handler for message type
-    message["off"] = [messageBus, contextName](const std::string &type) {
-        if (!messageBus) {
-            return;
-        }
-        if (type.empty()) {
-            return;
-        }
-        messageBus->RemoveHandler(contextName, type);
-    };
-
-    // tas.message.reply(message, response_data) - Reply to a request message
-    message["reply"] = [messageBus, contextName](sol::table requestMsg, sol::object responseData) -> bool {
-        if (!messageBus) {
-            throw sol::error("message.reply: MessageBus not available");
-        }
-        // Extract correlation ID from the request message
-        sol::optional<std::string> correlationId = requestMsg["correlation_id"];
-        if (!correlationId.has_value() || correlationId.value().empty()) {
-            throw sol::error("message.reply: message has no correlation_id (not a request)");
-        }
-
-        // Extract sender from the request message (becomes target for response)
-        sol::optional<std::string> sender = requestMsg["sender"];
-        if (!sender.has_value() || sender.value().empty()) {
-            throw sol::error("message.reply: message has no sender field");
-        }
-
-        // Send the response back to the requester
-        return messageBus->SendResponse(contextName, sender.value(), correlationId.value(), responseData);
-    };
-
-    // tas.message.pending_count() - Get number of pending messages
-    message["pending_count"] = [messageBus]() -> size_t {
-        if (!messageBus) {
-            return 0;
-        }
-        return messageBus->GetPendingMessageCount();
-    };
-
-    // tas.message.stats() - Get message bus statistics
-    message["stats"] = [messageBus, context]() -> sol::table {
-        if (!messageBus || !context) {
-            throw sol::error("message.stats: MessageBus or Context not available");
-        }
-        sol::state_view lua = context->GetLuaState();
-        sol::table stats = lua.create_table();
-
-        size_t droppedMessages = 0;
-        size_t queueSize = messageBus->GetQueueStats(&droppedMessages);
-
-        stats["queue_size"] = queueSize;
-        stats["dropped_messages"] = droppedMessages;
-
-        return stats;
-    };
-
-    // ===================================================================
-    // Context Info API (tas.context.*)
-    // ===================================================================
-
-    sol::table ctx = tas["context"] = tas.create();
-
-    // tas.context.get_name() - Get current context name
-    ctx["get_name"] = [contextName]() -> std::string {
-        return contextName;
-    };
-
-    // tas.context.get_type() - Get context type
-    ctx["get_type"] = [context]() -> std::string {
-        if (!context) {
-            return "unknown";
-        }
-        switch (context->GetType()) {
-        case ScriptContextType::Global: return "global";
-        case ScriptContextType::Level: return "level";
-        case ScriptContextType::Custom: return "custom";
-        default: return "unknown";
-        }
-    };
-
-    // tas.context.get_priority() - Get context priority
-    ctx["get_priority"] = [context]() -> int {
-        if (!context) {
-            return 0;
-        }
-        return context->GetPriority();
-    };
-
-    // tas.context.list() - List all active contexts
-    ctx["list"] = [contextManager, context]() -> sol::table {
-        if (!contextManager || !context) {
-            throw sol::error("context.list: ContextManager or Context not available");
-        }
-        sol::state_view lua = context->GetLuaState();
-        sol::table list = lua.create_table();
-
-        auto contexts = contextManager->GetAllContexts();
-        int index = 1;
-        for (const auto &ctx : contexts) {
-            if (ctx) {
-                sol::table info = lua.create_table();
-                info["name"] = ctx->GetName();
-                info["priority"] = ctx->GetPriority();
-                switch (ctx->GetType()) {
-                case ScriptContextType::Global:
-                    info["type"] = "global";
-                    break;
-                case ScriptContextType::Level:
-                    info["type"] = "level";
-                    break;
-                case ScriptContextType::Custom:
-                    info["type"] = "custom";
-                    break;
-                default:
-                    info["type"] = "unknown";
-                    break;
-                }
-                info["is_executing"] = ctx->IsExecuting();
-                list[index++] = info;
-            }
-        }
-
-        return list;
-    };
-
-    // tas.context.subscribe(event_name) - Subscribe to global game event
-    ctx["subscribe"] = [contextManager, contextName](const std::string &eventName) {
-        if (!contextManager) {
-            throw sol::error("context.subscribe: ContextManager not available");
-        }
-        if (eventName.empty()) {
-            throw sol::error("context.subscribe: event name cannot be empty");
-        }
-        contextManager->SubscribeToEvent(contextName, eventName);
-    };
-
-    // tas.context.unsubscribe(event_name) - Unsubscribe from global game event
-    ctx["unsubscribe"] = [contextManager, contextName](const std::string &eventName) {
-        if (!contextManager) {
-            return;
-        }
-        if (eventName.empty()) {
-            return;
-        }
-        contextManager->UnsubscribeFromEvent(contextName, eventName);
-    };
+    lua_pop(state, 1);
 }

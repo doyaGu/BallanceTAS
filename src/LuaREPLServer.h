@@ -15,7 +15,8 @@
 
 #include <boost/asio.hpp>
 #include <msgpack.hpp>
-#include <sol/sol.hpp>
+
+#include "LuaRuntime/LuaHeaders.h"
 
 // Forward declarations
 class TASEngine;
@@ -369,7 +370,7 @@ private:
     void ScheduleCommand(const repl::REPLCommand &command, std::shared_ptr<ClientSession> session);
     void SendResultToClient(std::weak_ptr<ClientSession> session, const repl::CommandResult &result);
     void BroadcastTickNotification(size_t tick);
-    std::string FormatLuaValue(const sol::object &obj);
+    std::string FormatLuaValue(lua_State *state, int index, int depth = 0);
 
     // =========================================================================
     // Network Operations (I/O Thread)

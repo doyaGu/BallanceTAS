@@ -11,6 +11,7 @@
 #include "TASEngine.h"
 #include "ScriptContextManager.h"
 #include "ScriptContext.h"
+#include "ServiceContainer.h"
 #include "LuaREPLServer.h"
 
 using namespace boost::asio;
@@ -656,7 +657,7 @@ void LuaREPLServer::OnClientDisconnect(std::shared_ptr<ClientSession> session) {
 
 std::pair<bool, std::string> LuaREPLServer::ExecuteLuaCommand(const std::string &code, size_t executionTick) {
     try {
-        auto *contextManager = m_Engine->GetScriptContextManager();
+        auto *contextManager = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>();
         if (!contextManager) {
             return {false, "Script context manager not available"};
         }
@@ -666,31 +667,55 @@ std::pair<bool, std::string> LuaREPLServer::ExecuteLuaCommand(const std::string 
             return {false, "Global script context unavailable"};
         }
 
-        sol::state_view lua = globalContext->GetLuaState();
+        lua_State *lua = globalContext->GetLuaState().Get();
 
         // Add tick context
-        lua["_repl_current_tick"] = executionTick;
-        lua["_repl_paused"] = m_TickingPaused.load();
+        lua_pushinteger(lua, static_cast<lua_Integer>(executionTick));
+        lua_setglobal(lua, "_repl_current_tick");
+        lua_pushboolean(lua, m_TickingPaused.load() ? 1 : 0);
+        lua_setglobal(lua, "_repl_paused");
 
         // Try as statement first
-        auto result = lua.safe_script(code, &sol::script_pass_on_error);
-
-        if (!result.valid()) {
-            // Try as expression with return
-            std::string expr = "return " + code;
-            result = lua.safe_script(expr, &sol::script_pass_on_error);
-        }
-
-        if (result.valid()) {
-            if (result.get_type() == sol::type::none) {
-                return {true, ""};
-            } else {
-                return {true, FormatLuaValue(result)};
+        const int baseTop = lua_gettop(lua);
+        if (luaL_loadstring(lua, code.c_str()) == LUA_OK) {
+            if (lua_pcall(lua, 0, LUA_MULTRET, 0) == LUA_OK) {
+                const int resultCount = lua_gettop(lua) - baseTop;
+                if (resultCount <= 0) {
+                    lua_settop(lua, baseTop);
+                    return {true, ""};
+                }
+                std::string formatted = FormatLuaValue(lua, baseTop + 1);
+                lua_settop(lua, baseTop);
+                return {true, formatted};
             }
-        } else {
-            sol::error err = result;
-            return {false, err.what()};
         }
+
+        const char *statementError = lua_tostring(lua, -1);
+        std::string lastError = statementError ? statementError : "Lua execution failed";
+        lua_settop(lua, baseTop);
+
+        // Try as expression with return.
+        std::string expr = "return " + code;
+        if (luaL_loadstring(lua, expr.c_str()) != LUA_OK) {
+            const char *loadError = lua_tostring(lua, -1);
+            std::string error = loadError ? loadError : lastError;
+            lua_settop(lua, baseTop);
+            return {false, error};
+        }
+        if (lua_pcall(lua, 0, LUA_MULTRET, 0) != LUA_OK) {
+            const char *runtimeError = lua_tostring(lua, -1);
+            std::string error = runtimeError ? runtimeError : lastError;
+            lua_settop(lua, baseTop);
+            return {false, error};
+        }
+        const int resultCount = lua_gettop(lua) - baseTop;
+        if (resultCount <= 0) {
+            lua_settop(lua, baseTop);
+            return {true, ""};
+        }
+        std::string formatted = FormatLuaValue(lua, baseTop + 1);
+        lua_settop(lua, baseTop);
+        return {true, formatted};
     } catch (const std::exception &e) {
         return {false, e.what()};
     }
@@ -893,55 +918,61 @@ void LuaREPLServer::RunIOContext() {
     }
 }
 
-std::string LuaREPLServer::FormatLuaValue(const sol::object &obj) {
-    switch (obj.get_type()) {
-    case sol::type::lua_nil:
+std::string LuaREPLServer::FormatLuaValue(lua_State *state, int index, int depth) {
+    index = lua_absindex(state, index);
+    switch (lua_type(state, index)) {
+    case LUA_TNIL:
         return "nil";
-    case sol::type::boolean:
-        return obj.as<bool>() ? "true" : "false";
-    case sol::type::number: {
-        double num = obj.as<double>();
-        // Check if it's an integer
-        if (num == std::floor(num) && num >= std::numeric_limits<int64_t>::min() && num <= std::numeric_limits<
-            int64_t>::max()) {
-            return std::to_string(static_cast<int64_t>(num));
-        } else {
-            return std::to_string(num);
+    case LUA_TBOOLEAN:
+        return lua_toboolean(state, index) ? "true" : "false";
+    case LUA_TNUMBER:
+        if (lua_isinteger(state, index)) {
+            return std::to_string(static_cast<int64_t>(lua_tointeger(state, index)));
         }
+        return std::to_string(static_cast<double>(lua_tonumber(state, index)));
+    case LUA_TSTRING: {
+        size_t length = 0;
+        const char *text = lua_tolstring(state, index, &length);
+        return text ? std::string(text, length) : std::string();
     }
-    case sol::type::string:
-        return obj.as<std::string>();
-    case sol::type::table: {
+    case LUA_TTABLE: {
+        if (depth >= 3) {
+            return "{ ... }";
+        }
         std::ostringstream oss;
         oss << "{ ";
-        sol::table table = obj.as<sol::table>();
         bool first = true;
         size_t count = 0;
+        bool truncated = false;
 
-        try {
-            for (const auto &pair : table) {
-                if (!first) oss << ", ";
-                oss << FormatLuaValue(pair.first) << " = " << FormatLuaValue(pair.second);
-                first = false;
-                if (++count > 20) {
-                    oss << ", ... (truncated)";
-                    break;
-                }
+        lua_pushnil(state);
+        while (lua_next(state, index) != 0) {
+            if (!first) {
+                oss << ", ";
             }
-        } catch (const std::exception &) {
-            oss << "error formatting table";
+            oss << FormatLuaValue(state, -2, depth + 1) << " = " << FormatLuaValue(state, -1, depth + 1);
+            lua_pop(state, 1);
+            first = false;
+            if (++count > 20) {
+                oss << ", ... (truncated)";
+                truncated = true;
+                break;
+            }
+        }
+        if (truncated) {
+            lua_pop(state, 1);
         }
 
         oss << " }";
         return oss.str();
     }
-    case sol::type::function:
+    case LUA_TFUNCTION:
         return "[function]";
-    case sol::type::userdata:
+    case LUA_TUSERDATA:
         return "[userdata]";
-    case sol::type::lightuserdata:
+    case LUA_TLIGHTUSERDATA:
         return "[lightuserdata]";
-    case sol::type::thread:
+    case LUA_TTHREAD:
         return "[thread]";
     default:
         return "[unknown]";

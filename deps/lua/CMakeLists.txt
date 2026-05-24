@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.12...3.28)
 
 # Project definition with semantic versioning
 project(lua
-        VERSION 5.4.8
+        VERSION 5.5.0
         DESCRIPTION "Lua programming language"
         HOMEPAGE_URL "https://www.lua.org"
         LANGUAGES C

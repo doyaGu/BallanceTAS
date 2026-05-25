@@ -100,7 +100,7 @@ add_tas_test(EventBusTest
 add_tas_test(EventManagerTest
     SOURCES
         EventManagerTest.cpp
-        ../src/EventManager.cpp
+        ../src/Scripting/EventManager.cpp
     DEPENDENCIES
         tas_core
         tas_lua_runtime
@@ -109,7 +109,7 @@ add_tas_test(EventManagerTest
 add_tas_test(SharedDataManagerTest
     SOURCES
         SharedDataManagerTest.cpp
-        ../src/SharedDataManager.cpp
+        ../src/Scripting/SharedDataManager.cpp
     DEPENDENCIES
         tas_core
         tas_lua_runtime
@@ -118,7 +118,7 @@ add_tas_test(SharedDataManagerTest
 add_tas_test(MessageBusTest
     SOURCES
         MessageBusTest.cpp
-        ../src/MessageBus.cpp
+        ../src/Scripting/MessageBus.cpp
     DEPENDENCIES
         tas_core
         tas_lua_runtime
@@ -127,7 +127,7 @@ add_tas_test(MessageBusTest
 add_tas_test(AsyncTaskTest
     SOURCES
         AsyncTaskTest.cpp
-        ../src/AsyncTask.cpp
+        ../src/Scripting/AsyncTask.cpp
     DEPENDENCIES
         tas_core
         tas_lua_runtime
@@ -292,8 +292,8 @@ if(BUILD_MOD)
     add_tas_test(ScriptGeneratorTest
         SOURCES
             ScriptGeneratorTest.cpp
-            ../src/ScriptGenerationCore.cpp
-            ../src/ScriptInputTransition.cpp
+            ../src/Workflow/ScriptGenerationCore.cpp
+            ../src/Workflow/ScriptInputTransition.cpp
         DEPENDENCIES
             tas_core
             CK2
@@ -307,7 +307,7 @@ if(BUILD_MOD)
     add_tas_test(StartupProjectManagerTest
         SOURCES
             StartupProjectManagerTest.cpp
-            ../src/TASProject.cpp
+            ../src/Workflow/TASProject.cpp
         DEPENDENCIES
             tas_core
             tas_lua_runtime

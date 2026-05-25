@@ -11,29 +11,38 @@
 # (.bmodp DLL loaded by BML).
 # =============================================================================
 
-# Helper: every module can #include files in src/
+# Helper: every module can #include files in src/ and its module folders.
 set(TAS_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(TAS_MODULE_INCLUDE_DIRS
+        ${TAS_SRC_DIR}
+        ${TAS_SRC_DIR}/Core
+        ${TAS_SRC_DIR}/Game
+        ${TAS_SRC_DIR}/Runtime
+        ${TAS_SRC_DIR}/Scripting
+        ${TAS_SRC_DIR}/Workflow
+        ${TAS_SRC_DIR}/UI
+)
 
 # ── Module: core ─────────────────────────────────────────────────────────────
 #    Pure C++ infrastructure – no Virtools and no Lua dependency.
 # ─────────────────────────────────────────────────────────────────────────────
 add_library(tas_core STATIC
-        Result.h
-        PlaybackTypes.h
-        EventBus.h
-        GameEvents.h
+        Core/Result.h
+        Core/PlaybackTypes.h
+        Core/EventBus.h
+        Core/GameEvents.h
         Runtime/RuntimeSession.h    Runtime/RuntimeSession.cpp
-        TASConstants.h
-        ILogSink.h
-        ServiceContainer.h          ServiceContainer.cpp
-        Logger.h                    Logger.cpp
-        ThreadOwnershipValidator.h
-        LockFreeMPSCQueue.h
-        ResourceManager.h           ResourceManager.cpp
-        DeterminismTrace.h          DeterminismTrace.cpp
+        Core/TASConstants.h
+        Core/ILogSink.h
+        Core/ServiceContainer.h     Core/ServiceContainer.cpp
+        Core/Logger.h               Core/Logger.cpp
+        Core/ThreadOwnershipValidator.h
+        Core/LockFreeMPSCQueue.h
+        Core/ResourceManager.h      Core/ResourceManager.cpp
+        Core/DeterminismTrace.h     Core/DeterminismTrace.cpp
 )
 target_include_directories(tas_core
-        PUBLIC  ${TAS_SRC_DIR}
+        PUBLIC  ${TAS_MODULE_INCLUDE_DIRS}
 )
 # tas_core is now pure C++ — no BML / VirtoolsSDK dependency.
 set_target_properties(tas_core PROPERTIES FOLDER "TAS/Modules")
@@ -56,7 +65,7 @@ target_link_libraries(tas_lua_runtime
         PUBLIC tas_core lua::lua
 )
 target_include_directories(tas_lua_runtime
-        PUBLIC ${TAS_SRC_DIR}
+        PUBLIC ${TAS_MODULE_INCLUDE_DIRS}
 )
 set_target_properties(tas_lua_runtime PROPERTIES FOLDER "TAS/Modules")
 
@@ -65,19 +74,19 @@ set_target_properties(tas_lua_runtime PROPERTIES FOLDER "TAS/Modules")
 # ─────────────────────────────────────────────────────────────────────────────
 if(BUILD_MOD)
 add_library(tas_game STATIC
-        GameInterface.h             GameInterface.cpp
-        IGameControl.h
-        IGameQuery.h
-        IInputAccess.h
-        IPhysicsProvider.h
-        IObjectProvider.h
-        IGameStateProvider.h
-        ITimeProvider.h
-        physics_RT.h                physics_RT.cpp
-        PhysicsWorldSnapshot.h      PhysicsWorldSnapshot.cpp
-        InputSystem.h               InputSystem.cpp
-        TASHook.h
-        Hook.h
+        Game/GameInterface.h        Game/GameInterface.cpp
+        Game/IGameControl.h
+        Game/IGameQuery.h
+        Game/IInputAccess.h
+        Game/IPhysicsProvider.h
+        Game/IObjectProvider.h
+        Game/IGameStateProvider.h
+        Game/ITimeProvider.h
+        Game/physics_RT.h           Game/physics_RT.cpp
+        Game/PhysicsWorldSnapshot.h Game/PhysicsWorldSnapshot.cpp
+        Game/InputSystem.h          Game/InputSystem.cpp
+        Game/TASHook.h
+        Game/Hook.h
 )
 target_link_libraries(tas_game
         PUBLIC  tas_core BML CK2 VxMath minhook
@@ -88,15 +97,15 @@ set_target_properties(tas_game PROPERTIES FOLDER "TAS/Modules")
 #    Lua execution runtime – contexts, scheduler, inter-context comms.
 # ─────────────────────────────────────────────────────────────────────────────
 add_library(tas_scripting STATIC
-        ScriptContextTypes.h
-        ScriptContext.h             ScriptContext.cpp
-        ScriptContextManager.h      ScriptContextManager.cpp
-        LuaScheduler.h              LuaScheduler.cpp
-        EventManager.h              EventManager.cpp
-        SharedDataManager.h         SharedDataManager.cpp
-        MessageBus.h                MessageBus.cpp
-        SharedBuffer.h
-        AsyncTask.h                 AsyncTask.cpp
+        Scripting/ScriptContextTypes.h
+        Scripting/ScriptContext.h   Scripting/ScriptContext.cpp
+        Scripting/ScriptContextManager.h Scripting/ScriptContextManager.cpp
+        Scripting/LuaScheduler.h    Scripting/LuaScheduler.cpp
+        Scripting/EventManager.h    Scripting/EventManager.cpp
+        Scripting/SharedDataManager.h Scripting/SharedDataManager.cpp
+        Scripting/MessageBus.h      Scripting/MessageBus.cpp
+        Scripting/SharedBuffer.h
+        Scripting/AsyncTask.h       Scripting/AsyncTask.cpp
 )
 target_link_libraries(tas_scripting
         PUBLIC  tas_core tas_lua_runtime lua::lua yyjson
@@ -109,30 +118,30 @@ set_target_properties(tas_scripting PROPERTIES FOLDER "TAS/Modules")
 #    savestate, project management.
 # ─────────────────────────────────────────────────────────────────────────────
 add_library(tas_features STATIC
-        TASEngine.h                 TASEngine.cpp
-        EngineBootstrap.h           EngineBootstrap.cpp
+        Workflow/TASEngine.h        Workflow/TASEngine.cpp
+        Workflow/EngineBootstrap.h  Workflow/EngineBootstrap.cpp
         Runtime/OperationRequestStore.h
         Runtime/RuntimeEventRouter.h Runtime/RuntimeEventRouter.cpp
         Runtime/ContextLifecycleCoordinator.h Runtime/ContextLifecycleCoordinator.cpp
         Runtime/LuaTypedEventBridge.h Runtime/LuaTypedEventBridge.cpp
-        HookManager.h               HookManager.cpp
-        ConfigService.h             ConfigService.cpp
-        TASProject.h                TASProject.cpp
-        ProjectManager.h            ProjectManager.cpp
-        Recorder.h                  Recorder.cpp
-        RecordPlayer.h              RecordPlayer.cpp
-        RecordFileIO.h              RecordFileIO.cpp
-        RecordingService.h          RecordingService.cpp
-        PlaybackService.h           PlaybackService.cpp
-        TranslationService.h        TranslationService.cpp
-        ScriptInputTransition.h     ScriptInputTransition.cpp
-        ValidationService.h         ValidationService.cpp
-        ScriptGenerator.h           ScriptGenerator.cpp
-        ScriptGenerationCore.h      ScriptGenerationCore.cpp
-        StartupProjectManager.h     StartupProjectManager.cpp
-        SavestateManager.h          SavestateManager.cpp
-        DeterminismVerifier.h       DeterminismVerifier.cpp
-        LuaREPLServer.h             LuaREPLServer.cpp
+        Workflow/HookManager.h      Workflow/HookManager.cpp
+        Workflow/ConfigService.h    Workflow/ConfigService.cpp
+        Workflow/TASProject.h       Workflow/TASProject.cpp
+        Workflow/ProjectManager.h   Workflow/ProjectManager.cpp
+        Workflow/Recorder.h         Workflow/Recorder.cpp
+        Workflow/RecordPlayer.h     Workflow/RecordPlayer.cpp
+        Workflow/RecordFileIO.h     Workflow/RecordFileIO.cpp
+        Workflow/RecordingService.h Workflow/RecordingService.cpp
+        Workflow/PlaybackService.h  Workflow/PlaybackService.cpp
+        Workflow/TranslationService.h Workflow/TranslationService.cpp
+        Workflow/ScriptInputTransition.h Workflow/ScriptInputTransition.cpp
+        Workflow/ValidationService.h Workflow/ValidationService.cpp
+        Workflow/ScriptGenerator.h  Workflow/ScriptGenerator.cpp
+        Workflow/ScriptGenerationCore.h Workflow/ScriptGenerationCore.cpp
+        Workflow/StartupProjectManager.h Workflow/StartupProjectManager.cpp
+        Workflow/SavestateManager.h Workflow/SavestateManager.cpp
+        Workflow/DeterminismVerifier.h Workflow/DeterminismVerifier.cpp
+        Workflow/LuaREPLServer.h    Workflow/LuaREPLServer.cpp
 )
 target_link_libraries(tas_features
         PUBLIC  tas_core tas_game tas_scripting
@@ -188,10 +197,10 @@ set_target_properties(tas_lua_bindings PROPERTIES FOLDER "TAS/Modules")
 #    User interface layer (TAS menu, in-game OSD).
 # ─────────────────────────────────────────────────────────────────────────────
 add_library(tas_ui STATIC
-        UIManager.h                 UIManager.cpp
-        TASMenu.h                   TASMenu.cpp
-        TASMenuPresentation.h       TASMenuPresentation.cpp
-        InGameOSD.h                 InGameOSD.cpp
+        UI/UIManager.h              UI/UIManager.cpp
+        UI/TASMenu.h                UI/TASMenu.cpp
+        UI/TASMenuPresentation.h    UI/TASMenuPresentation.cpp
+        UI/InGameOSD.h              UI/InGameOSD.cpp
 )
 target_link_libraries(tas_ui
         PUBLIC  tas_core

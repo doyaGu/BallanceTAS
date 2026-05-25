@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "RuntimeSession.h"
+#include "Runtime/RuntimeSession.h"
 
 TEST(RuntimeSessionStateTest, StartsIdle) {
     RuntimeSession session;

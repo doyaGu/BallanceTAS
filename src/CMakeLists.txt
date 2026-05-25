@@ -22,7 +22,7 @@ add_library(tas_core STATIC
         PlaybackTypes.h
         EventBus.h
         GameEvents.h
-        RuntimeSession.h            RuntimeSession.cpp
+        Runtime/RuntimeSession.h    Runtime/RuntimeSession.cpp
         TASConstants.h
         ILogSink.h
         ServiceContainer.h          ServiceContainer.cpp
@@ -111,10 +111,10 @@ set_target_properties(tas_scripting PROPERTIES FOLDER "TAS/Modules")
 add_library(tas_features STATIC
         TASEngine.h                 TASEngine.cpp
         EngineBootstrap.h           EngineBootstrap.cpp
-        OperationRequestStore.h
-        RuntimeEventRouter.h        RuntimeEventRouter.cpp
-        ContextLifecycleCoordinator.h ContextLifecycleCoordinator.cpp
-        LuaTypedEventBridge.h       LuaTypedEventBridge.cpp
+        Runtime/OperationRequestStore.h
+        Runtime/RuntimeEventRouter.h Runtime/RuntimeEventRouter.cpp
+        Runtime/ContextLifecycleCoordinator.h Runtime/ContextLifecycleCoordinator.cpp
+        Runtime/LuaTypedEventBridge.h Runtime/LuaTypedEventBridge.cpp
         HookManager.h               HookManager.cpp
         ConfigService.h             ConfigService.cpp
         TASProject.h                TASProject.cpp

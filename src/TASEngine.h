@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "EventBus.h"
-#include "OperationRequestStore.h"
+#include "Runtime/OperationRequestStore.h"
 #include "PlaybackTypes.h"
-#include "RuntimeSession.h"
+#include "Runtime/RuntimeSession.h"
 #include "ServiceContainer.h"
 #include "TASConstants.h"
 

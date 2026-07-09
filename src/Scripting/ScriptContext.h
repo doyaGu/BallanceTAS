@@ -24,7 +24,6 @@ class RecordPlayer;
 class GameInterface;
 class ScriptContextManager;
 class SavestateManager;
-class DeterminismVerifier;
 
 /**
  * @class ScriptContext
@@ -211,12 +210,6 @@ public:
      * @return Pointer to the SavestateManager, or nullptr if not available.
      */
     SavestateManager *GetSavestateManager() const;
-
-    /**
-     * @brief Gets the determinism verifier from the service container.
-     * @return Pointer to the DeterminismVerifier, or nullptr if not available.
-     */
-    DeterminismVerifier *GetDeterminismVerifier() const;
 
     /**
      * @brief Sets a callback to be called when execution status changes.

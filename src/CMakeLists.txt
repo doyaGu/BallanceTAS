@@ -39,7 +39,6 @@ add_library(tas_core STATIC
         Core/ThreadOwnershipValidator.h
         Core/LockFreeMPSCQueue.h
         Core/ResourceManager.h      Core/ResourceManager.cpp
-        Core/DeterminismTrace.h     Core/DeterminismTrace.cpp
 )
 target_include_directories(tas_core
         PUBLIC  ${TAS_MODULE_INCLUDE_DIRS}
@@ -83,7 +82,6 @@ add_library(tas_game STATIC
         Game/IGameStateProvider.h
         Game/ITimeProvider.h
         Game/physics_RT.h           Game/physics_RT.cpp
-        Game/PhysicsWorldSnapshot.h Game/PhysicsWorldSnapshot.cpp
         Game/InputSystem.h          Game/InputSystem.cpp
         Game/TASHook.h
         Game/Hook.h
@@ -140,7 +138,6 @@ add_library(tas_features STATIC
         Workflow/ScriptGenerationCore.h Workflow/ScriptGenerationCore.cpp
         Workflow/StartupProjectManager.h Workflow/StartupProjectManager.cpp
         Workflow/SavestateManager.h Workflow/SavestateManager.cpp
-        Workflow/DeterminismVerifier.h Workflow/DeterminismVerifier.cpp
         Workflow/LuaREPLServer.h    Workflow/LuaREPLServer.cpp
 )
 target_link_libraries(tas_features
@@ -165,7 +162,6 @@ add_library(tas_lua_bindings STATIC
         LuaApi/LuaApi_CK3dEntity.cpp
         LuaApi/LuaApi_CKCamera.cpp
         LuaApi/LuaApi_PhysicsObject.cpp
-        LuaApi/LuaApi_Determinism.cpp
         LuaApi/LuaApi_Savestate.cpp
         LuaApi/LuaApi_GC.cpp
         LuaApi/LuaApi_Debug.cpp

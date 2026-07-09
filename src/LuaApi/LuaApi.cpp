@@ -43,7 +43,6 @@ void LuaApi::Register(ScriptContext *context) {
     RegisterAsyncApi(state, context);
     RegisterContextCommunicationApi(state, context);
     RegisterWorldQueryApi(state, context);
-    RegisterDeterminismApi(state, context);
     RegisterSavestateApi(state, context);
     RegisterGCApi(state, context);
     RegisterDebugApi(state, context);

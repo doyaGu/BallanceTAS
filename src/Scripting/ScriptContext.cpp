@@ -15,7 +15,6 @@
 #include "ProjectManager.h"
 #include "RecordPlayer.h"
 #include "SavestateManager.h"
-#include "DeterminismVerifier.h"
 #include "ScriptContextManager.h"
 #include "ServiceContainer.h"
 #include "MessageBus.h"
@@ -610,10 +609,6 @@ GameInterface *ScriptContext::GetGameInterface() const {
 
 SavestateManager *ScriptContext::GetSavestateManager() const {
     return m_Engine->GetServiceProvider().Resolve<SavestateManager>();
-}
-
-DeterminismVerifier *ScriptContext::GetDeterminismVerifier() const {
-    return m_Engine->GetServiceProvider().Resolve<DeterminismVerifier>();
 }
 
 // ============================================================================

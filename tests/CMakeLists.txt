@@ -133,13 +133,6 @@ add_tas_test(AsyncTaskTest
         tas_lua_runtime
 )
 
-add_tas_test(DeterminismTraceTest
-    SOURCES
-        DeterminismTraceTest.cpp
-    DEPENDENCIES
-        tas_core
-)
-
 # LuaRuntimeTest - validates the project-owned Lua C API abstraction layer
 add_tas_test(LuaRuntimeTest
     SOURCES
@@ -160,7 +153,6 @@ add_test(NAME EventManagerTest    COMMAND EventManagerTest)
 add_test(NAME SharedDataManagerTest COMMAND SharedDataManagerTest)
 add_test(NAME MessageBusTest      COMMAND MessageBusTest)
 add_test(NAME AsyncTaskTest       COMMAND AsyncTaskTest)
-add_test(NAME DeterminismTraceTest COMMAND DeterminismTraceTest)
 add_test(NAME LuaRuntimeTest      COMMAND LuaRuntimeTest)
 
 if(BUILD_MOD)

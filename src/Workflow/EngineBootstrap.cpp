@@ -18,7 +18,6 @@
 #include "RecordingService.h"
 #include "Runtime/RuntimeSession.h"
 #include "Runtime/RuntimeEventRouter.h"
-#include "DeterminismVerifier.h"
 #include "SavestateManager.h"
 #include "ScriptContextManager.h"
 #include "ScriptGenerator.h"
@@ -292,8 +291,6 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
                 *engine.m_EventBus));
         c.RegisterSingletonInstance<SavestateManager>(
             std::make_unique<SavestateManager>(engine.m_ServiceProvider));
-        c.RegisterSingletonInstance<DeterminismVerifier>(
-            std::make_unique<DeterminismVerifier>(engine.m_ServiceProvider));
 
         Log::Info("Core runtime subsystems initialized.");
         return true;

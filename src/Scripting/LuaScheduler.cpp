@@ -848,9 +848,13 @@ void LuaScheduler::ResumeThread(const std::shared_ptr<LuaThread> &thread) {
         asyncOwner = ownerIt->second;
     }
     if (result.IsError()) {
-        Log::Error("Coroutine error: %s", result.GetError().message.c_str());
         if (asyncOwner) {
             asyncOwner->SetError(result.GetError().message);
+        } else {
+            // Async task failures are propagated through await/all/race/any and
+            // may be intentionally handled by Lua. Only unowned top-level
+            // coroutine failures are terminal scheduler errors.
+            Log::Error("Coroutine error: %s", result.GetError().message.c_str());
         }
     } else {
         const LuaThreadStatus status = thread->Status();

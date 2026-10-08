@@ -360,3 +360,98 @@ TEST(LuaSchedulerTest, AsyncAllReportsFailureIndexInInputOrder) {
     EXPECT_NE(std::string(EventAt(state.Get(), 3)).find("second task failed"), std::string::npos);
     EXPECT_FALSE(scheduler.IsRunning());
 }
+
+static int TestGetTick(lua_State *L) {
+    const auto *tick = static_cast<const int *>(lua_touserdata(L, lua_upvalueindex(1)));
+    lua_pushinteger(L, tick ? *tick : 0);
+    return 1;
+}
+
+TEST(LuaSchedulerTest, AsyncErrorSurvivesCancelledCombinatorCleanup) {
+    auto *engine = reinterpret_cast<TASEngine *>(0x1);
+    auto *scriptContext = reinterpret_cast<ScriptContext *>(0x1);
+    tas::lua::LuaState state;
+    state.OpenStandardLibraries();
+    lua_gc(state.Get(), LUA_GCGEN, 0, 0);
+    LuaScheduler scheduler(engine, scriptContext);
+
+    lua_State *L = state.Get();
+    lua_newtable(L);
+    lua_setglobal(L, "tas");
+    LuaApi::RegisterConcurrencyApi(L, nullptr, &scheduler);
+    LuaApi::RegisterAsyncApi(L, nullptr, &scheduler);
+
+    auto function = LoadFunction(state,
+        "events = {}\n"
+        "return function()\n"
+        "  tas.async.race({\n"
+        "    tas.async.spawn(function() tas.wait_ticks(3); return 'slow' end),\n"
+        "    tas.async.spawn(function() tas.wait_ticks(1); return 'fast' end),\n"
+        "  })\n"
+        "  tas.wait_ticks(4)\n"
+        "  tas.async.any({\n"
+        "    tas.async.spawn(function() tas.wait_ticks(3); return 'late' end),\n"
+        "    tas.async.spawn(function() tas.wait_ticks(1); return 'winner' end),\n"
+        "  })\n"
+        "  tas.wait_ticks(4)\n"
+        "  local ok, err = pcall(function()\n"
+        "    return tas.await(tas.async.spawn(function() error('typed await failure') end))\n"
+        "  end)\n"
+        "  events[#events + 1] = tostring(ok)\n"
+        "  events[#events + 1] = tostring(type(err) == 'table' and err.message or err)\n"
+        "end\n",
+        "async_error_after_combinators_test");
+
+    scheduler.AddCoroutineTask(std::move(function));
+    for (int i = 0; i < 40 && scheduler.IsRunning(); ++i) {
+        scheduler.Tick();
+    }
+
+    ASSERT_EQ(EventCount(state.Get()), 2);
+    EXPECT_STREQ(EventAt(state.Get(), 1), "false");
+    EXPECT_NE(std::string(EventAt(state.Get(), 2)).find("typed await failure"),
+              std::string::npos);
+    EXPECT_FALSE(scheduler.IsRunning());
+}
+
+TEST(LuaSchedulerTest, RuntimeAsyncSmokeCompletesWithoutLosingTaskErrors) {
+    auto *engine = reinterpret_cast<TASEngine *>(0x1);
+    auto *scriptContext = reinterpret_cast<ScriptContext *>(0x1);
+    tas::lua::LuaState state;
+    state.OpenStandardLibraries();
+    lua_gc(state.Get(), LUA_GCGEN, 0, 0);
+    LuaScheduler scheduler(engine, scriptContext);
+
+    lua_State *L = state.Get();
+    lua_newtable(L);
+    lua_setglobal(L, "tas");
+    LuaApi::RegisterConcurrencyApi(L, nullptr, &scheduler);
+    LuaApi::RegisterAsyncApi(L, nullptr, &scheduler);
+
+    int tick = 0;
+    lua_getglobal(L, "tas");
+    lua_pushlightuserdata(L, &tick);
+    lua_pushcclosure(L, TestGetTick, 1);
+    lua_setfield(L, -2, "get_tick");
+    lua_pop(L, 1);
+
+    const std::string smokePath = std::string(BALLANCE_TAS_TEST_ROOT) +
+        "/tests/ballance_smoke/LuaRuntimeSmoke/async_smoke.lua";
+    auto load = state.LoadFile(smokePath);
+    ASSERT_TRUE(load.IsOk()) << load.GetError().Format();
+    auto call = tas::lua::ProtectedCall(L, 0, 1);
+    ASSERT_TRUE(call.IsOk()) << call.GetError().Format();
+
+    auto thread = tas::lua::LuaThread::CreateFromFunction(L, -1);
+    lua_pop(L, 1);
+    ASSERT_TRUE(thread.IsValid());
+    auto task = std::make_shared<AsyncTask>(&scheduler, std::move(thread), scriptContext);
+    scheduler.StartAsyncTask(task);
+
+    for (; tick < 200 && scheduler.IsRunning(); ++tick) {
+        scheduler.Tick();
+    }
+
+    ASSERT_TRUE(task->IsCompleted()) << task->GetError();
+    EXPECT_FALSE(scheduler.IsRunning());
+}

@@ -2,6 +2,7 @@
 
 #include "../LuaRuntime/LuaStackGuard.h"
 #include "../LuaRuntime/LuaFunction.h"
+#include "../LuaRuntime/LuaRef.h"
 #include "../LuaRuntime/LuaThread.h"
 #include "../LuaRuntime/LuaUserdata.h"
 #include "../LuaRuntime/LuaValue.h"
@@ -27,8 +28,8 @@ struct AwaitState {
 };
 
 struct TaskListState {
-    explicit TaskListState(std::vector<AsyncTaskHandle> tasks) : tasks(std::move(tasks)) {}
-    std::vector<AsyncTaskHandle> tasks;
+    explicit TaskListState(tas::lua::LuaRef taskTable) : taskTable(std::move(taskTable)) {}
+    tas::lua::LuaRef taskTable;
 };
 
 static ScriptContext *GetContext(lua_State *L) {
@@ -367,6 +368,35 @@ static std::vector<AsyncTaskHandle> CollectTasks(lua_State *L, int tableIndex, c
     return tasks;
 }
 
+static tas::lua::LuaRef ReferenceTaskTable(lua_State *L, int tableIndex) {
+    tableIndex = lua_absindex(L, tableIndex);
+    lua_pushvalue(L, tableIndex);
+    return tas::lua::LuaRef::FromStack(L, -1);
+}
+
+static std::vector<AsyncTaskHandle> CollectStateTasks(lua_State *L,
+                                                     const TaskListState &state,
+                                                     const char *name,
+                                                     bool allowEmpty) {
+    state.taskTable.Push(L);
+    auto tasks = CollectTasks(L, -1, name, allowEmpty);
+    lua_pop(L, 1);
+    return tasks;
+}
+
+template <typename DonePredicate>
+static LuaScheduler *SchedulerWhilePending(lua_State *L,
+                                           const TaskListState &state,
+                                           const char *name,
+                                           bool allowEmpty,
+                                           DonePredicate isDone) {
+    auto tasks = CollectStateTasks(L, state, name, allowEmpty);
+    if (isDone(tasks)) {
+        return nullptr;
+    }
+    return RequireTaskScheduler(L, tasks.empty() ? AsyncTaskHandle{} : tasks.front());
+}
+
 static void EnsureAllScheduled(lua_State *L, const std::vector<AsyncTaskHandle> &tasks) {
     for (const auto &task : tasks) {
         EnsureScheduled(L, task);
@@ -442,12 +472,14 @@ static int AllCont(lua_State *L, int, lua_KContext ctx) {
         tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
         return luaL_error(L, "async.all continuation lost task list");
     }
-    if (!AreAllDone(state->tasks)) {
-        RequireTaskScheduler(L, state->tasks.empty() ? AsyncTaskHandle{} : state->tasks.front())->YieldTicks(1);
+    if (auto *scheduler = SchedulerWhilePending(
+            L, *state, "async.all", true,
+            [](const auto &tasks) { return AreAllDone(tasks); })) {
+        scheduler->YieldTicks(1);
         return lua_yieldk(L, 0, ctx, AllCont);
     }
 
-    auto tasks = state->tasks;
+    auto tasks = CollectStateTasks(L, *state, "async.all", true);
     tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
     return PushAllOutcome(L, tasks);
 }
@@ -464,7 +496,10 @@ static int AllRaw(lua_State *L) {
     }
 
     EnsureAllScheduled(L, tasks);
-    const auto ctx = tas::lua::LuaYieldState<TaskListState>::Create(L, std::move(tasks));
+    // lua_yieldk longjmps (Lua is built as C), so destructors in this frame never run.
+    std::vector<AsyncTaskHandle>().swap(tasks);
+    const auto ctx = tas::lua::LuaYieldState<TaskListState>::Create(
+        L, ReferenceTaskTable(L, 1));
     scheduler->YieldTicks(1);
     return lua_yieldk(L, 0, ctx, AllCont);
 }
@@ -500,12 +535,14 @@ static int RaceCont(lua_State *L, int, lua_KContext ctx) {
         tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
         return luaL_error(L, "async.race continuation lost task list");
     }
-    if (!IsAnyDone(state->tasks)) {
-        RequireTaskScheduler(L, state->tasks.empty() ? AsyncTaskHandle{} : state->tasks.front())->YieldTicks(1);
+    if (auto *scheduler = SchedulerWhilePending(
+            L, *state, "async.race", false,
+            [](const auto &tasks) { return IsAnyDone(tasks); })) {
+        scheduler->YieldTicks(1);
         return lua_yieldk(L, 0, ctx, RaceCont);
     }
 
-    auto tasks = state->tasks;
+    auto tasks = CollectStateTasks(L, *state, "async.race", false);
     tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
     return PushRaceOutcome(L, tasks, "async.race");
 }
@@ -522,7 +559,10 @@ static int RaceRaw(lua_State *L) {
     }
 
     EnsureAllScheduled(L, tasks);
-    const auto ctx = tas::lua::LuaYieldState<TaskListState>::Create(L, std::move(tasks));
+    // lua_yieldk longjmps (Lua is built as C), so destructors in this frame never run.
+    std::vector<AsyncTaskHandle>().swap(tasks);
+    const auto ctx = tas::lua::LuaYieldState<TaskListState>::Create(
+        L, ReferenceTaskTable(L, 1));
     scheduler->YieldTicks(1);
     return lua_yieldk(L, 0, ctx, RaceCont);
 }
@@ -581,12 +621,14 @@ static int AnyCont(lua_State *L, int, lua_KContext ctx) {
         tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
         return luaL_error(L, "async.any continuation lost task list");
     }
-    if (!IsAnyCompletedOrAllDone(state->tasks)) {
-        RequireTaskScheduler(L, state->tasks.empty() ? AsyncTaskHandle{} : state->tasks.front())->YieldTicks(1);
+    if (auto *scheduler = SchedulerWhilePending(
+            L, *state, "async.any", false,
+            [](const auto &tasks) { return IsAnyCompletedOrAllDone(tasks); })) {
+        scheduler->YieldTicks(1);
         return lua_yieldk(L, 0, ctx, AnyCont);
     }
 
-    auto tasks = state->tasks;
+    auto tasks = CollectStateTasks(L, *state, "async.any", false);
     tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
     return PushAnyOutcome(L, tasks);
 }
@@ -603,7 +645,10 @@ static int AnyRaw(lua_State *L) {
     }
 
     EnsureAllScheduled(L, tasks);
-    const auto ctx = tas::lua::LuaYieldState<TaskListState>::Create(L, std::move(tasks));
+    // lua_yieldk longjmps (Lua is built as C), so destructors in this frame never run.
+    std::vector<AsyncTaskHandle>().swap(tasks);
+    const auto ctx = tas::lua::LuaYieldState<TaskListState>::Create(
+        L, ReferenceTaskTable(L, 1));
     scheduler->YieldTicks(1);
     return lua_yieldk(L, 0, ctx, AnyCont);
 }

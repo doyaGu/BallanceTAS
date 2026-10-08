@@ -242,7 +242,7 @@ if(BUILD_MOD)
         )
     endif()
 
-    add_tas_test(LuaSchedulerTest
+add_tas_test(LuaSchedulerTest
         SOURCES
             LuaSchedulerTest.cpp
             ../src/LuaApi/LuaApi_Async.cpp
@@ -252,7 +252,10 @@ if(BUILD_MOD)
             tas_game
             tas_scripting
             tas_lua_runtime
-    )
+)
+target_compile_definitions(LuaSchedulerTest PRIVATE
+    BALLANCE_TAS_TEST_ROOT="${PROJECT_SOURCE_DIR}"
+)
     add_test(NAME LuaSchedulerTest COMMAND LuaSchedulerTest)
     set_tests_properties(LuaSchedulerTest PROPERTIES
         ENVIRONMENT_MODIFICATION
@@ -317,6 +320,7 @@ if(BUILD_MOD)
                 "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
         )
     endif()
+
 endif()
 
 # ===========================================================================

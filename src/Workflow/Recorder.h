@@ -176,6 +176,12 @@ public:
     size_t GetTotalFrames() const { return m_Frames.size(); }
 
     /**
+     * @brief Read-only access to the captured frames.
+     * Used by ValidationService to load a reference trace without starting a session.
+     */
+    const std::vector<FrameData> &GetFrames() const { return m_Frames; }
+
+    /**
      * @brief Dumps the recorded input states to a text file.
      * @param filePath Path where to save the text dump.
      * @param includePhysics Whether to include physics data in the dump.

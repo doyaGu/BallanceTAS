@@ -134,6 +134,7 @@ add_library(tas_features STATIC
         Workflow/TranslationService.h Workflow/TranslationService.cpp
         Workflow/ScriptInputTransition.h Workflow/ScriptInputTransition.cpp
         Workflow/ValidationService.h Workflow/ValidationService.cpp
+        Workflow/ValidationComparison.cpp
         Workflow/ScriptGenerator.h  Workflow/ScriptGenerator.cpp
         Workflow/ScriptGenerationCore.h Workflow/ScriptGenerationCore.cpp
         Workflow/StartupProjectManager.h Workflow/StartupProjectManager.cpp
@@ -163,6 +164,7 @@ add_library(tas_lua_bindings STATIC
         LuaApi/LuaApi_CKCamera.cpp
         LuaApi/LuaApi_PhysicsObject.cpp
         LuaApi/LuaApi_Savestate.cpp
+        LuaApi/LuaApi_Validation.cpp
         LuaApi/LuaApi_GC.cpp
         LuaApi/LuaApi_Debug.cpp
         LuaApi/LuaApi_Result.cpp

@@ -12,7 +12,6 @@ class ServiceProvider;
 class TASProject;
 class ScriptContextManager;
 class RecordPlayer;
-class Recorder;
 class InputSystem;
 class IGameControl;
 class IInputAccess;
@@ -103,7 +102,6 @@ private:
     HookManager *m_HookManager = nullptr;
     ScriptContextManager *m_ScriptManager = nullptr;
     RecordPlayer *m_RecordPlayer = nullptr;
-    Recorder *m_Recorder = nullptr;
     InputSystem *m_InputSystem = nullptr;
     IGameControl *m_GameControl = nullptr;
     IInputAccess *m_InputAccess = nullptr;

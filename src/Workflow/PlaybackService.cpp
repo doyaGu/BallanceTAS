@@ -13,7 +13,6 @@
 #include "ScriptContextManager.h"
 #include "ScriptContext.h"
 #include "RecordPlayer.h"
-#include "Recorder.h"
 #include "InputSystem.h"
 #include "Logger.h"
 #include "TASProject.h"
@@ -47,7 +46,6 @@ PlaybackService::PlaybackService(ServiceProvider *provider)
     m_HookManager = m_ServiceProvider->Resolve<HookManager>();
     m_ScriptManager = m_ServiceProvider->Resolve<ScriptContextManager>();
     m_RecordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
-    m_Recorder = m_ServiceProvider->Resolve<Recorder>();
     m_InputSystem = m_ServiceProvider->Resolve<InputSystem>();
     m_GameControl = m_ServiceProvider->Resolve<IGameControl>();
     m_InputAccess = m_ServiceProvider->Resolve<IInputAccess>();
@@ -338,10 +336,6 @@ void PlaybackService::InstallScriptCallbacks() {
             m_ScriptManager->TickAll();
 
             ApplyMergedContextInputs(im);
-
-            if (m_Recorder->IsRecording()) {
-                m_Recorder->Tick(m_CurrentTick, im->GetKeyboardState());
-            }
 
             ++m_CurrentTick;
 

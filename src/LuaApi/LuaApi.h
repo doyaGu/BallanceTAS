@@ -37,6 +37,7 @@ private:
     static void RegisterCKEnums(lua_State *state);
     static void RegisterWorldQueryApi(lua_State *state, ScriptContext *context);
     static void RegisterSavestateApi(lua_State *state, ScriptContext *context);
+    static void RegisterValidationApi(lua_State *state, ScriptContext *context);
     static void RegisterGCApi(lua_State *state, ScriptContext *context);
     static void RegisterDebugApi(lua_State *state, ScriptContext *context);
     static void RegisterResultApi(lua_State *state, ScriptContext *context);

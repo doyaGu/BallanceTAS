@@ -16,7 +16,7 @@ local modules = {
   { name = "math_smoke", label = "Math Smoke" },
   { name = "world_smoke", label = "World Smoke" },
   { name = "state_smoke", label = "State Smoke" },
-  { name = "determinism_smoke", label = "Determinism Smoke" },
+  { name = "validation_smoke", label = "Validation Smoke" },
 }
 
 local function run_module(module)

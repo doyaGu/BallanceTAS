@@ -363,8 +363,8 @@ Result<void> RuntimeSession::ExitState(State state, State nextState, StopOptions
         if (nextState == State::ShuttingDown) {
             return Result<void>::Ok();
         } else if ((!m_Hooks.isPlaybackActiveOrPaused || m_Hooks.isPlaybackActiveOrPaused())) {
-            if (GetPlaybackType() == PlaybackType::Script &&
-                m_Hooks.isValidationActive && m_Hooks.isValidationActive() &&
+            // Validation may run during script or record playback; stop it either way.
+            if (m_Hooks.isValidationActive && m_Hooks.isValidationActive() &&
                 m_Hooks.stopValidationGraceful) {
                 auto validationResult = m_Hooks.stopValidationGraceful();
                 if (!validationResult.IsOk()) {

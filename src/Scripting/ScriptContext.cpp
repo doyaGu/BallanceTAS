@@ -15,6 +15,7 @@
 #include "ProjectManager.h"
 #include "RecordPlayer.h"
 #include "SavestateManager.h"
+#include "ValidationService.h"
 #include "ScriptContextManager.h"
 #include "ServiceContainer.h"
 #include "MessageBus.h"
@@ -609,6 +610,10 @@ GameInterface *ScriptContext::GetGameInterface() const {
 
 SavestateManager *ScriptContext::GetSavestateManager() const {
     return m_Engine->GetServiceProvider().Resolve<SavestateManager>();
+}
+
+ValidationService *ScriptContext::GetValidationService() const {
+    return m_Engine->GetServiceProvider().Resolve<ValidationService>();
 }
 
 // ============================================================================

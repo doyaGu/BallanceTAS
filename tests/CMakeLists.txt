@@ -321,6 +321,26 @@ target_compile_definitions(LuaSchedulerTest PRIVATE
         )
     endif()
 
+    add_tas_test(ValidationServiceTest
+        SOURCES
+            ValidationServiceTest.cpp
+            ../src/Workflow/ValidationComparison.cpp
+        DEPENDENCIES
+            tas_core
+            tas_game
+    )
+    add_test(NAME ValidationServiceTest COMMAND ValidationServiceTest)
+    if(VIRTOOLS_SDK_RUNTIME_DIR)
+        set_tests_properties(ValidationServiceTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${VIRTOOLS_SDK_RUNTIME_DIR};PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    else()
+        set_tests_properties(ValidationServiceTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    endif()
 endif()
 
 # ===========================================================================

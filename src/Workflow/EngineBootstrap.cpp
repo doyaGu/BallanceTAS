@@ -164,7 +164,7 @@ RuntimeSession::Hooks BuildRuntimeSessionHooks(TASEngine &engine) {
                 outputPath.push_back('\\');
             }
         }
-        return outputPath.empty() ? Result<void>::Ok() : validation->Start(outputPath, *playback);
+        return outputPath.empty() ? Result<void>::Ok() : validation->Start(outputPath);
     };
     hooks.stopValidationGraceful = [services]() {
         auto *validation = services->Resolve<ValidationService>();
@@ -288,7 +288,8 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
         c.RegisterSingletonInstance<ValidationService>(
             std::make_unique<ValidationService>(
                 *c.Resolve<Recorder>(),
-                *engine.m_EventBus));
+                *engine.m_EventBus,
+                *engine.m_HookManager));
         c.RegisterSingletonInstance<SavestateManager>(
             std::make_unique<SavestateManager>(engine.m_ServiceProvider));
 

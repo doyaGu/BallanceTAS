@@ -214,3 +214,47 @@ TEST(RuntimeSessionLifecycleTest, ShutdownStopsValidationImmediately) {
     EXPECT_EQ(validationImmediateStopCount, 1);
     EXPECT_TRUE(session.IsShuttingDown());
 }
+
+TEST(RuntimeSessionLifecycleTest, RecordPlaybackExitStopsValidation) {
+    RuntimeSession::Hooks hooks;
+    bool prepared = false;
+    bool active = false;
+    bool validationActive = false;
+    int validationStopCount = 0;
+
+    hooks.preparePlayback = [&](TASProject *, PlaybackType) {
+        prepared = true;
+        return Result<void>::Ok();
+    };
+    hooks.activatePlayback = [&]() {
+        active = true;
+        return Result<void>::Ok();
+    };
+    hooks.stopPlaybackGraceful = [&](bool) {
+        prepared = false;
+        active = false;
+        return Result<void>::Ok();
+    };
+    hooks.isPlaybackPrepared = [&]() { return prepared; };
+    hooks.isPlaybackActiveOrPaused = [&]() { return active; };
+    hooks.currentPlaybackProject = [&]() { return FakeProject(); };
+    hooks.stopValidationGraceful = [&]() {
+        validationActive = false;
+        ++validationStopCount;
+        return Result<void>::Ok();
+    };
+    hooks.isValidationActive = [&]() { return validationActive; };
+
+    RuntimeSession session(nullptr, hooks);
+    ASSERT_TRUE(session.StartPlayback(FakeProject(), PlaybackType::Record, {false}).IsOk());
+    ASSERT_TRUE(session.OnLevelLoadStart().IsOk());
+    ASSERT_TRUE(active);
+
+    // A script started validation via tas.validation.start() during record playback.
+    validationActive = true;
+    ASSERT_TRUE(session.Stop({false}).IsOk());
+
+    EXPECT_EQ(validationStopCount, 1);
+    EXPECT_FALSE(validationActive);
+    EXPECT_FALSE(active);
+}

@@ -351,7 +351,12 @@ bool TASEngine::StartValidationRecording(const std::string &outputPath) {
         return false;
     }
 
-    auto result = validationService->Start(outputPath, *playbackService);
+    if (!playbackService->IsPlaying()) {
+        Log::Error("Validation recording requires active playback.");
+        return false;
+    }
+
+    auto result = validationService->Start(outputPath);
     if (!result.IsOk()) {
         Log::Error("Validation recording: %s", result.GetError().message.c_str());
         return false;

@@ -24,6 +24,7 @@ class RecordPlayer;
 class GameInterface;
 class ScriptContextManager;
 class SavestateManager;
+class ValidationService;
 
 /**
  * @class ScriptContext
@@ -210,6 +211,12 @@ public:
      * @return Pointer to the SavestateManager, or nullptr if not available.
      */
     SavestateManager *GetSavestateManager() const;
+
+    /**
+     * @brief Gets the validation service from the service container.
+     * @return Pointer to the ValidationService, or nullptr if not available.
+     */
+    ValidationService *GetValidationService() const;
 
     /**
      * @brief Sets a callback to be called when execution status changes.

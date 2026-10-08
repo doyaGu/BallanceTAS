@@ -44,6 +44,7 @@ void LuaApi::Register(ScriptContext *context) {
     RegisterContextCommunicationApi(state, context);
     RegisterWorldQueryApi(state, context);
     RegisterSavestateApi(state, context);
+    RegisterValidationApi(state, context);
     RegisterGCApi(state, context);
     RegisterDebugApi(state, context);
     RegisterResultApi(state, context);

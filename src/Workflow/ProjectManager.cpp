@@ -44,6 +44,24 @@ ProjectManager::~ProjectManager() {
 }
 
 void ProjectManager::RefreshProjects() {
+    // Keep the current project alive across the rescan: playback, script contexts,
+    // the runtime session and the Player host bridge all hold raw pointers to it.
+    std::unique_ptr<TASProject> retained;
+    std::string retainedTempDir;
+    if (m_CurrentProject) {
+        auto it = std::find_if(m_Projects.begin(), m_Projects.end(),
+                               [this](const auto &p) { return p.get() == m_CurrentProject; });
+        if (it != m_Projects.end()) {
+            retained = std::move(*it);
+            m_Projects.erase(it);
+        }
+        auto tempIt = m_ProjectTempDirectories.find(m_CurrentProject);
+        if (tempIt != m_ProjectTempDirectories.end()) {
+            retainedTempDir = tempIt->second;
+            m_ProjectTempDirectories.erase(tempIt);
+        }
+    }
+
     // Clean up previous project temp directories
     CleanupTempDirectories();
 
@@ -100,6 +118,21 @@ void ProjectManager::RefreshProjects() {
         Log::Error("Filesystem error while scanning for projects: %s", e.what());
     }
 
+    if (retained) {
+        // Swap the freshly scanned copy for the retained instance so existing pointers stay valid.
+        auto duplicate = std::find_if(m_Projects.begin(), m_Projects.end(),
+                                      [&](const auto &p) { return p->GetPath() == retained->GetPath(); });
+        if (duplicate != m_Projects.end()) {
+            CleanupProjectTempDirectory(duplicate->get());
+            m_Projects.erase(duplicate);
+        }
+        m_CurrentProject = retained.get();
+        if (!retainedTempDir.empty()) {
+            m_ProjectTempDirectories[m_CurrentProject] = retainedTempDir;
+        }
+        m_Projects.push_back(std::move(retained));
+    }
+
     // Sort projects alphabetically by name for consistent UI display.
     std::sort(m_Projects.begin(), m_Projects.end(), [](const auto &a, const auto &b) {
         return a->GetName() < b->GetName();
@@ -107,6 +140,61 @@ void ProjectManager::RefreshProjects() {
 
     Log::Info("Found %d valid TAS projects (%d directories, %d zip files, %d record files).",
                                 static_cast<int>(m_Projects.size()), directoryProjects, zipProjects, recordProjects);
+}
+
+TASProject *ProjectManager::ResolveLaunchTarget(const std::string &target, std::string &error) {
+    if (target.empty()) {
+        error = "TAS launch target is empty";
+        return nullptr;
+    }
+
+    for (const auto &project : m_Projects) {
+        if (project && project->GetName() == target) {
+            return project.get();
+        }
+    }
+
+    std::error_code ec;
+    const fs::path path = fs::absolute(fs::path(target), ec);
+    if (ec || !fs::exists(path, ec)) {
+        error = "TAS project name or path was not found: " + target;
+        return nullptr;
+    }
+
+    std::unique_ptr<TASProject> project;
+    const std::string normalized = NormalizePath(path.string());
+    if (fs::is_directory(path, ec)) {
+        if (!ValidateProjectStructure(normalized)) {
+            error = "TAS directory is missing a valid manifest.lua/entry script: " + normalized;
+            return nullptr;
+        }
+        project = LoadDirectoryProject(normalized);
+    } else if (fs::is_regular_file(path, ec)) {
+        std::string extension = path.extension().string();
+        std::transform(extension.begin(), extension.end(), extension.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (extension == ".zip") {
+            if (!ValidateZipProject(normalized)) {
+                error = "TAS zip project is invalid: " + normalized;
+                return nullptr;
+            }
+            project = LoadZipProject(normalized);
+        } else if (extension == ".tas") {
+            project = LoadRecordProject(normalized);
+        } else {
+            error = "Unsupported TAS target type: " + normalized;
+            return nullptr;
+        }
+    }
+
+    if (!project || !project->IsValid()) {
+        error = "TAS target failed validation: " + normalized;
+        return nullptr;
+    }
+
+    TASProject *resolved = project.get();
+    m_Projects.push_back(std::move(project));
+    return resolved;
 }
 
 std::unique_ptr<TASProject> ProjectManager::LoadDirectoryProject(const std::string &projectPath) {

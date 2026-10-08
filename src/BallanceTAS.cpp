@@ -18,6 +18,7 @@
 #include "GameEvents.h"
 #include "HookManager.h"
 #include "HarnessRuntime.h"
+#include "PlayerHostBridge.h"
 
 template <typename Event>
 static void PublishEngineEvent(BallanceTAS *mod, const Event &event) {
@@ -88,7 +89,7 @@ void BallanceTAS::OnLoad() {
     }
 
     // --- 2. Initialize TAS Framework if enabled ---
-    if (m_ConfigService.IsEnabled() || HarnessRuntime::IsRequested()) {
+    if (m_ConfigService.IsEnabled() || HarnessRuntime::IsRequested() || PlayerHostBridge::IsRequested()) {
         if (!Initialize()) {
             Log::Error("Failed to initialize BallanceTAS framework.");
             // Framework is disabled due to initialization failure
@@ -291,8 +292,9 @@ bool BallanceTAS::Initialize() {
         m_ConfigService.SetEventBus(m_Engine->GetEventBus());
         m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
         m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
-        const bool harnessRequested = HarnessRuntime::IsRequested();
-        if (!harnessRequested) {
+        const bool hostRequested = PlayerHostBridge::IsRequested();
+        const bool harnessRequested = !hostRequested && HarnessRuntime::IsRequested();
+        if (!hostRequested && !harnessRequested) {
             if (auto *startup = m_Engine->GetServiceProvider().Resolve<StartupProjectManager>()) {
                 StartupConfig startupConfig = m_ConfigService.GetStartupConfig();
                 startup->SetStartupEnabled(startupConfig.enabled);
@@ -306,7 +308,12 @@ bool BallanceTAS::Initialize() {
             }
         }
 
-        if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
+        if (hostRequested) {
+            m_PlayerHostBridge = std::make_unique<PlayerHostBridge>(m_Engine.get());
+            if (!m_PlayerHostBridge->Initialize()) {
+                throw std::runtime_error("TAS Player host bridge failed to initialize.");
+            }
+        } else if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
             if (!harness->Initialize()) {
                 throw std::runtime_error("Harness runtime failed to initialize.");
             }
@@ -341,6 +348,10 @@ bool BallanceTAS::Initialize() {
             m_UIManager->Shutdown();
             m_UIManager.reset();
         }
+        if (m_PlayerHostBridge) {
+            m_PlayerHostBridge->Shutdown();
+            m_PlayerHostBridge.reset();
+        }
         if (m_Engine) {
             m_Engine->Shutdown();
             m_Engine.reset();
@@ -360,6 +371,12 @@ void BallanceTAS::Shutdown() {
 
     try {
         m_ConfigService.SetEventBus(nullptr);
+
+        // Unregister from Player before any runtime service can be destroyed.
+        if (m_PlayerHostBridge) {
+            m_PlayerHostBridge->Shutdown();
+            m_PlayerHostBridge.reset();
+        }
 
         // Shutdown UI first
         if (m_UIManager) {
@@ -427,6 +444,9 @@ void BallanceTAS::OnProcess() {
         }
         if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
             harness->Tick();
+        }
+        if (m_PlayerHostBridge) {
+            m_PlayerHostBridge->Tick();
         }
 
         // Process and render UI

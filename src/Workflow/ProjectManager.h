@@ -61,6 +61,9 @@ public:
     TASProject *GetCurrentProject() const { return m_CurrentProject; }
     void SetCurrentProject(TASProject *project);
 
+    /** Resolve a scanned project name or load an explicit directory/zip/.tas path. */
+    TASProject *ResolveLaunchTarget(const std::string &target, std::string &error);
+
     /**
      * @brief Gets the temporary directory used for extracted zip projects.
      * @return Path to the temporary directory.

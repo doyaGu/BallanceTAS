@@ -156,6 +156,11 @@ add_test(NAME AsyncTaskTest       COMMAND AsyncTaskTest)
 add_test(NAME LuaRuntimeTest      COMMAND LuaRuntimeTest)
 
 if(BUILD_MOD)
+    add_tas_test(TasHostAbiTest
+        SOURCES TasHostAbiTest.cpp
+    )
+    add_test(NAME TasHostAbiTest COMMAND TasHostAbiTest)
+
     add_tas_test(HarnessProtocolTest
         SOURCES
             HarnessProtocolTest.cpp

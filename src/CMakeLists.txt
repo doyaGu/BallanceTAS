@@ -21,6 +21,7 @@ set(TAS_MODULE_INCLUDE_DIRS
         ${TAS_SRC_DIR}/Scripting
         ${TAS_SRC_DIR}/Workflow
         ${TAS_SRC_DIR}/UI
+        ${TAS_SRC_DIR}/Host
 )
 
 # ── Module: core ─────────────────────────────────────────────────────────────
@@ -140,6 +141,8 @@ add_library(tas_features STATIC
         Workflow/StartupProjectManager.h Workflow/StartupProjectManager.cpp
         Workflow/HarnessProtocol.h Workflow/HarnessProtocol.cpp
         Workflow/HarnessRuntime.h Workflow/HarnessRuntime.cpp
+        Host/TasHostApi.h
+        Host/PlayerHostBridge.h Host/PlayerHostBridge.cpp
         Workflow/SavestateManager.h Workflow/SavestateManager.cpp
         Workflow/LuaREPLServer.h    Workflow/LuaREPLServer.cpp
 )

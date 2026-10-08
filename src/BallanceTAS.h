@@ -14,6 +14,7 @@ class HookManager;
 class TASEngine;
 class UIManager;
 class BMLLogSink;
+class PlayerHostBridge;
 
 /**
  * @class BallanceTAS
@@ -191,6 +192,9 @@ private:
 
     // The single, top-level instance of the TAS framework's core engine.
     std::unique_ptr<TASEngine> m_Engine;
+
+    // Optional same-process bridge to the dedicated TAS Player host.
+    std::unique_ptr<PlayerHostBridge> m_PlayerHostBridge;
 
     // UI Manager for all TAS-related user interface components.
     std::unique_ptr<UIManager> m_UIManager;

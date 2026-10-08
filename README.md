@@ -4,15 +4,22 @@ A Tool-Assisted Speedrun (TAS) framework for Ballance, providing comprehensive r
 
 ## Overview
 
-BallanceTAS is a framework that enables creators to develop precise, deterministic, and reproducible tool-assisted speedruns and puzzle solutions for Ballance. It bridges the gap between manual recording and precise scripting, offering both automated recording capabilities and a powerful manual scripting API with frame-perfect control at 132Hz.
+BallanceTAS is a framework that enables creators to develop precise, reproducible tool-assisted speedruns and puzzle solutions for Ballance. It bridges the gap between manual recording and precise scripting, offering both automated recording capabilities and a powerful manual scripting API with frame-perfect control at 132Hz.
 
 ## Features
 
 ### Core TAS Functionality
-- **Deterministic Execution**: 100% reproducible frame-precise control at 132Hz
-- **Lua Scripting Engine**: Complete Lua 5.4.8 integration with extensive APIs
+- **Frame-Precise Input**: 132Hz frame-accurate keyboard/mouse/joystick control
+- **Reproducibility Verification**: Re-run a project and compare ball-physics frame-by-frame against a reference trace to confirm (or refute) that a run reproduces (`tas.validation.*`)
+- **Lua Scripting Engine**: Embedded Lua 5.5 runtime with extensive APIs
 - **Smart Recording System**: Converts gameplay input into structured Lua scripts
-- **Real-time Debugging**: Comprehensive in-game OSD and remote REPL server
+- **Real-time Debugging**: Comprehensive in-game OSD (remote REPL server available when built with `ENABLE_REPL`)
+
+> Note on determinism: input is frame-precise, but IVP physics determinism is
+> **not enforced** (the active fixed-timestep/RNG-control layer was removed due
+> to side effects). `ResetPhysicsTime` + per-tick `SetLastDeltaTime` are
+> best-effort. Whether a given project reproduces must be verified empirically
+> with the validation tools above rather than assumed.
 
 ### Advanced API Categories
 - **Input Control**: Keyboard, mouse, joystick with frame-precise timing
@@ -27,7 +34,7 @@ BallanceTAS is a framework that enables creators to develop precise, determinist
 ### System Requirements
 - Windows 10 or later
 - Ballance game installation
-- BML+ (Ballance Mod Loader Plus) installed
+- BML+ 0.3.13 installed (the build SDK and game runtime must be ABI-compatible)
 
 ### Development Requirements
 - Modern C++ compiler with C++20 support (Visual Studio 2019/2022 recommended)
@@ -37,7 +44,7 @@ BallanceTAS is a framework that enables creators to develop precise, determinist
 ### Dependencies
 - VirtoolsSDK
 - BML+ (Ballance Mod Loader Plus)
-- Lua 5.4.8 (embedded)
+- Lua 5.5 (embedded)
 - MinHook (function hooking)
 - sol2 (C++/Lua bindings)
 - fmt (modern C++ formatting)
@@ -62,6 +69,36 @@ cmake --build build --config Release
 cmake --install build
 ```
 
+### Verification
+
+Run the native regression suite from the configured build directory:
+
+```powershell
+ctest --test-dir build -C Release --output-on-failure
+```
+
+The dedicated real-game harness uses the harness-enabled BallancePlayer to run
+without dialogs, exchange versioned JSON request/results with BallanceTAS, enforce
+both tick and wall-clock timeouts, return the test result as the process exit code,
+and restore the original game files afterward:
+
+```powershell
+.\tools\run_ballance_harness.ps1 `
+  -GameDir "C:\Games\Ballance" `
+  -BuildDir ".\build" `
+  -PlayerPath "..\BallancePlayer\build\src\Release\Player.exe"
+```
+
+The legacy log-driven runner remains useful for two-run validation comparison;
+`-ValidationRoundTrip` compares the second trace with the first:
+
+```powershell
+.\tools\verify_ballance_lua_runtime.ps1 `
+  -GameDir "C:\Games\Ballance" `
+  -BuildDir ".\build" `
+  -ValidationRoundTrip
+```
+
 ### Setting Up the Framework
 
 1. Ensure Ballance game with BML mod loader is installed
@@ -72,15 +109,15 @@ cmake --install build
 ## Quick Start
 
 ### Accessing TAS Features
-- **TAS Menu**: Press F10 in the main menu
+- **TAS Menu**: Select the **TAS** button on the level-selection menu
 - **In-Game OSD**: Press F11 during gameplay
 - **REPL Server**: Connect to the remote debugging interface
 
 ### Basic Workflow
-1. **Record**: Use F10 menu to record gameplay → generates structured Lua script
+1. **Record**: Open the TAS menu from the level-selection screen and start recording; it generates a structured Lua script
 2. **Edit**: Modify generated scripts with full IntelliSense support
 3. **Debug**: Use F11 OSD and remote REPL for real-time debugging
-4. **Validate**: Use `tas.assert()` for deterministic verification
+4. **Validate**: Re-run a project and compare ball physics against a reference trace via `tas.validation.start/stop` to confirm reproducibility
 5. **Execute**: Play back refined scripts through TAS menu
 
 ### Project Structure

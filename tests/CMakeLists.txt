@@ -156,6 +156,15 @@ add_test(NAME AsyncTaskTest       COMMAND AsyncTaskTest)
 add_test(NAME LuaRuntimeTest      COMMAND LuaRuntimeTest)
 
 if(BUILD_MOD)
+    add_tas_test(HarnessProtocolTest
+        SOURCES
+            HarnessProtocolTest.cpp
+            ../src/Workflow/HarnessProtocol.cpp
+        DEPENDENCIES
+            yyjson
+    )
+    add_test(NAME HarnessProtocolTest COMMAND HarnessProtocolTest)
+
     add_tas_test(ScriptContextManagerTest
         SOURCES
             ScriptContextManagerTest.cpp

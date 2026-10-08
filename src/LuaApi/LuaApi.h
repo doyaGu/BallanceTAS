@@ -46,4 +46,5 @@ private:
     static void RegisterLevelApi(lua_State *state, ScriptContext *context);
     static void RegisterGlobalApi(lua_State *state, ScriptContext *context);
     static void RegisterMenuApi(lua_State *state, ScriptContext *context);
+    static void RegisterHarnessApi(lua_State *state, ScriptContext *context);
 };

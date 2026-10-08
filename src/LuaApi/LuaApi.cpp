@@ -53,6 +53,7 @@ void LuaApi::Register(ScriptContext *context) {
     RegisterLevelApi(state, context);
     RegisterGlobalApi(state, context);
     RegisterMenuApi(state, context);
+    RegisterHarnessApi(state, context);
     RegisterSharedBufferApi(state, context);
 }
 

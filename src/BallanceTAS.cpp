@@ -17,6 +17,7 @@
 #include "EventBus.h"
 #include "GameEvents.h"
 #include "HookManager.h"
+#include "HarnessRuntime.h"
 
 template <typename Event>
 static void PublishEngineEvent(BallanceTAS *mod, const Event &event) {
@@ -87,7 +88,7 @@ void BallanceTAS::OnLoad() {
     }
 
     // --- 2. Initialize TAS Framework if enabled ---
-    if (m_ConfigService.IsEnabled()) {
+    if (m_ConfigService.IsEnabled() || HarnessRuntime::IsRequested()) {
         if (!Initialize()) {
             Log::Error("Failed to initialize BallanceTAS framework.");
             // Framework is disabled due to initialization failure
@@ -290,15 +291,24 @@ bool BallanceTAS::Initialize() {
         m_ConfigService.SetEventBus(m_Engine->GetEventBus());
         m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
         m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
-        if (auto *startup = m_Engine->GetServiceProvider().Resolve<StartupProjectManager>()) {
-            StartupConfig startupConfig = m_ConfigService.GetStartupConfig();
-            startup->SetStartupEnabled(startupConfig.enabled);
-            startup->SetAutoLoadEnabled(startupConfig.autoLoad);
-            if (!startupConfig.project.empty()) {
-                startup->SetStartupProject(startupConfig.project);
+        const bool harnessRequested = HarnessRuntime::IsRequested();
+        if (!harnessRequested) {
+            if (auto *startup = m_Engine->GetServiceProvider().Resolve<StartupProjectManager>()) {
+                StartupConfig startupConfig = m_ConfigService.GetStartupConfig();
+                startup->SetStartupEnabled(startupConfig.enabled);
+                startup->SetAutoLoadEnabled(startupConfig.autoLoad);
+                if (!startupConfig.project.empty()) {
+                    startup->SetStartupProject(startupConfig.project);
+                }
+                if (startupConfig.enabled && startupConfig.autoLoad) {
+                    startup->LoadAndExecuteStartupScript();
+                }
             }
-            if (startupConfig.enabled && startupConfig.autoLoad) {
-                startup->LoadAndExecuteStartupScript();
+        }
+
+        if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
+            if (!harness->Initialize()) {
+                throw std::runtime_error("Harness runtime failed to initialize.");
             }
         }
 
@@ -398,6 +408,7 @@ void BallanceTAS::OnMenuStart() {
                 }
             }
         }
+
         ImGui::End();
 
         ImGui::PopStyleVar(2);
@@ -413,6 +424,9 @@ void BallanceTAS::OnProcess() {
             if (auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>()) {
                 contexts->TickAll();
             }
+        }
+        if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
+            harness->Tick();
         }
 
         // Process and render UI

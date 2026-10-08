@@ -138,6 +138,8 @@ add_library(tas_features STATIC
         Workflow/ScriptGenerator.h  Workflow/ScriptGenerator.cpp
         Workflow/ScriptGenerationCore.h Workflow/ScriptGenerationCore.cpp
         Workflow/StartupProjectManager.h Workflow/StartupProjectManager.cpp
+        Workflow/HarnessProtocol.h Workflow/HarnessProtocol.cpp
+        Workflow/HarnessRuntime.h Workflow/HarnessRuntime.cpp
         Workflow/SavestateManager.h Workflow/SavestateManager.cpp
         Workflow/LuaREPLServer.h    Workflow/LuaREPLServer.cpp
 )
@@ -173,6 +175,7 @@ add_library(tas_lua_bindings STATIC
         LuaApi/LuaApi_Level.cpp
         LuaApi/LuaApi_Global.cpp
         LuaApi/LuaApi_Menu.cpp
+        LuaApi/LuaApi_Harness.cpp
         LuaApi/LuaApi_SharedBuffer.cpp
         LuaApi/LuaApi_Input.cpp
         LuaApi/LuaApi_VxVector.cpp

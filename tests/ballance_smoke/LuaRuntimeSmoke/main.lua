@@ -41,11 +41,28 @@ local function run_module(module)
   tas.log(module.label .. " PASS")
 end
 
-function main()
+local function run_all()
   tas.log("BallanceTAS LuaRuntime Smoke START tick=" .. tostring(tas.get_tick()))
   for _, module in ipairs(modules) do
     run_module(module)
   end
   tas.log("BallanceTAS LuaRuntime Smoke PASS")
   tas.log("BallanceTAS LuaRuntime Full Smoke PASS")
+end
+
+function main()
+  local ok, err = xpcall(run_all, debug.traceback)
+  if ok then
+    if tas.harness and tas.harness.active() then
+      tas.harness.pass("BallanceTAS LuaRuntime Full Smoke PASS")
+    end
+    return
+  end
+
+  tas.log("BallanceTAS LuaRuntime Full Smoke FAIL: " .. tostring(err))
+  if tas.harness and tas.harness.active() then
+    tas.harness.fail(tostring(err))
+    return
+  end
+  error(err)
 end

@@ -8,6 +8,7 @@
 #include "EventManager.h"
 #include "GameInterface.h"
 #include "HookManager.h"
+#include "HarnessRuntime.h"
 #include "InputSystem.h"
 #include "Logger.h"
 #include "Runtime/LuaTypedEventBridge.h"
@@ -269,6 +270,7 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
         c.RegisterSingletonInstance<RecordPlayer>(std::make_unique<RecordPlayer>(&engine));
         c.RegisterSingletonInstance<StartupProjectManager>(std::make_unique<StartupProjectManager>(&engine));
         c.RegisterSingletonInstance<ProjectManager>(std::make_unique<ProjectManager>(&engine));
+        c.RegisterSingletonInstance<HarnessRuntime>(std::make_unique<HarnessRuntime>(&engine));
 
         // Services with dependencies
         c.RegisterSingletonInstance<RecordingService>(

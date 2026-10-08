@@ -140,7 +140,7 @@ void TASMenu::ClearLastActionError() {
     m_LastActionError.clear();
 }
 
-TASMenuStatePresentation TASMenu::GetStatePresentation() const {
+TASMenuRuntimeSnapshot TASMenu::BuildRuntimeSnapshot() const {
     TASMenuRuntimeSnapshot snapshot;
     snapshot.pendingPlayback = m_Engine->IsPendingPlay();
     snapshot.runningPlayback = m_Engine->IsPlaying();
@@ -157,9 +157,10 @@ TASMenuStatePresentation TASMenu::GetStatePresentation() const {
         snapshot.activeProjectName = project->GetName();
         snapshot.activeProjectKey = project->GetPath();
         snapshot.activeProjectIsRecord = project->IsRecordProject();
+        snapshot.activeTargetLevel = project->GetTargetLevel();
         if (snapshot.pendingPlayback) {
             if (!project->GetTargetLevel().empty()) {
-                snapshot.activityDetail = "Waiting for " + project->GetTargetLevel();
+                snapshot.activityDetail = "Waiting for " + FormatLevelLabel(project->GetTargetLevel());
             }
         } else if (snapshot.runningPlayback) {
             if (project->IsRecordProject()) {
@@ -174,14 +175,39 @@ TASMenuStatePresentation TASMenu::GetStatePresentation() const {
         snapshot.activeProjectName = m_Engine->GetLastCompletedPlaybackProjectName();
     }
 
-    if (snapshot.pendingRecording && snapshot.activityDetail.empty()) {
-        snapshot.activityDetail = "Waiting for target level";
+    if (snapshot.pendingRecording) {
+        if (auto *recorder = m_Engine->GetServiceProvider().Resolve<Recorder>()) {
+            snapshot.activeTargetLevel = recorder->GetGenerationOptions().targetLevel;
+        }
+        if (snapshot.activityDetail.empty()) {
+            snapshot.activityDetail = snapshot.activeTargetLevel.empty()
+                ? "Waiting for target level"
+                : "Waiting for " + FormatLevelLabel(snapshot.activeTargetLevel);
+        }
     }
     if (snapshot.recording) {
         snapshot.frameCount = m_Engine->GetRecordingFrameCount();
     }
 
-    return BuildMenuStatePresentation(snapshot);
+    return snapshot;
+}
+
+TASMenuStatePresentation TASMenu::GetStatePresentation() const {
+    return BuildMenuStatePresentation(BuildRuntimeSnapshot());
+}
+
+void TASMenu::AnnouncePendingTAS() const {
+    auto *game = m_Engine->GetGameInterface();
+    if (!game) {
+        return;
+    }
+
+    auto *uiManager = game->GetUIManager();
+    const std::string stopKey = uiManager ? uiManager->GetStopHotkeyName() : "";
+    const std::string message = BuildPendingMessage(BuildRuntimeSnapshot(), stopKey);
+    if (!message.empty()) {
+        game->PrintMessage(message.c_str());
+    }
 }
 
 void TASMenu::OnOpen() {
@@ -229,6 +255,7 @@ void TASMenu::PlayProject(TASProject *project) {
 
     if (m_Engine->StartReplay()) {
         ClearLastActionError();
+        AnnouncePendingTAS();
         Close(); // Close menu so user can load a level
     } else {
         Log::Error("Failed to start replay from menu.");
@@ -281,6 +308,7 @@ void TASMenu::StartRecording() {
     if (m_Engine->StartRecording()) {
         Log::Info("Recording setup from menu.");
         ClearLastActionError();
+        AnnouncePendingTAS();
         Close(); // Close menu so user can load a level
     } else {
         Log::Error("Failed to setup recording from menu.");
@@ -681,7 +709,7 @@ void TASDetailsPage::DrawActionButtons() {
         ToneText(kMenuTextX, reasonY, "Cannot translate: " + presentation.translateAction.disabledReason,
                  TASMenuTone::Warning, kMenuWidthFraction, 0.72f);
     } else {
-        ToneText(kMenuTextX, reasonY, "Ready", TASMenuTone::Good, kMenuWidthFraction, 0.78f);
+        ToneText(kMenuTextX, reasonY, presentation.nextStepLabel, TASMenuTone::Good, kMenuWidthFraction, 0.78f);
     }
 }
 
@@ -849,6 +877,7 @@ void TASRecordingPage::StartRecording() {
         Log::Info("  Description: %s", m_Description);
         Log::Info("  Generation Options: frameComments=%s",
                                   m_AddFrameComments ? "true" : "false");
+        m_Menu->AnnouncePendingTAS();
         m_Menu->Close();
     } else {
         Log::Error("Failed to setup recording.");

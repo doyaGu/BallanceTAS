@@ -200,6 +200,43 @@ std::string TruncateMenuLabel(const std::string &label, size_t maxChars) {
     return label.substr(0, maxChars - 3) + "...";
 }
 
+std::string FormatLevelLabel(const std::string &levelKey) {
+    static const std::string kPrefix = "Level_";
+    if (levelKey.size() <= kPrefix.size() || levelKey.compare(0, kPrefix.size(), kPrefix) != 0) {
+        return levelKey;
+    }
+
+    const std::string digits = levelKey.substr(kPrefix.size());
+    if (digits.size() > 3 || !std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; })) {
+        return levelKey;
+    }
+    return "Level " + std::to_string(std::stoi(digits));
+}
+
+std::string BuildLevelStartInstruction(const std::string &targetLevel, bool isRecord) {
+    if (!targetLevel.empty()) {
+        return "select " + FormatLevelLabel(targetLevel) + " to start";
+    }
+    return isRecord ? "start the level it was recorded on" : "select any level to start";
+}
+
+std::string BuildPendingMessage(const TASMenuRuntimeSnapshot &snapshot, const std::string &stopKeyLabel) {
+    std::string text;
+    if (snapshot.pendingPlayback) {
+        text = snapshot.activeProjectName.empty() ? "TAS ready" : "TAS ready: " + snapshot.activeProjectName;
+        text += " - " + BuildLevelStartInstruction(snapshot.activeTargetLevel, snapshot.activeProjectIsRecord);
+    } else if (snapshot.pendingRecording) {
+        text = "Recording armed - " + BuildLevelStartInstruction(snapshot.activeTargetLevel, false);
+    } else {
+        return {};
+    }
+
+    if (!stopKeyLabel.empty()) {
+        text += " (" + stopKeyLabel + " to cancel)";
+    }
+    return text;
+}
+
 TASMenuStatePresentation BuildMenuStatePresentation(const TASMenuRuntimeSnapshot &snapshot) {
     TASMenuStatePresentation state;
     state.refreshAction = {"Refresh", true, ""};
@@ -323,6 +360,8 @@ TASProjectPresentation BuildProjectPresentation(const TASProject &project,
     presentation.playAction.label = "Play TAS";
     presentation.playAction.disabledReason = BuildPlayDisabledReason(project, menuState);
     presentation.playAction.enabled = presentation.playAction.disabledReason.empty();
+    presentation.nextStepLabel = "Next: " + BuildLevelStartInstruction(project.GetTargetLevel(),
+                                                                       project.IsRecordProject());
 
     presentation.translateAction.label = project.IsRecordProject() ? "Translate to Script" : "Translate to Record";
     presentation.translateAction.disabledReason = BuildTranslateDisabledReason(project, menuState);

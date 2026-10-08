@@ -225,6 +225,7 @@ public:
      * @param key The key code (default: CKKEY_F3).
      */
     void SetStopHotkey(CKKEYBOARD key) { m_StopHotkey = Bui::CKKeyToImGuiKey(key); }
+    const char *GetStopHotkeyName() const { return ImGui::GetKeyName(m_StopHotkey); }
 
     /**
      * @brief Sets the hotkey for toggling the OSD.

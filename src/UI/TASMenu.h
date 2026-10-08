@@ -53,6 +53,8 @@ public:
     bool IsTASActive() const;
     bool IsOpen() const;
     TASMenuStatePresentation GetStatePresentation() const;
+    /// Tells the player in-game what to do next once playback/recording is armed and waiting for a level.
+    void AnnouncePendingTAS() const;
     const std::string &GetLastActionError() const { return m_LastActionError; }
     void SetLastActionError(std::string error);
     void ClearLastActionError();
@@ -60,6 +62,8 @@ public:
     TASEngine *GetEngine() const { return m_Engine; }
 
 private:
+    TASMenuRuntimeSnapshot BuildRuntimeSnapshot() const;
+
     TASEngine *m_Engine;
     std::string m_LastActionError;
 };

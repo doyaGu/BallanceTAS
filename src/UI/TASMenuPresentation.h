@@ -31,6 +31,7 @@ struct TASMenuRuntimeSnapshot {
     std::string activeProjectName;
     std::string activeProjectKey;
     bool activeProjectIsRecord = false;
+    std::string activeTargetLevel;
     std::string activityDetail;
     std::string lastError;
     std::string lastInfo;
@@ -66,12 +67,19 @@ struct TASProjectPresentation {
     std::string rowStatusLabel;
     std::string rowBadgeLabel;
     std::string typeMarkerLabel;
+    std::string nextStepLabel;
     TASMenuTone rowTone = TASMenuTone::Normal;
     TASMenuActionPresentation playAction;
     TASMenuActionPresentation translateAction;
 };
 
 std::string TruncateMenuLabel(const std::string &label, size_t maxChars = 24);
+/// Maps internal level keys ("Level_02") to the name shown in Ballance's level list ("Level 2").
+std::string FormatLevelLabel(const std::string &levelKey);
+/// Tells the user how to begin a pending TAS, e.g. "select Level 2 to start".
+std::string BuildLevelStartInstruction(const std::string &targetLevel, bool isRecord);
+/// In-game message telling the player how to start a pending TAS; empty when nothing is pending.
+std::string BuildPendingMessage(const TASMenuRuntimeSnapshot &snapshot, const std::string &stopKeyLabel);
 TASMenuStatePresentation BuildMenuStatePresentation(const TASMenuRuntimeSnapshot &snapshot);
 TASProjectPresentation BuildProjectPresentation(const TASProject &project,
                                                 const TASMenuStatePresentation &menuState);

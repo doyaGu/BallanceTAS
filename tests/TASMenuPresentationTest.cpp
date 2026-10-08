@@ -455,3 +455,58 @@ TEST(TASMenuPresentationTest, SurfacesLastErrorWithoutHidingRecoveryActions) {
     EXPECT_EQ(state.refreshAction.label, "Refresh");
     EXPECT_TRUE(state.refreshAction.enabled);
 }
+
+TEST(TASMenuPresentationTest, FormatsLevelKeysAsLevelSelectNames) {
+    EXPECT_EQ(FormatLevelLabel("Level_02"), "Level 2");
+    EXPECT_EQ(FormatLevelLabel("Level_12"), "Level 12");
+    EXPECT_EQ(FormatLevelLabel("Custom"), "Custom");
+    EXPECT_EQ(FormatLevelLabel("Level_"), "Level_");
+    EXPECT_EQ(FormatLevelLabel("Level_x1"), "Level_x1");
+    EXPECT_EQ(FormatLevelLabel(""), "");
+}
+
+TEST(TASMenuPresentationTest, ShowsNextStepForEachProjectKind) {
+    TASProject levelScript("C:/TAS/LevelScript",
+                           MakeManifest("LevelScript", "level", "level", "Level_03"));
+    TASProject globalScript("C:/TAS/GlobalScript",
+                            MakeManifest("GlobalScript", "global", "menu", ""));
+
+    auto recordPath = TempRecordPath("next_step_record.tas");
+    WritePackedRecord(recordPath, MakeRecordFrames(16, 1000.0f / 132.0f, 1000.0f / 132.0f));
+    TASProject record(recordPath.string());
+
+    const auto state = BuildMenuStatePresentation(TASMenuRuntimeSnapshot{});
+    EXPECT_EQ(BuildProjectPresentation(levelScript, state).nextStepLabel, "Next: select Level 3 to start");
+    EXPECT_EQ(BuildProjectPresentation(globalScript, state).nextStepLabel, "Next: select any level to start");
+    EXPECT_EQ(BuildProjectPresentation(record, state).nextStepLabel, "Next: start the level it was recorded on");
+}
+
+TEST(TASMenuPresentationTest, BuildsPendingMessageOnlyWhileWaitingForLevel) {
+    TASMenuRuntimeSnapshot idle;
+    EXPECT_EQ(BuildPendingMessage(idle, "F3"), "");
+
+    TASMenuRuntimeSnapshot running;
+    running.runningPlayback = true;
+    running.activeProjectName = "SR02";
+    EXPECT_EQ(BuildPendingMessage(running, "F3"), "");
+
+    TASMenuRuntimeSnapshot pendingRecord;
+    pendingRecord.pendingPlayback = true;
+    pendingRecord.activeProjectName = "SR02_1.33.070";
+    pendingRecord.activeProjectIsRecord = true;
+    EXPECT_EQ(BuildPendingMessage(pendingRecord, "F3"),
+              "TAS ready: SR02_1.33.070 - start the level it was recorded on (F3 to cancel)");
+
+    TASMenuRuntimeSnapshot pendingScript;
+    pendingScript.pendingPlayback = true;
+    pendingScript.activeProjectName = "LevelScript";
+    pendingScript.activeTargetLevel = "Level_03";
+    EXPECT_EQ(BuildPendingMessage(pendingScript, "F3"),
+              "TAS ready: LevelScript - select Level 3 to start (F3 to cancel)");
+
+    TASMenuRuntimeSnapshot pendingRecording;
+    pendingRecording.pendingRecording = true;
+    pendingRecording.activeTargetLevel = "Level_05";
+    EXPECT_EQ(BuildPendingMessage(pendingRecording, ""),
+              "Recording armed - select Level 5 to start");
+}

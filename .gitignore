@@ -34,5 +34,7 @@ build*/
 .idea
 cmake-build-*
 
+/deps/lua
+/SDK
 
 

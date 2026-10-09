@@ -156,6 +156,8 @@ private:
      */
     bool ExecuteStartupProjectIfAppropriate(const std::string &context, const std::string &levelName = "");
 
+    void WarnUnusableStartupProject(const std::vector<std::unique_ptr<TASProject>> &projects) const;
+
     TASEngine *m_Engine;
     std::unique_ptr<TASProject> m_StartupProject;
     std::string m_StartupProjectName;

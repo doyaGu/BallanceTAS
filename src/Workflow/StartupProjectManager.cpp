@@ -152,6 +152,23 @@ bool StartupProjectManager::LoadStartupProject() {
     return LoadProjectForContext("startup");
 }
 
+// A configured name that can never run would otherwise fail silently.
+void StartupProjectManager::WarnUnusableStartupProject(const std::vector<std::unique_ptr<TASProject>> &projects) const {
+    for (const auto &project : projects) {
+        if (!project || project->GetName() != m_StartupProjectName) {
+            continue;
+        }
+        if (!project->IsScriptProject() || !project->IsGlobalProject()) {
+            Log::Warn("Startup project '%s' is not a global script project; startup only runs projects "
+                      "whose manifest has scope = \"global\".", m_StartupProjectName.c_str());
+        }
+        return;
+    }
+    Log::Warn("Startup project '%s' was not found; use the project name without its file extension, "
+              "or leave Startup.Project empty to pick a global project with trigger = \"startup\".",
+              m_StartupProjectName.c_str());
+}
+
 bool StartupProjectManager::LoadProjectForContext(const std::string &context, const std::string &levelName) {
     if (!m_Initialized) {
         return false;
@@ -170,6 +187,9 @@ bool StartupProjectManager::LoadProjectForContext(const std::string &context, co
 
     TASProject *selected = SelectProjectForContext(allProjects, m_StartupProjectName, context, levelName);
     if (!selected) {
+        if (context == "startup" && !m_StartupProjectName.empty()) {
+            WarnUnusableStartupProject(allProjects);
+        }
         m_StartupProject.reset();
         return false;
     }

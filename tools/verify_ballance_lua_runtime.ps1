@@ -181,6 +181,11 @@ if (Test-Path -LiteralPath $config) {
          $startupSection.Groups[1].Value -notmatch '(?m)^\s*B\s+AutoLoad\s+1\s*$')) {
         throw "BallanceTAS Startup.Enabled and Startup.AutoLoad must both be 1 for the smoke project."
     }
+    $startupProject = [regex]::Match($startupSection.Groups[1].Value, '(?m)^\s*S\s+Project[ \t]*(\S*)[ \t]*$')
+    if ($startupProject.Success -and $startupProject.Groups[1].Value -and
+        $startupProject.Groups[1].Value -ne 'LuaRuntimeSmoke') {
+        throw "BallanceTAS Startup.Project is '$($startupProject.Groups[1].Value)'; it must be empty or LuaRuntimeSmoke for the smoke project to start."
+    }
 }
 
 Invoke-BallanceTASBuild -Path $buildPath

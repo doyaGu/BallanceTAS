@@ -1,5 +1,7 @@
 #include "GameInterface.h"
 
+#include <BML/ScriptHelper.h>
+
 #include <stdexcept>
 
 #include "Logger.h"
@@ -484,6 +486,191 @@ void GameInterface::PrintMessage(const char *message) const {
 
 void GameInterface::SkipRenderForTicks(size_t ticks) {
     m_Mod->SkipRenderingForTicks(ticks);
+}
+
+namespace {
+    struct MenuScreen {
+        const char *script;
+        const char *name;
+    };
+
+    // Overlays first, so the screen the player actually sees wins.
+    constexpr MenuScreen kMenuScreens[] = {
+        {"Menu_YesNo", "yesno"},
+        {"Menu_HighscoreEntry", "highscore_entry"},
+        {"Menu_Pause", "pause"},
+        {"Menu_Dead", "dead"},
+        {"Menu_End", "end"},
+        {"Menu_Score", "score"},
+        {"Menu_Opt_Graphics", "options_graphics"},
+        {"Menu_Opt_Keys", "options_keys"},
+        {"Menu_Opt_Sound", "options_sound"},
+        {"Menu_Options", "options"},
+        {"Menu_Highscore", "highscore"},
+        {"Menu_Credits", "credits"},
+        {"Menu_Zone", "zone"},
+        {"Menu_Start", "start"},
+        {"Menu_Main", "main"},
+    };
+}
+
+std::string GameInterface::GetActiveMenu() const {
+    for (const auto &screen : kMenuScreens) {
+        CKBehavior *script = m_BML->GetScriptByName(screen.script);
+        if (script && script->IsActive()) {
+            return screen.name;
+        }
+    }
+    return {};
+}
+
+bool GameInterface::LoadLevel(int level, std::string &error) {
+    if (IsIngame()) {
+        error = "already in a level; exit to the menu first";
+        return false;
+    }
+
+    // Leave the menu the same way its own level buttons do (see BML+ CustomMaps).
+    const std::string menu = GetActiveMenu();
+    CKBehavior *exitMenu = nullptr;
+    if (menu == "start") {
+        exitMenu = ScriptHelper::FindFirstBB(m_BML->GetScriptByName("Menu_Start"), "Exit");
+    } else if (menu == "main") {
+        exitMenu = ScriptHelper::FindFirstBB(m_BML->GetScriptByName("Menu_Main"), "Exit", false, 1, 0);
+    } else {
+        error = menu.empty() ? "no menu is active" : "close the '" + menu + "' menu first";
+        return false;
+    }
+
+    CKDataArray *currentLevel = m_CurrentLevel ? m_CurrentLevel : m_BML->GetArrayByName("CurrentLevel");
+    CKLevel *scene = m_CKContext->GetCurrentLevel();
+    CKGroup *allSound = m_BML->GetGroupByName("All_Sound");
+    CKMessageManager *messages = m_CKContext->GetMessageManager();
+    if (!exitMenu || !currentLevel || !scene || !allSound || !messages) {
+        error = "the menu scene is incomplete";
+        return false;
+    }
+    if (!currentLevel->SetElementValue(0, 0, &level)) {
+        error = "could not set CurrentLevel";
+        return false;
+    }
+
+    messages->SendMessageSingle(messages->AddMessageType((CKSTRING) "Load Level"), scene);
+    messages->SendMessageSingle(messages->AddMessageType((CKSTRING) "Menu_Load"), allSound);
+    if (CK2dEntity *blackScreen = m_BML->Get2dEntityByName("M_BlackScreen")) {
+        blackScreen->Show(CKHIDE);
+    }
+    exitMenu->ActivateInput(0);
+    exitMenu->Activate();
+    Log::Info("Loading level %d from the '%s' menu.", level, menu.c_str());
+    return true;
+}
+
+bool GameInterface::ReadGameFlowMessage(int pin, CKMessageType &type, std::string &error) const {
+    CKBehavior *handler = m_BML->GetScriptByName("Event_handler");
+    CKBehavior *dispatch = handler
+        ? ScriptHelper::FindFirstBB(handler, "Switch On Message", false, 2, 11, 11, 0)
+        : nullptr;
+    if (!dispatch) {
+        error = "the game's Event_handler script was not found";
+        return false;
+    }
+    // Read the message type the game itself waits for instead of hardcoding names.
+    type = -1;
+    if (dispatch->GetInputParameterValue(pin, &type) != CK_OK || type < 0) {
+        error = "could not read the Event_handler message type";
+        return false;
+    }
+    return true;
+}
+
+void GameInterface::ExitMenuScript(const char *scriptName) {
+    CKBehavior *script = m_BML->GetScriptByName(scriptName);
+    if (!script || !script->IsActive()) {
+        return;
+    }
+    if (CKBehavior *exit = ScriptHelper::FindFirstBB(script, "Exit")) {
+        exit->ActivateInput(0);
+        exit->Activate();
+    }
+}
+
+void GameInterface::DispatchGameFlowMessage(CKMessageType type, bool toBalls, bool ballsFirst) {
+    CKMessageManager *messages = m_CKContext->GetMessageManager();
+    CKLevel *scene = m_CKContext->GetCurrentLevel();
+    CKGroup *allBalls = toBalls ? m_BML->GetGroupByName("All_Balls") : nullptr;
+    if (!messages || !scene || (toBalls && !allBalls)) {
+        Log::Error("Game event could not be delivered: the level scene is incomplete.");
+        return;
+    }
+    const char *name = messages->GetMessageTypeName(type);
+    Log::Info("Sending game event '%s'%s.", name ? name : "?", toBalls ? " to the level and all balls" : "");
+    if (ballsFirst && allBalls) {
+        messages->SendMessageSingle(type, allBalls);
+    }
+    messages->SendMessageSingle(type, scene);
+    if (!ballsFirst && allBalls) {
+        messages->SendMessageSingle(type, allBalls);
+    }
+}
+
+bool GameInterface::SendGameFlowEvent(GameFlowEvent event, std::string &error) {
+    if (!IsIngame()) {
+        error = "not in a level";
+        return false;
+    }
+    const bool completed = IsLevelCompleted();
+    if (event == GameFlowEvent::NextLevel && !completed) {
+        error = "the next level is only available after finishing this one";
+        return false;
+    }
+
+    CKMessageType type = -1;
+    if (!ReadGameFlowMessage(static_cast<int>(event), type, error)) {
+        return false;
+    }
+
+    // Replay what the game's own buttons do (Menu.nmo):
+    // - End screen (level finished): leave Menu_End, then message the level.
+    // - Mid-level (pause menu): the level is paused first, which stops the
+    //   gameplay scripts that push the ball; then the pause menu is left and
+    //   the message goes to the level and every ball. Resetting while those
+    //   scripts still run corrupts the game's heap.
+    if (completed) {
+        ExitMenuScript("Menu_End");
+        DispatchGameFlowMessage(type, false, false);
+        return true;
+    }
+
+    CKMessageType pauseType = -1;
+    if (!ReadGameFlowMessage(static_cast<int>(GameFlowEvent::PauseLevel), pauseType, error)) {
+        return false;
+    }
+    if (!m_BML->GetGroupByName("All_Balls")) {
+        error = "the All_Balls group was not found";
+        return false;
+    }
+
+    const bool ballsFirst = event == GameFlowEvent::ExitLevel;
+    auto leaveMenuAndSend = [this, type, ballsFirst]() {
+        ExitMenuScript("Menu_Pause");
+        // The pause menu's YesNo step waits 2 frames before sending.
+        m_BML->AddTimer(static_cast<CKDWORD>(2), [this, type, ballsFirst]() {
+            DispatchGameFlowMessage(type, true, ballsFirst);
+        });
+    };
+
+    CKBehavior *pauseMenu = m_BML->GetScriptByName("Menu_Pause");
+    if (pauseMenu && pauseMenu->IsActive()) {
+        leaveMenuAndSend();
+    } else {
+        if (CKMessageManager *messages = m_CKContext->GetMessageManager()) {
+            Log::Info("Pausing the level before the game event.");
+            messages->SendMessageSingle(pauseType, m_CKContext->GetCurrentLevel());
+        }
+        m_BML->AddTimer(static_cast<CKDWORD>(2), leaveMenuAndSend);
+    }
+    return true;
 }
 
 void GameInterface::OnCloseMenu() {

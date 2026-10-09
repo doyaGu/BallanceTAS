@@ -38,8 +38,12 @@ return function()
   if tas.menu.is_in_menu() ~= true or tas.menu.is_in_game() ~= false then
     error("tas.menu state query failed")
   end
-  if pcall(tas.menu.get_current) then
-    error("tas.menu.get_current should report the unimplemented API cleanly")
+  local currentMenu = tas.menu.get_current()
+  if currentMenu ~= nil and type(currentMenu) ~= "string" then
+    error("tas.menu.get_current should return a screen name or nil")
+  end
+  if pcall(tas.menu.navigate_to, "main") then
+    error("tas.menu.navigate_to should report the unsupported API cleanly")
   end
 
   if type(tas.record.is_playing()) ~= "boolean" or type(tas.record.is_paused()) ~= "boolean" then

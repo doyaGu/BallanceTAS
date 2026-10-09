@@ -4,6 +4,7 @@
 #include "../LuaRuntime/LuaStackGuard.h"
 
 #include "GameInterface.h"
+#include "LevelNames.h"
 #include "Logger.h"
 #ifdef Yield
 #undef Yield
@@ -11,7 +12,10 @@
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
+#include <optional>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 
 static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
@@ -68,42 +72,67 @@ static int GetSector(lua_State *L) {
     return 1;
 }
 
-static int StubLoad(lua_State *L) {
+// Actions return true, or false plus a reason, instead of raising: whether a
+// level can be loaded depends on game state the script may want to handle.
+static int PushActionResult(lua_State *L, bool ok, const std::string &error) {
+    lua_pushboolean(L, ok);
+    if (ok) {
+        return 1;
+    }
+    lua_pushlstring(L, error.data(), error.size());
+    return 2;
+}
+
+static std::optional<int> CheckLevelArgument(lua_State *L, int index) {
+    if (lua_type(L, index) == LUA_TNUMBER) {
+        if (!lua_isinteger(L, index)) {
+            return std::nullopt;
+        }
+        const lua_Integer level = lua_tointeger(L, index);
+        return LevelNames::IsBuiltinLevel(static_cast<int>(level)) ? std::optional<int>(static_cast<int>(level))
+                                                                   : std::nullopt;
+    }
     size_t length = 0;
-    const char *levelName = luaL_checklstring(L, 1, &length);
-    Log::Warn("[STUB] level.load('%.*s') - Not yet implemented", static_cast<int>(length), levelName ? levelName : "");
-    Log::Info("  Future implementation: This will trigger level loading through the game engine");
-    return luaL_error(L, "level.load: Not yet implemented - stub function");
+    const char *text = luaL_checklstring(L, index, &length);
+    return LevelNames::Parse(std::string_view(text, length));
 }
 
-static int StubRestart(lua_State *L) {
-    Log::Warn("[STUB] level.restart() - Not yet implemented");
-    Log::Info("  Future implementation: This will restart the current level");
-    return luaL_error(L, "level.restart: Not yet implemented - stub function");
+static int LoadLevel(lua_State *L) {
+    const std::optional<int> level = CheckLevelArgument(L, 1);
+    if (!level) {
+        return luaL_argerror(L, 1, "expected a level 1-13 or a name such as \"Level_03\"");
+    }
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    std::string error = "game interface is not available";
+    const bool ok = game && game->LoadLevel(*level, error);
+    return PushActionResult(L, ok, error);
 }
 
-static int StubExitToMenu(lua_State *L) {
-    Log::Warn("[STUB] level.exit_to_menu() - Not yet implemented");
-    Log::Info("  Future implementation: This will exit to the main menu");
-    return luaL_error(L, "level.exit_to_menu: Not yet implemented - stub function");
+static int SendFlowEvent(lua_State *L, GameInterface::GameFlowEvent event) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    std::string error = "game interface is not available";
+    const bool ok = game && game->SendGameFlowEvent(event, error);
+    return PushActionResult(L, ok, error);
 }
 
-static int StubNext(lua_State *L) {
-    Log::Warn("[STUB] level.next() - Not yet implemented");
-    Log::Info("  Future implementation: This will load the next level in sequence");
-    return luaL_error(L, "level.next: Not yet implemented - stub function");
+static int Restart(lua_State *L) {
+    return SendFlowEvent(L, GameInterface::GameFlowEvent::ResetLevel);
 }
 
-static int StubPrevious(lua_State *L) {
-    Log::Warn("[STUB] level.previous() - Not yet implemented");
-    Log::Info("  Future implementation: This will load the previous level");
-    return luaL_error(L, "level.previous: Not yet implemented - stub function");
+static int ExitToMenu(lua_State *L) {
+    return SendFlowEvent(L, GameInterface::GameFlowEvent::ExitLevel);
+}
+
+static int Next(lua_State *L) {
+    return SendFlowEvent(L, GameInterface::GameFlowEvent::NextLevel);
 }
 
 static int IsCompleted(lua_State *L) {
-    Log::Warn("[STUB] level.is_completed() - Not yet implemented, returning false");
-    Log::Info("  Future implementation: This will check if the level end was reached");
-    lua_pushboolean(L, 0);
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushboolean(L, game && game->IsLevelCompleted());
     return 1;
 }
 
@@ -139,7 +168,7 @@ static int WaitForLoad(lua_State *L) {
 }
 
 static int WaitForComplete(lua_State *L) {
-    RequireScheduler(L, "level.wait_for_complete")->YieldWaitForEvent("level_complete");
+    RequireScheduler(L, "level.wait_for_complete")->YieldWaitForEvent("level_finish");
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
@@ -173,11 +202,10 @@ void LuaApi::RegisterLevelApi(lua_State *state, ScriptContext *context) {
     SetLevelFunction(state, "is_loaded", IsLoaded, context);
     SetLevelFunction(state, "is_paused", IsPaused, context);
     SetLevelFunction(state, "get_sector", GetSector, context);
-    SetLevelFunction(state, "load", StubLoad, context);
-    SetLevelFunction(state, "restart", StubRestart, context);
-    SetLevelFunction(state, "exit_to_menu", StubExitToMenu, context);
-    SetLevelFunction(state, "next", StubNext, context);
-    SetLevelFunction(state, "previous", StubPrevious, context);
+    SetLevelFunction(state, "load", LoadLevel, context);
+    SetLevelFunction(state, "restart", Restart, context);
+    SetLevelFunction(state, "exit_to_menu", ExitToMenu, context);
+    SetLevelFunction(state, "next", Next, context);
     SetLevelFunction(state, "is_completed", IsCompleted, context);
     SetLevelFunction(state, "is_at_checkpoint", IsAtCheckpoint, context);
     SetLevelFunction(state, "wait_for_load", WaitForLoad, context);

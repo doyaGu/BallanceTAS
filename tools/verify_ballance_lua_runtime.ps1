@@ -304,7 +304,8 @@ try {
                 'Math Smoke PASS',
                 'World Smoke PASS',
                 'State Smoke PASS',
-                'Validation Smoke PASS'
+                'Validation Smoke PASS',
+                'Level Smoke PASS'
             )
             foreach ($marker in $requiredMarkers) {
                 if ($text -notmatch [regex]::Escape($marker)) {

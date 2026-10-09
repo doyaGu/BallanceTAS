@@ -17,6 +17,7 @@ local modules = {
   { name = "world_smoke", label = "World Smoke" },
   { name = "state_smoke", label = "State Smoke" },
   { name = "validation_smoke", label = "Validation Smoke" },
+  { name = "level_smoke", label = "Level Smoke" },
 }
 
 local function run_module(module)

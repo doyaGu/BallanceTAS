@@ -525,6 +525,7 @@ void BallanceTAS::OnExitGame() {
 
 void BallanceTAS::OnPreLoadLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
+        m_Engine->GetGameInterface()->SetLevelCompleted(false);
         m_Engine->Start();
     }
     PublishEngineEvent(this, PreLoadLevelEvent{});
@@ -539,6 +540,7 @@ FORWARD_SIMPLE_EVENT(OnStartLevel,      StartLevelEvent)
 
 void BallanceTAS::OnPreResetLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
+        m_Engine->GetGameInterface()->SetLevelCompleted(false);
         PublishEngineEvent(this, PreResetLevelEvent{});
         m_Engine->Stop();
     }
@@ -594,6 +596,7 @@ void BallanceTAS::OnPostCheckpointReached() {
 
 void BallanceTAS::OnLevelFinish() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
+        m_Engine->GetGameInterface()->SetLevelCompleted(true);
         PublishEngineEvent(this, LevelFinishEvent{});
         if (m_ConfigService.IsStopOnFinish()) {
             m_Engine->Stop();

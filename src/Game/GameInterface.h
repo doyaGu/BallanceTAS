@@ -207,11 +207,34 @@ public:
     void OnCloseMenu();
 
     // ========================================
+    // Game Flow
+    // ========================================
+    // These drive the game's own scripts the same way its menu buttons do.
+
+    /// Pins of the Switch On Message in base.cmo's Event_handler script.
+    enum class GameFlowEvent { ResetLevel = 4, PauseLevel = 5, ExitLevel = 7, NextLevel = 8 };
+
+    /// Load built-in level 1-13 from the main menu or level selection.
+    bool LoadLevel(int level, std::string &error);
+    /// Restart, exit or advance the level the way the pause/end menus do. Asynchronous:
+    /// returns once the sequence is scheduled; the level events report completion.
+    bool SendGameFlowEvent(GameFlowEvent event, std::string &error);
+    /// Topmost active menu screen ("main", "start", "pause", ...); empty when none is active.
+    std::string GetActiveMenu() const;
+
+    bool IsLevelCompleted() const { return m_LevelCompleted; }
+    void SetLevelCompleted(bool completed) { m_LevelCompleted = completed; }
+
+    // ========================================
     // Utilities
     // ========================================
     void AddTimer(size_t tick, const std::function<void()> &callback);
 
 private:
+    bool ReadGameFlowMessage(int pin, CKMessageType &type, std::string &error) const;
+    void ExitMenuScript(const char *scriptName);
+    void DispatchGameFlowMessage(CKMessageType type, bool toBalls, bool ballsFirst);
+
     // ========================================
     // Core Managers
     // ========================================
@@ -228,6 +251,7 @@ private:
     // Game Data
     // ========================================
     std::string m_MapName;
+    bool m_LevelCompleted = false;
 
     // ========================================
     // Gameplay Data Arrays

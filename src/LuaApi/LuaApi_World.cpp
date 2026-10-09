@@ -5,6 +5,7 @@
 
 #include "GameInterface.h"
 #include "ScriptContext.h"
+#include "physics_RT.h"
 
 #include <CK3dEntity.h>
 #include <CKCamera.h>
@@ -14,6 +15,7 @@
 constexpr const char *kCKObjectMt = "BallanceTAS.CKObject";
 constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
 constexpr const char *kCKCameraMt = "BallanceTAS.CKCamera";
+constexpr const char *kPhysicsObjectMt = "BallanceTAS.PhysicsObject";
 constexpr const char *kContextUpvalue = "LuaApi.World.Context";
 
 static ScriptContext *GetContext(lua_State *L) {
@@ -42,6 +44,22 @@ static void PushCKCamera(lua_State *L, CKCamera *camera) {
         return;
     }
     tas::lua::PushBorrowedUserdata<CKCamera>(L, kCKCameraMt, camera);
+}
+
+static void PushPhysicsObject(lua_State *L, PhysicsObject *object) {
+    if (!object) {
+        lua_pushnil(L);
+        return;
+    }
+    tas::lua::PushBorrowedUserdata<PhysicsObject>(L, kPhysicsObjectMt, object);
+}
+
+static void PushVxVector(lua_State *L, const VxVector &value) {
+    lua_getglobal(L, "VxVector");
+    lua_pushnumber(L, value.x);
+    lua_pushnumber(L, value.y);
+    lua_pushnumber(L, value.z);
+    lua_call(L, 3, 1);
 }
 
 static void SetContextFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
@@ -108,6 +126,21 @@ static int GetBall(lua_State *L) {
     return 1;
 }
 
+static PhysicsObject *GetBallPhysicsObject(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    CK3dEntity *ball = game ? game->GetActiveBall() : nullptr;
+    return ball ? game->GetPhysicsObject(ball) : nullptr;
+}
+
+static int GetPhysicsObject(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    auto *entity = tas::lua::CheckUserdata<CK3dEntity>(L, 1, kCK3dEntityMt);
+    PushPhysicsObject(L, game ? game->GetPhysicsObject(entity) : nullptr);
+    return 1;
+}
+
 static int GetBallPosition(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
@@ -116,12 +149,31 @@ static int GetBallPosition(lua_State *L) {
         lua_pushnil(L);
         return 1;
     }
-    VxVector position = game->GetPosition(ball);
-    lua_getglobal(L, "VxVector");
-    lua_pushnumber(L, position.x);
-    lua_pushnumber(L, position.y);
-    lua_pushnumber(L, position.z);
-    lua_call(L, 3, 1);
+    PushVxVector(L, game->GetPosition(ball));
+    return 1;
+}
+
+static int GetBallVelocity(lua_State *L) {
+    PhysicsObject *object = GetBallPhysicsObject(L);
+    if (!object) {
+        lua_pushnil(L);
+        return 1;
+    }
+    VxVector velocity;
+    object->GetVelocity(&velocity, nullptr);
+    PushVxVector(L, velocity);
+    return 1;
+}
+
+static int GetBallAngularVelocity(lua_State *L) {
+    PhysicsObject *object = GetBallPhysicsObject(L);
+    if (!object) {
+        lua_pushnil(L);
+        return 1;
+    }
+    VxVector angularVelocity;
+    object->GetVelocity(nullptr, &angularVelocity);
+    PushVxVector(L, angularVelocity);
     return 1;
 }
 
@@ -148,6 +200,9 @@ void LuaApi::RegisterWorldQueryApi(lua_State *state, ScriptContext *context) {
     SetContextFunction(state, "get_camera", GetCamera, context);
     SetContextFunction(state, "get_ball", GetBall, context);
     SetContextFunction(state, "get_ball_position", GetBallPosition, context);
+    SetContextFunction(state, "get_ball_velocity", GetBallVelocity, context);
+    SetContextFunction(state, "get_ball_angular_velocity", GetBallAngularVelocity, context);
+    SetContextFunction(state, "get_physics_object", GetPhysicsObject, context);
 
     lua_pop(state, 1);
 }

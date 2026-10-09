@@ -68,6 +68,17 @@ return function()
   if tas.level.is_completed() then
     error("tas.level.is_completed should be false right after loading")
   end
+  local velocity = tas.get_ball_velocity()
+  local angular = tas.get_ball_angular_velocity()
+  local body = tas.get_physics_object(tas.get_ball())
+  if velocity == nil or angular == nil or body == nil then
+    error("ball velocity / physics object should be readable once the ball is controllable")
+  end
+  local bodyVelocity, bodyAngular = body:get_velocity()
+  if bodyVelocity.x ~= velocity.x or bodyVelocity.y ~= velocity.y or bodyVelocity.z ~= velocity.z
+      or bodyAngular.x ~= angular.x or bodyAngular.y ~= angular.y or bodyAngular.z ~= angular.z then
+    error("tas.get_ball_velocity disagrees with PhysicsObject:get_velocity")
+  end
   local loadOk, loadErr = tas.level.load(2)
   if loadOk or not tostring(loadErr):find("already in a level", 1, true) then
     error("tas.level.load inside a level should fail, got " .. tostring(loadOk) .. " " .. tostring(loadErr))

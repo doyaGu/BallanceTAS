@@ -121,6 +121,10 @@ local function end_menu()
   end, 150)
   check(tas.level.is_completed(), "the level should be completed")
   tas.log("Game Flow finished Level 1 with %s", record)
+  -- With TAS.AutoRestart the run is armed again a frame after it ends; it must not
+  -- replay in Level 2.
+  tas.wait_ticks(2)
+  tas.project.stop_playback()
 
   -- Score, optional highscore entry and table, then the end screen.
   local deadline = os.time() + 60

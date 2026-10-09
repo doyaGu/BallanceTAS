@@ -505,23 +505,41 @@ bool TASEngine::StopSession(RuntimeSession::StopOptions options, const char *rea
     return true;
 }
 
+// Runs after PlaybackCompletedEvent, whose router has usually stopped the session already.
 void TASEngine::HandlePlaybackCompleted() {
     auto *session = Session();
-    if (m_ShuttingDown || !session || (!session->IsPlaying() && !session->IsPaused())) {
+    if (m_ShuttingDown || !session) {
         return;
     }
 
+    // Global scripts run on in their context; everything else can be armed again.
+    bool canRestart = false;
     if (auto *playbackService = m_ServiceContainer.Resolve<PlaybackService>()) {
         if (auto *project = playbackService->GetCurrentProject()) {
             m_LastCompletedPlaybackProjectName = project->GetName();
+            canRestart = !(project->IsScriptProject() && project->IsGlobalProject());
         }
     }
 
-    m_Requests.clearProjectOnStop = false;
-    auto result = session->OnPlaybackCompleted(GetPlaybackType());
-    if (!result.IsOk()) {
-        Log::Error("Runtime session failed to complete playback: %s",
-                   result.GetError().message.c_str());
+    if (session->IsPlaying() || session->IsPaused()) {
+        m_Requests.clearProjectOnStop = false;
+        auto result = session->OnPlaybackCompleted(GetPlaybackType());
+        if (!result.IsOk()) {
+            Log::Error("Runtime session failed to complete playback: %s",
+                       result.GetError().message.c_str());
+            return;
+        }
+    }
+
+    // Like a playback the level end stopped: scripts usually finish before the level
+    // does, records usually after. Next frame, once the playback service has unwound.
+    if (canRestart && IsAutoRestartEnabled()) {
+        AddTimer(1ul, [this]() {
+            const auto *current = Session();
+            if (!m_ShuttingDown && current && current->IsIdle()) {
+                RestartCurrentProject();
+            }
+        });
     }
 }
 

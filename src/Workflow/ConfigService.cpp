@@ -48,8 +48,14 @@ void ConfigService::RegisterProperties(IConfig *config) {
     m_Validation->SetDefaultBoolean(false);
 
     m_AutoRestart = config->GetProperty("TAS", "AutoRestart");
-    m_AutoRestart->SetComment("Automatically restarts the current project when the same level is loaded again.");
-    m_AutoRestart->SetDefaultBoolean(false);
+    m_AutoRestart->SetComment("Keep a record or level script armed after its playback ends, however it ends, "
+                              "so it plays again the next time a level loads.");
+    m_AutoRestart->SetDefaultBoolean(true);
+
+    m_SkipRenderUntilFrame = config->GetProperty("TAS", "SkipRenderUntilFrame");
+    m_SkipRenderUntilFrame->SetComment("During playback, skip rendering until this playback frame to get there "
+                                       "faster (0 renders every frame).");
+    m_SkipRenderUntilFrame->SetDefaultInteger(0);
 
     m_StopOnFinish = config->GetProperty("TAS", "StopOnFinish");
     m_StopOnFinish->SetComment("Automatically stops TAS playback/recording when the level ends.");
@@ -135,7 +141,7 @@ void ConfigService::RegisterProperties(IConfig *config) {
 void ConfigService::OnPropertyChanged(const char *category, const char *key, IProperty *prop) {
     if (!m_EventBus) return;
 
-    if (prop == m_Enabled || prop == m_Validation || prop == m_AutoRestart ||
+    if (prop == m_Enabled || prop == m_Validation || prop == m_AutoRestart || prop == m_SkipRenderUntilFrame ||
         prop == m_StopOnFinish || prop == m_StopKey || prop == m_RecordingMaxFrames ||
         prop == m_StartupScriptEnabled || prop == m_StartupScriptProject || prop == m_StartupLevel ||
         prop == m_AutoLoadStartupScript || prop == m_ShowOSD ||

@@ -49,6 +49,11 @@ public:
     bool IsValidation() const      { return m_Validation && m_Validation->GetBoolean(); }
     bool IsAutoRestart() const     { return m_AutoRestart && m_AutoRestart->GetBoolean(); }
     bool IsStopOnFinish() const    { return m_StopOnFinish && m_StopOnFinish->GetBoolean(); }
+    /// Playback frame up to which rendering is skipped; 0 when off.
+    int GetSkipRenderUntilFrame() const {
+        const int frame = m_SkipRenderUntilFrame ? m_SkipRenderUntilFrame->GetInteger() : 0;
+        return frame > 0 ? frame : 0;
+    }
     CKKEYBOARD GetStopKey() const  { return m_StopKey ? m_StopKey->GetKey() : CKKEY_F3; }
 
     // --- Recording ---
@@ -73,6 +78,7 @@ private:
     IProperty *m_Validation = nullptr;
     IProperty *m_AutoRestart = nullptr;
     IProperty *m_StopOnFinish = nullptr;
+    IProperty *m_SkipRenderUntilFrame = nullptr;
     IProperty *m_StopKey = nullptr;
 
     // Recording

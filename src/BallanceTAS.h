@@ -186,6 +186,8 @@ private:
 
     // Picks up projects added, removed or edited while the game runs.
     void PollProjects();
+    // TAS.SkipRenderUntilFrame: no rendering until playback reaches that frame.
+    void SkipRenderingToConfiguredFrame();
 
     std::unique_ptr<GameInterface> m_GameInterface;
 

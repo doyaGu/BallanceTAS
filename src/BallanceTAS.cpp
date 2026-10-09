@@ -13,6 +13,7 @@
 #include "ScriptContextManager.h"
 #include "StartupProjectManager.h"
 #include "ProjectManager.h"
+#include "PlaybackService.h"
 #include "TASProject.h"
 #include "UIManager.h"
 #include "Logger.h"
@@ -496,6 +497,7 @@ void BallanceTAS::OnProcess() {
             startup->Tick();
         }
         PollProjects();
+        SkipRenderingToConfiguredFrame();
         if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
             harness->Tick();
         }
@@ -511,6 +513,17 @@ void BallanceTAS::OnProcess() {
     if (m_SkipRenderingCount != 0) {
         m_BML->SkipRenderForNextTick();
         --m_SkipRenderingCount;
+    }
+}
+
+void BallanceTAS::SkipRenderingToConfiguredFrame() {
+    const int target = m_ConfigService.GetSkipRenderUntilFrame();
+    if (target <= 0 || !m_Engine->IsPlaying()) {
+        return;
+    }
+    auto *playback = m_Engine->GetServiceProvider().Resolve<PlaybackService>();
+    if (playback && playback->GetCurrentTick() < static_cast<size_t>(target)) {
+        m_BML->SkipRenderForNextTick();
     }
 }
 

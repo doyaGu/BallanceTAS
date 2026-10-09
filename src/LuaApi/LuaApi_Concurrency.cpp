@@ -79,7 +79,10 @@ static int TasWait(lua_State *state) {
     if (lua_isinteger(state, 1)) {
         return TasWaitTicks(state);
     }
-    if (lua_isstring(state, 1)) {
+    if (lua_type(state, 1) == LUA_TNUMBER) {
+        return luaL_error(state, "tas.wait: tick count must be an integer");
+    }
+    if (lua_type(state, 1) == LUA_TSTRING) {
         return TasWaitEvent(state);
     }
     if (lua_isfunction(state, 1)) {

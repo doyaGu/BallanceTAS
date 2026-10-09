@@ -143,15 +143,18 @@ static int Start(lua_State *L) {
 //   Stops the validation recording, writes the dump (+ comparison report if a
 //   reference was given at start). Returns the report table on success.
 static int Stop(lua_State *L) {
+    // report on success, nil + error message on failure
     auto *service = GetService(L);
     if (!service) {
+        lua_pushnil(L);
         lua_pushstring(L, "ValidationService not available");
-        return 1;
+        return 2;
     }
     auto result = service->Stop();
     if (result.IsError()) {
+        lua_pushnil(L);
         PushErrorOrNil(L, result);
-        return 1;
+        return 2;
     }
     PushReportTable(L, service->GetLastReport());
     return 1;

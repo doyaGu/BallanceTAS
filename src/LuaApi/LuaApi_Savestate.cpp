@@ -95,7 +95,9 @@ static int Load(lua_State *L) {
         return luaL_error(L, "Failed to load savestate: %s", result.GetError().message.c_str());
     }
 
-    if (auto *scheduler = context->GetScheduler()) {
+    // Give the game a few frames to settle when we can wait; otherwise return right away.
+    auto *scheduler = context->GetScheduler();
+    if (scheduler && lua_isyieldable(L) && scheduler->CanYieldCurrentThread()) {
         scheduler->YieldTicks(5);
         return lua_yieldk(L, 0, 0, nullptr);
     }

@@ -16,15 +16,50 @@ static void SetTasFunction(lua_State *state, const char *name, lua_CFunction fun
     lua_pop(state, 1);
 }
 
-static int TasLog(lua_State *state) {
+enum class LogLevel { Info, Warn, Error };
+
+// tas.log(message) or tas.log(format, ...) with string.format semantics.
+static int TasLogAt(lua_State *state, LogLevel level, const char *functionName) {
     ScriptContext *context = GetContext(state);
-    if (lua_gettop(state) != 1 || !lua_isstring(state, 1)) {
-        return luaL_error(state, "tas.log(message): expected one string argument");
+    const int argc = lua_gettop(state);
+    if (argc < 1 || !lua_isstring(state, 1)) {
+        return luaL_error(state, "%s(format, ...): expected a format string", functionName);
     }
 
-    const char *message = lua_tostring(state, 1);
-    Log::Info("[lua:%s] %s", context ? context->GetName().c_str() : "unknown", message ? message : "");
+    if (argc > 1) {
+        lua_getglobal(state, "string");
+        lua_getfield(state, -1, "format");
+        lua_remove(state, -2);
+        lua_insert(state, 1);
+        lua_call(state, argc, 1);
+    }
+
+    const char *message = lua_tostring(state, -1);
+    const char *name = context ? context->GetName().c_str() : "unknown";
+    switch (level) {
+    case LogLevel::Info:
+        Log::Info("[lua:%s] %s", name, message ? message : "");
+        break;
+    case LogLevel::Warn:
+        Log::Warn("[lua:%s] %s", name, message ? message : "");
+        break;
+    case LogLevel::Error:
+        Log::Error("[lua:%s] %s", name, message ? message : "");
+        break;
+    }
     return 0;
+}
+
+static int TasLog(lua_State *state) {
+    return TasLogAt(state, LogLevel::Info, "tas.log");
+}
+
+static int TasWarn(lua_State *state) {
+    return TasLogAt(state, LogLevel::Warn, "tas.warn");
+}
+
+static int TasError(lua_State *state) {
+    return TasLogAt(state, LogLevel::Error, "tas.error");
 }
 
 static int TasGetTick(lua_State *state) {
@@ -55,6 +90,8 @@ static int TasGetManifest(lua_State *state) {
 
 void LuaApi::RegisterCoreApi(lua_State *state, ScriptContext *context) {
     SetTasFunction(state, "log", TasLog, context);
+    SetTasFunction(state, "warn", TasWarn, context);
+    SetTasFunction(state, "error", TasError, context);
     SetTasFunction(state, "get_tick", TasGetTick, context);
     SetTasFunction(state, "get_manifest", TasGetManifest, context);
 }

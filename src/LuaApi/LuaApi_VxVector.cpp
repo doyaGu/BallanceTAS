@@ -687,6 +687,47 @@ static int VxVectorCross(lua_State *L) {
     return 1;
 }
 
+// v:reflect(normal): mirror v about a plane with the given (unit) normal.
+static int VxVectorReflect(lua_State *L) {
+    auto *v = CheckVxVector(L, 1);
+    auto *n = CheckVxVector(L, 2);
+    const float twiceDot = 2.0f * (v->x * n->x + v->y * n->y + v->z * n->z);
+    PushVxVector(L, v->x - twiceDot * n->x, v->y - twiceDot * n->y, v->z - twiceDot * n->z);
+    return 1;
+}
+
+// v:rotate(axis, angle_radians): rotate v around axis (Rodrigues' formula).
+static int VxVectorRotate(lua_State *L) {
+    const VxVector v = *CheckVxVector(L, 1);
+    VxVector k = *CheckVxVector(L, 2);
+    const auto angle = static_cast<float>(luaL_checknumber(L, 3));
+    const float length = std::sqrt(k.x * k.x + k.y * k.y + k.z * k.z);
+    if (length <= 0.0f) {
+        return luaL_error(L, "VxVector:rotate: axis must not be zero");
+    }
+    k.x /= length;
+    k.y /= length;
+    k.z /= length;
+    const float c = std::cos(angle);
+    const float s = std::sin(angle);
+    const float kv = k.x * v.x + k.y * v.y + k.z * v.z;
+    const VxVector kxv(k.y * v.z - k.z * v.y, k.z * v.x - k.x * v.z, k.x * v.y - k.y * v.x);
+    PushVxVector(L,
+                 v.x * c + kxv.x * s + k.x * kv * (1.0f - c),
+                 v.y * c + kxv.y * s + k.y * kv * (1.0f - c),
+                 v.z * c + kxv.z * s + k.z * kv * (1.0f - c));
+    return 1;
+}
+
+// v:interpolate(other, t): linear interpolation, t = 0 gives v and t = 1 gives other.
+static int VxVectorInterpolate(lua_State *L) {
+    auto *a = CheckVxVector(L, 1);
+    auto *b = CheckVxVector(L, 2);
+    const auto t = static_cast<float>(luaL_checknumber(L, 3));
+    PushVxVector(L, a->x + (b->x - a->x) * t, a->y + (b->y - a->y) * t, a->z + (b->z - a->z) * t);
+    return 1;
+}
+
 template <typename BinaryOp>
 static int VxVectorBinary(lua_State *L, const char *operationName, BinaryOp op) {
     float ax, ay, az;
@@ -901,6 +942,9 @@ static void RegisterVxVectorType(lua_State *L) {
         .Method("normalize", VxVectorNormalize)
         .Method("dot", VxVectorDot)
         .Method("cross", VxVectorCross)
+        .Method("reflect", VxVectorReflect)
+        .Method("rotate", VxVectorRotate)
+        .Method("interpolate", VxVectorInterpolate)
         .NumericIndex(VxVectorNumericIndex, VxVectorNumericNewIndex)
         .MetaMethod("__add", VxVectorAdd)
         .MetaMethod("__sub", VxVectorSub)

@@ -22,6 +22,9 @@ public:
     static void RegisterConcurrencyApi(lua_State *state, ScriptContext *context, LuaScheduler *scheduler = nullptr);
     static void RegisterAsyncApi(lua_State *state, ScriptContext *context, LuaScheduler *scheduler = nullptr);
 
+    /// Registry key of the prelude's event dispatcher: function(event_name, event_table).
+    static const char *const kEventDispatchKey;
+
 private:
     static void RegisterCoreApi(lua_State *state, ScriptContext *context);
     static void RegisterInputApi(lua_State *state, ScriptContext *context);
@@ -47,4 +50,5 @@ private:
     static void RegisterGlobalApi(lua_State *state, ScriptContext *context);
     static void RegisterMenuApi(lua_State *state, ScriptContext *context);
     static void RegisterHarnessApi(lua_State *state, ScriptContext *context);
+    static void RegisterPrelude(lua_State *state);
 };

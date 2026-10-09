@@ -42,8 +42,9 @@ return function()
   if currentMenu ~= nil and type(currentMenu) ~= "string" then
     error("tas.menu.get_current should return a screen name or nil")
   end
-  if pcall(tas.menu.navigate_to, "main") then
-    error("tas.menu.navigate_to should report the unsupported API cleanly")
+  local buttons = tas.menu.get_buttons("main")
+  if type(buttons) ~= "table" or buttons[1] ~= "start" then
+    error("tas.menu.get_buttons('main') should list the main menu buttons")
   end
 
   if type(tas.record.is_playing()) ~= "boolean" or type(tas.record.is_paused()) ~= "boolean" then

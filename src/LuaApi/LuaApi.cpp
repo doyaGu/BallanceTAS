@@ -55,6 +55,7 @@ void LuaApi::Register(ScriptContext *context) {
     RegisterMenuApi(state, context);
     RegisterHarnessApi(state, context);
     RegisterSharedBufferApi(state, context);
+    RegisterPrelude(state);
 }
 
 void LuaApi::AddLuaPath(lua_State *state, const std::string &path) {

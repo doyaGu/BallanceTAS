@@ -58,6 +58,56 @@ static int CKObjectIsVisible(lua_State *L) {
     return 1;
 }
 
+// object:show([visible_or_option]): true/CKSHOW, false/CKHIDE or CKHIERARCHICALHIDE.
+static int CKObjectShow(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    CK_OBJECT_SHOWOPTION option = CKSHOW;
+    if (lua_isboolean(L, 2)) {
+        option = lua_toboolean(L, 2) ? CKSHOW : CKHIDE;
+    } else if (!lua_isnoneornil(L, 2)) {
+        const lua_Integer value = luaL_checkinteger(L, 2);
+        if (value != CKHIDE && value != CKSHOW && value != CKHIERARCHICALHIDE) {
+            return luaL_error(L, "CKObject:show: expected a boolean or CKSHOW/CKHIDE/CKHIERARCHICALHIDE");
+        }
+        option = static_cast<CK_OBJECT_SHOWOPTION>(value);
+    }
+    object->Show(option);
+    return 0;
+}
+
+static int CKObjectIsHiddenByParent(lua_State *L) {
+    lua_pushboolean(L, CheckCKObject(L, 1)->IsHiddenByParent());
+    return 1;
+}
+
+static int CKObjectIsHierarchicallyHidden(lua_State *L) {
+    lua_pushboolean(L, CheckCKObject(L, 1)->IsHierarchicallyHide());
+    return 1;
+}
+
+static int CKObjectCanBeHidden(lua_State *L) {
+    lua_pushboolean(L, CheckCKObject(L, 1)->CanBeHide() != 0);
+    return 1;
+}
+
+static int CKObjectIsToBeDeleted(lua_State *L) {
+    lua_pushboolean(L, CheckCKObject(L, 1)->IsToBeDeleted() != 0);
+    return 1;
+}
+
+static int CKObjectIsUpToDate(lua_State *L) {
+    lua_pushboolean(L, CheckCKObject(L, 1)->IsUpToDate() != 0);
+    return 1;
+}
+
+static int CKObjectModifyObjectFlags(lua_State *L) {
+    auto *object = CheckCKObject(L, 1);
+    const auto add = static_cast<CKDWORD>(luaL_checkinteger(L, 2));
+    const auto remove = static_cast<CKDWORD>(luaL_optinteger(L, 3, 0));
+    object->ModifyObjectFlags(add, remove);
+    return 0;
+}
+
 static int CKObjectToString(lua_State *L) {
     auto *object = CheckCKObject(L, 1);
     char buffer[160];
@@ -81,5 +131,12 @@ void LuaApi::RegisterCKObject(lua_State *state) {
         .ReadonlyProperty("object_flags", CKObjectFlags)
         .ReadonlyProperty("is_dynamic", CKObjectIsDynamic)
         .ReadonlyProperty("is_visible", CKObjectIsVisible)
+        .ReadonlyProperty("is_hidden_by_parent", CKObjectIsHiddenByParent)
+        .ReadonlyProperty("is_hierarchically_hidden", CKObjectIsHierarchicallyHidden)
+        .ReadonlyProperty("can_be_hidden", CKObjectCanBeHidden)
+        .ReadonlyProperty("is_to_be_deleted", CKObjectIsToBeDeleted)
+        .ReadonlyProperty("is_up_to_date", CKObjectIsUpToDate)
+        .Method("show", CKObjectShow)
+        .Method("modify_object_flags", CKObjectModifyObjectFlags)
         .MetaMethod("__tostring", CKObjectToString);
 }

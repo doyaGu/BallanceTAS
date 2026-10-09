@@ -184,8 +184,10 @@ void MessageBus::RegisterLuaHandler(const std::string &contextName,
         }
 
         try {
-            auto result = luaHandlerRef->Call(1, 0, [&](lua_State *state) {
+            // handler(data, message): message carries sender, type and correlation_id for respond().
+            auto result = luaHandlerRef->Call(2, 0, [&](lua_State *state) {
                 msg.data.value.Push(state);
+                tas::lua::LuaValue(tas::lua::LuaValue::Storage{MakeMessageTable(msg)}).Push(state);
             });
             if (result.IsError()) {
                 Log::Error("MessageBus: Lua handler error (%s, %s): %s",

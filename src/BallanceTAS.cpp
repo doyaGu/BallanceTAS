@@ -18,6 +18,8 @@
 #include "EventBus.h"
 #include "GameEvents.h"
 #include "HookManager.h"
+#include "InputSystem.h"
+#include "ScriptContext.h"
 #include "HarnessRuntime.h"
 #include "PlayerHostBridge.h"
 
@@ -234,6 +236,8 @@ bool BallanceTAS::InitializeGameHooks() {
             success = false;
         } else {
             Log::Info("InputManager hook enabled.");
+            m_IdleScriptInputGuard = m_HookManager->RegisterPostInputCallback(
+                [this](CKInputManager *im) { ApplyIdleScriptInput(im); });
         }
 
         auto *ipionManager = context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
@@ -259,12 +263,38 @@ bool BallanceTAS::InitializeGameHooks() {
     return success;
 }
 
+void BallanceTAS::ApplyIdleScriptInput(CKInputManager *inputManager) {
+    // During playback PlaybackService owns the keyboard buffer.
+    if (!inputManager || !m_Engine || m_Engine->IsPlaying() || m_Engine->IsPaused()) {
+        return;
+    }
+    auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>();
+    if (!contexts) {
+        return;
+    }
+
+    std::vector<InputSystem *> inputs;
+    for (const auto &context : contexts->GetContextsByPriority()) {
+        if (context && context->IsExecuting()) {
+            InputSystem *input = context->GetInputSystem();
+            if (input && input->IsEnabled()) {
+                inputs.push_back(input);
+            }
+        }
+    }
+    if (!inputs.empty()) {
+        InputSystem::OverlayMergedOnKeyboardState(m_Engine->GetCurrentTick(), inputs,
+                                                  inputManager->GetKeyboardState());
+    }
+}
+
 void BallanceTAS::DisableGameHooks() {
     if (!m_GameHooksEnabled) return;
 
     Log::Info("Disabling game hooks...");
 
     try {
+        m_IdleScriptInputGuard.Reset();
         if (m_HookManager) {
             m_HookManager->DisableAll();
         }

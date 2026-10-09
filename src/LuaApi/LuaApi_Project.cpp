@@ -165,6 +165,11 @@ static int Load(lua_State *L) {
     return 1;
 }
 
+// Stopping the context that is running this call would tear down the coroutine we are in.
+static bool IsRunningInCaller(ScriptContext *context, TASProject *project) {
+    return project && context->GetCurrentProject() == project;
+}
+
 static int Unload(lua_State *L) {
     auto *context = GetContext(L);
     auto *manager = context ? context->GetProjectManager() : nullptr;
@@ -176,6 +181,10 @@ static int Unload(lua_State *L) {
     if (!current) {
         Log::Warn("project.unload: No project currently loaded");
         return 0;
+    }
+
+    if (IsRunningInCaller(context, current)) {
+        return luaL_error(L, "project.unload: cannot unload the project this script belongs to");
     }
 
     Log::Info("Unloading project: %s", current->GetName().c_str());
@@ -212,6 +221,10 @@ static int Reload(lua_State *L) {
         Log::Warn("project.reload: No project currently loaded");
         lua_pushboolean(L, 0);
         return 1;
+    }
+
+    if (IsRunningInCaller(context, current)) {
+        return luaL_error(L, "project.reload: cannot reload the project this script belongs to");
     }
 
     const std::string projectName = current->GetName();

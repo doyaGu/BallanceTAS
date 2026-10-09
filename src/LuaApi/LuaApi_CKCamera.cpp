@@ -78,29 +78,7 @@ static int CameraClassId(lua_State *L) {
     return 1;
 }
 
-static int CameraGetPosition(lua_State *L) {
-    auto *camera = CheckCKCamera(L, 1);
-    VxVector position;
-    if (camera) {
-        camera->GetPosition(&position);
-    } else {
-        position.x = position.y = position.z = 0.0f;
-    }
-    PushVxVector(L, position);
-    return 1;
-}
 
-static int CameraGetScale(lua_State *L) {
-    auto *camera = CheckCKCamera(L, 1);
-    VxVector scale;
-    if (camera) {
-        camera->GetScale(&scale);
-    } else {
-        scale.x = scale.y = scale.z = 0.0f;
-    }
-    PushVxVector(L, scale);
-    return 1;
-}
 
 static int FrontPlane(lua_State *L) {
     auto *camera = CheckCKCamera(L, 1);
@@ -263,8 +241,6 @@ void LuaApi::RegisterCKCamera(lua_State *state) {
         .Property("orthographic_zoom", OrthographicZoom, SetOrthographicZoom)
         .Property("aspect_ratio", AspectRatio, SetAspectRatio)
         .Property("target", Target, SetTarget)
-        .Method("get_position", CameraGetPosition)
-        .Method("get_scale", CameraGetScale)
         .Method("compute_projection_matrix", ComputeProjectionMatrix)
         .Method("reset_roll", ResetRoll)
         .Method("roll", Roll)

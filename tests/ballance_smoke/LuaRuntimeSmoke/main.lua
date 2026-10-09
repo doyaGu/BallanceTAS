@@ -6,6 +6,7 @@ package.path = table.concat({
 }, ";")
 
 local modules = {
+  { name = "api_surface_smoke", label = "API Surface Smoke" },
   { name = "core_smoke", label = "Core Smoke" },
   { name = "context_smoke", label = "Context Smoke" },
   { name = "shared_smoke", label = "Shared Smoke" },
@@ -17,6 +18,8 @@ local modules = {
   { name = "world_smoke", label = "World Smoke" },
   { name = "state_smoke", label = "State Smoke" },
   { name = "validation_smoke", label = "Validation Smoke" },
+  { name = "api_extras_smoke", label = "API Extras Smoke" },
+  { name = "menu_smoke", label = "Menu Smoke" },
   { name = "level_smoke", label = "Level Smoke" },
 }
 

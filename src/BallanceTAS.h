@@ -5,6 +5,7 @@
 #include <BML/BMLAll.h>
 
 #include "ConfigService.h"
+#include "HookManager.h"
 
 // Forward-declare the core engine to avoid including its full header here.
 // This reduces compile times and keeps dependencies clean.
@@ -167,6 +168,7 @@ private:
      * Called during framework shutdown.
      */
     void DisableGameHooks();
+    void ApplyIdleScriptInput(CKInputManager *inputManager);
 
     /**
      * @brief Initializes the TASEngine and UIManager and all their subsystems.
@@ -201,6 +203,9 @@ private:
 
     bool m_Initialized = false;
     bool m_GameHooksEnabled = false;
+
+    // Applies script keys outside TAS playback, so global scripts can drive menus.
+    ScopedCallback m_IdleScriptInputGuard;
     size_t m_SkipRenderingCount = 0;
 
     ILogger *m_Logger = nullptr;

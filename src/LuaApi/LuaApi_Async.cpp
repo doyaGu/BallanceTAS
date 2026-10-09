@@ -315,6 +315,14 @@ static int SpawnTask(lua_State *L) {
     return 1;
 }
 
+// Internal: create a task and run it immediately (used for tas.on listeners).
+static int RunNow(lua_State *L) {
+    CreateTask(L);
+    auto task = CheckTaskShared(L, -1);
+    RequireTaskScheduler(L, task)->RunAsyncTaskNow(task);
+    return 1;
+}
+
 static int Delay(lua_State *L) {
     const int ticks = static_cast<int>(luaL_checkinteger(L, 1));
     if (ticks <= 0) {
@@ -761,6 +769,7 @@ static void RegisterAsyncTable(lua_State *L, ScriptContext *context, LuaSchedule
     SetContextFunction(L, "__all_raw", AllRaw, context, scheduler);
     SetContextFunction(L, "__race_raw", RaceRaw, context, scheduler);
     SetContextFunction(L, "__any_raw", AnyRaw, context, scheduler);
+    SetContextFunction(L, "__run_now", RunNow, context, scheduler);
 
     lua_newtable(L);
     lua_pushlightuserdata(L, context);

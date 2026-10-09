@@ -96,6 +96,34 @@ static int GetSector(lua_State *L) {
     return 1;
 }
 
+static int GetPoints(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetPoints() : 0);
+    return 1;
+}
+
+static int GetLifeCount(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetLifeCount() : 0);
+    return 1;
+}
+
+static int GetSRScore(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushnumber(L, game ? game->GetSRScore() : 0.0f);
+    return 1;
+}
+
+static int GetHSScore(lua_State *L) {
+    auto *context = GetContext(L);
+    const auto *game = context ? context->GetGameInterface() : nullptr;
+    lua_pushinteger(L, game ? game->GetHSScore() : 0);
+    return 1;
+}
+
 static int GetObjectById(lua_State *L) {
     auto *context = GetContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
@@ -195,6 +223,10 @@ void LuaApi::RegisterWorldQueryApi(lua_State *state, ScriptContext *context) {
     SetContextFunction(state, "is_playing", IsPlaying, context);
     SetContextFunction(state, "get_level", GetLevel, context);
     SetContextFunction(state, "get_sector", GetSector, context);
+    SetContextFunction(state, "get_points", GetPoints, context);
+    SetContextFunction(state, "get_life_count", GetLifeCount, context);
+    SetContextFunction(state, "get_sr_score", GetSRScore, context);
+    SetContextFunction(state, "get_hs_score", GetHSScore, context);
     SetContextFunction(state, "get_object", GetObject, context);
     SetContextFunction(state, "get_object_by_id", GetObjectById, context);
     SetContextFunction(state, "get_camera", GetCamera, context);

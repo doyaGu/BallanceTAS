@@ -2,7 +2,10 @@
 
 #include <BML/ScriptHelper.h>
 
+#include <cctype>
 #include <stdexcept>
+
+#include "LevelNames.h"
 
 #include "Logger.h"
 #include "BallanceTAS.h"
@@ -524,6 +527,198 @@ std::string GameInterface::GetActiveMenu() const {
     return {};
 }
 
+namespace {
+    struct MenuButton {
+        const char *screen;
+        const char *button; // name scripts use
+        const char *entity; // 2D entity the screen's TT PushButton2 targets
+    };
+
+    // Button names per screen, in the order the screens list them.
+    constexpr MenuButton kMenuButtons[] = {
+        {"main", "start", "M_Main_But_1"},
+        {"main", "highscore", "M_Main_But_2"},
+        {"main", "options", "M_Main_But_3"},
+        {"main", "credits", "M_Main_But_4"},
+        {"main", "exit", "M_Main_But_5"},
+        {"start", "back", "M_Start_But_Back"},
+        {"start", "zone", "M_Start_But_13"},
+        {"pause", "restart", "M_Pause_But_1"},
+        {"pause", "highscore", "M_Pause_But_2"},
+        {"pause", "options", "M_Pause_But_3"},
+        {"pause", "exit", "M_Pause_But_4"},
+        {"pause", "back", "M_Pause_But_Back"},
+        {"pause", "continue", "M_Pause_But_Back"},
+        {"yesno", "yes", "M_YesNo_But_Yes"},
+        {"yesno", "no", "M_YesNo_But_No"},
+        {"yesno", "back", "M_YesNo_But_No"},
+        {"dead", "restart", "M_Dead_But_1"},
+        {"dead", "main", "M_Dead_But_2"},
+        {"end", "restart", "M_End_But_1"},
+        {"end", "highscore", "M_End_But_2"},
+        {"end", "options", "M_End_But_3"},
+        {"end", "main", "M_End_But_4"},
+        {"end", "next", "M_End_But_5"},
+        {"options", "graphics", "M_Options_But_1"},
+        {"options", "keys", "M_Options_But_2"},
+        {"options", "sound", "M_Options_But_3"},
+        {"options", "back", "M_Options_But_Back"},
+        {"highscore", "back", "M_Highscore_But_Back"},
+        {"highscore", "next", "M_Highscore_But_Back"},
+        {"highscore", "previous_table", "M_Highscore_But_1"},
+        {"highscore", "next_table", "M_Highscore_But_2"},
+        {"highscore_entry", "ok", "M_HighEntry_But_1"},
+        {"credits", "back", "M_Credits_But_Back"},
+    };
+
+    const char *MenuScriptName(const std::string &screen) {
+        for (const auto &entry : kMenuScreens) {
+            if (screen == entry.name) {
+                return entry.script;
+            }
+        }
+        return nullptr;
+    }
+
+    std::string Lowered(std::string text) {
+        for (char &c : text) {
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        }
+        return text;
+    }
+
+    // Activates whatever the given output leads to, climbing out of graphs whose
+    // output it is wired to, the way the behavioral engine would on the next frame.
+    bool ActivateOutputTarget(CKBehavior *owner, CKBehaviorIO *output) {
+        for (int depth = 0; owner && output && depth < 8; ++depth) {
+            CKBehavior *graph = owner->GetParent();
+            if (!graph) {
+                return false;
+            }
+            CKBehaviorIO *next = nullptr;
+            for (int i = 0; i < graph->GetSubBehaviorLinkCount(); ++i) {
+                CKBehaviorLink *link = graph->GetSubBehaviorLink(i);
+                if (link && link->GetInBehaviorIO() == output) {
+                    next = link->GetOutBehaviorIO();
+                    break;
+                }
+            }
+            if (!next) {
+                return false;
+            }
+            CKBehavior *target = next->GetOwner();
+            if (!target) {
+                return false;
+            }
+            for (int k = 0; k < target->GetInputCount(); ++k) {
+                if (target->GetInput(k) == next) {
+                    target->ActivateInput(k);
+                    target->Activate();
+                    return true;
+                }
+            }
+            // The link ends on an output of the enclosing graph: keep following it outward.
+            owner = target;
+            output = next;
+        }
+        return false;
+    }
+}
+
+std::vector<std::string> GameInterface::GetMenuButtons(const std::string &screen) const {
+    std::vector<std::string> buttons;
+    for (const auto &entry : kMenuButtons) {
+        if (screen == entry.screen) {
+            buttons.emplace_back(entry.button);
+        }
+    }
+    if (screen == "start") {
+        for (int level = LevelNames::kFirstLevel; level <= 12; ++level) {
+            buttons.push_back("level_" + std::to_string(level));
+        }
+    } else if (screen == "zone") {
+        buttons.emplace_back("level_13");
+        buttons.emplace_back("back");
+    } else if (screen == "options_graphics" || screen == "options_keys" || screen == "options_sound") {
+        buttons.emplace_back("back");
+    }
+    return buttons;
+}
+
+bool GameInterface::ClickMenuButton(const std::string &buttonName, std::string &error) {
+    const std::string screen = GetActiveMenu();
+    if (screen.empty()) {
+        error = "no menu is active";
+        return false;
+    }
+    const std::string button = Lowered(buttonName);
+    CKBehavior *script = m_BML->GetScriptByName(MenuScriptName(screen));
+    if (!script) {
+        error = "the '" + screen + "' menu script was not found";
+        return false;
+    }
+
+    // Level buttons go through LoadLevel, which does what the button does.
+    if (button.rfind("level_", 0) == 0 && (screen == "start" || screen == "zone")) {
+        const auto level = LevelNames::Parse(button.substr(6));
+        if (!level || (screen == "zone") != (*level == 13)) {
+            error = "'" + buttonName + "' is not a button on the '" + screen + "' menu";
+            return false;
+        }
+        return LoadLevel(*level, error);
+    }
+
+    // Screens whose "back" is their Exit graph (Esc on those screens does the same).
+    if (button == "back" && (screen == "options_graphics" || screen == "options_keys" ||
+                             screen == "options_sound" || screen == "zone")) {
+        CKBehavior *exit = ScriptHelper::FindFirstBB(script, "Exit");
+        if (!exit) {
+            error = "the '" + screen + "' menu has no Exit graph";
+            return false;
+        }
+        exit->ActivateInput(0);
+        exit->Activate();
+        return true;
+    }
+
+    const char *entityName = nullptr;
+    for (const auto &entry : kMenuButtons) {
+        if (screen == entry.screen && (button == entry.button || buttonName == entry.entity)) {
+            entityName = entry.entity;
+            break;
+        }
+    }
+    if (!entityName) {
+        error = "'" + buttonName + "' is not a button on the '" + screen + "' menu";
+        return false;
+    }
+
+    CKBehavior *pushButton = nullptr;
+    ScriptHelper::FindBB(script, [&](CKBehavior *beh) {
+        CKBeObject *target = beh->GetTarget();
+        if (target && target->GetName() && std::string(target->GetName()) == entityName) {
+            pushButton = beh;
+            return false;
+        }
+        return true;
+    }, "TT PushButton2", true);
+    if (!pushButton) {
+        error = std::string("the '") + buttonName + "' button was not found";
+        return false;
+    }
+    // Hidden, locked and removed buttons are switched off by their menu.
+    if (!pushButton->IsActive()) {
+        error = std::string("the '") + buttonName + "' button is not available right now";
+        return false;
+    }
+    if (!ActivateOutputTarget(pushButton, pushButton->GetOutput(2))) {
+        error = std::string("could not press '") + buttonName + "'";
+        return false;
+    }
+    Log::Info("Pressed menu button '%s' on '%s'.", button.c_str(), screen.c_str());
+    return true;
+}
+
 bool GameInterface::LoadLevel(int level, std::string &error) {
     if (IsIngame()) {
         error = "already in a level; exit to the menu first";
@@ -537,6 +732,9 @@ bool GameInterface::LoadLevel(int level, std::string &error) {
         exitMenu = ScriptHelper::FindFirstBB(m_BML->GetScriptByName("Menu_Start"), "Exit");
     } else if (menu == "main") {
         exitMenu = ScriptHelper::FindFirstBB(m_BML->GetScriptByName("Menu_Main"), "Exit", false, 1, 0);
+    } else if (menu == "zone") {
+        // The Twilight Zone screen deactivates itself after its pick instead of using an Exit graph.
+        exitMenu = m_BML->GetScriptByName("Menu_Zone");
     } else {
         error = menu.empty() ? "no menu is active" : "close the '" + menu + "' menu first";
         return false;
@@ -560,8 +758,12 @@ bool GameInterface::LoadLevel(int level, std::string &error) {
     if (CK2dEntity *blackScreen = m_BML->Get2dEntityByName("M_BlackScreen")) {
         blackScreen->Show(CKHIDE);
     }
-    exitMenu->ActivateInput(0);
-    exitMenu->Activate();
+    if (menu == "zone") {
+        exitMenu->Activate(FALSE);
+    } else {
+        exitMenu->ActivateInput(0);
+        exitMenu->Activate();
+    }
     Log::Info("Loading level %d from the '%s' menu.", level, menu.c_str());
     return true;
 }

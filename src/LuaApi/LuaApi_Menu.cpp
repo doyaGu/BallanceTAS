@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 static ScriptContext *GetContext(lua_State *L) {
     return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
@@ -28,6 +29,10 @@ static LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
     if (!scheduler) {
         luaL_error(L, "%s: Scheduler not available for this context", functionName);
     }
+    // Every caller waits; refuse before registering a wait that could never resume.
+    if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
+        luaL_error(L, "%s must be called from a scheduler coroutine", functionName);
+    }
     return scheduler;
 }
 
@@ -37,12 +42,6 @@ static void SetMenuFunction(lua_State *L, const char *name, lua_CFunction functi
     lua_setfield(L, -2, name);
 }
 
-static int MenuStubError(lua_State *L, const char *functionName) {
-    // Clicking through menus needs script input to reach the game outside TAS
-    // playback, which today only PlaybackService applies.
-    return luaL_error(L, "%s: not supported; use tas.level.load()/exit_to_menu() to change screens",
-                      functionName);
-}
 
 static int PushActionResult(lua_State *L, bool ok, const std::string &error) {
     lua_pushboolean(L, ok);
@@ -106,14 +105,45 @@ static int IsAt(lua_State *L) {
     return 1;
 }
 
-static int NavigateTo(lua_State *L) {
-    luaL_checkstring(L, 1);
-    return MenuStubError(L, "menu.navigate_to");
-}
+
 
 static int ClickButton(lua_State *L) {
-    luaL_checkstring(L, 1);
-    return MenuStubError(L, "menu.click_button");
+    size_t length = 0;
+    const char *name = luaL_checklstring(L, 1, &length);
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    std::string error = "game interface is not available";
+    const bool ok = game && game->ClickMenuButton(std::string(name, length), error);
+    return PushActionResult(L, ok, error);
+}
+
+static int GoBack(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    std::string error = "game interface is not available";
+    const bool ok = game && game->ClickMenuButton("back", error);
+    return PushActionResult(L, ok, error);
+}
+
+// tas.menu.get_buttons([screen]) -> names click_button accepts (current screen by default)
+static int GetButtons(lua_State *L) {
+    auto *context = GetContext(L);
+    auto *game = context ? context->GetGameInterface() : nullptr;
+    std::string screen;
+    if (lua_isnoneornil(L, 1)) {
+        screen = game ? game->GetActiveMenu() : std::string();
+    } else {
+        size_t length = 0;
+        const char *name = luaL_checklstring(L, 1, &length);
+        screen = NormalizeMenuName(std::string_view(name, length));
+    }
+    const auto buttons = game ? game->GetMenuButtons(screen) : std::vector<std::string>();
+    lua_createtable(L, static_cast<int>(buttons.size()), 0);
+    for (size_t i = 0; i < buttons.size(); ++i) {
+        lua_pushlstring(L, buttons[i].data(), buttons[i].size());
+        lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
+    }
+    return 1;
 }
 
 static int SelectLevel(lua_State *L) {
@@ -136,9 +166,6 @@ static int SelectLevel(lua_State *L) {
     return PushActionResult(L, ok, error);
 }
 
-static int GoBack(lua_State *L) {
-    return MenuStubError(L, "menu.go_back");
-}
 
 static int GoToMain(lua_State *L) {
     auto *context = GetContext(L);
@@ -151,29 +178,12 @@ static int GoToMain(lua_State *L) {
         const bool ok = game->SendGameFlowEvent(GameInterface::GameFlowEvent::ExitLevel, error);
         return PushActionResult(L, ok, error);
     }
-    const std::string menu = game->GetActiveMenu();
-    if (menu == "main") {
-        return PushActionResult(L, true, {});
-    }
-    return PushActionResult(L, false, "navigating between menu screens is not supported (current: " +
-                                          (menu.empty() ? std::string("none") : menu) + ")");
+    // From a menu screen the prelude's version walks there with navigate_to.
+    return PushActionResult(L, game->GetActiveMenu() == "main", "not at the main menu");
 }
 
-static int SendKey(lua_State *L) {
-    luaL_checkstring(L, 1);
-    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
-        luaL_checkinteger(L, 2);
-    }
-    return MenuStubError(L, "menu.send_key");
-}
 
-static int PressEnter(lua_State *L) {
-    return MenuStubError(L, "menu.press_enter");
-}
 
-static int PressEscape(lua_State *L) {
-    return MenuStubError(L, "menu.press_escape");
-}
 
 static int MenuAtPredicate(lua_State *L) {
     auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
@@ -257,14 +267,11 @@ void LuaApi::RegisterMenuApi(lua_State *state, ScriptContext *context) {
     SetMenuFunction(state, "is_in_game", IsInGame, context);
     SetMenuFunction(state, "get_current", GetCurrent, context);
     SetMenuFunction(state, "is_at", IsAt, context);
-    SetMenuFunction(state, "navigate_to", NavigateTo, context);
     SetMenuFunction(state, "click_button", ClickButton, context);
+    SetMenuFunction(state, "get_buttons", GetButtons, context);
     SetMenuFunction(state, "select_level", SelectLevel, context);
     SetMenuFunction(state, "go_back", GoBack, context);
     SetMenuFunction(state, "go_to_main", GoToMain, context);
-    SetMenuFunction(state, "send_key", SendKey, context);
-    SetMenuFunction(state, "press_enter", PressEnter, context);
-    SetMenuFunction(state, "press_escape", PressEscape, context);
     SetMenuFunction(state, "wait_for_menu", WaitForMenu, context);
     SetMenuFunction(state, "wait_for_game_start", WaitForGameStart, context);
     SetMenuFunction(state, "wait_for_menu_entry", WaitForMenuEntry, context);

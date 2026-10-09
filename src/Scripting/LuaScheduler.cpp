@@ -677,6 +677,26 @@ void LuaScheduler::StartAsyncTask(const std::shared_ptr<AsyncTask> &task) {
     m_Tasks.push_back({std::move(thread), std::make_shared<ImmediateTask>()});
 }
 
+void LuaScheduler::RunAsyncTaskNow(const std::shared_ptr<AsyncTask> &task) {
+    m_ThreadValidator.AssertOwnership();
+
+    if (!task || task->IsDone() || task->IsScheduled()) {
+        return;
+    }
+
+    auto thread = task->GetThread();
+    if (!thread || !thread->IsValid()) {
+        task->SetError("async task coroutine is invalid");
+        return;
+    }
+
+    task->Start();
+    task->MarkScheduled();
+    m_AsyncOwners[thread.get()] = task;
+    // If the task waits, its Yield* call queues it on m_Tasks like any other coroutine.
+    ResumeThread(thread);
+}
+
 LuaValue LuaScheduler::YieldWaitForMessageResponse(const std::string &correlationId, int timeoutMs) {
     m_ThreadValidator.AssertOwnership();
 

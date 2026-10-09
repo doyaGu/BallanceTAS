@@ -88,6 +88,15 @@ static int Unwrap(lua_State *L) {
     return 1;
 }
 
+static int UnwrapErr(lua_State *L) {
+    auto *result = CheckResult(L, 1);
+    if (result->isSuccess) {
+        return luaL_error(L, "Called unwrap_err() on Ok result");
+    }
+    lua_pushlstring(L, result->error.data(), result->error.size());
+    return 1;
+}
+
 static int UnwrapOr(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (result->isSuccess) {
@@ -106,8 +115,9 @@ static int UnwrapOrElse(lua_State *L) {
     }
     luaL_checktype(L, 2, LUA_TFUNCTION);
     lua_pushvalue(L, 2);
+    lua_pushlstring(L, result->error.data(), result->error.size());
     std::string error;
-    if (!ProtectedCall(L, 0, 1, error)) {
+    if (!ProtectedCall(L, 1, 1, error)) {
         return luaL_error(L, "unwrap_or_else function failed: %s", error.c_str());
     }
     return 1;
@@ -365,6 +375,7 @@ void LuaApi::RegisterResultApi(lua_State *state, ScriptContext *context) {
         .Method("is_ok", IsOk)
         .Method("is_err", IsErr)
         .Method("unwrap", Unwrap)
+        .Method("unwrap_err", UnwrapErr)
         .Method("unwrap_or", UnwrapOr)
         .Method("unwrap_or_else", UnwrapOrElse)
         .Method("expect", Expect)

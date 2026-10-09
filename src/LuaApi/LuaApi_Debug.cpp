@@ -147,8 +147,11 @@ static int Profile(lua_State *L) {
     return 1;
 }
 
+// tas.force_gc() -> KB freed by a full collection
 static int ForceGC(lua_State *L) {
-    lua_pushinteger(L, lua_gc(L, LUA_GCCOLLECT, 0));
+    const double before = CurrentMemoryKB(L);
+    lua_gc(L, LUA_GCCOLLECT, 0);
+    lua_pushnumber(L, before - CurrentMemoryKB(L));
     return 1;
 }
 

@@ -83,12 +83,29 @@ return function()
   if loadOk or not tostring(loadErr):find("already in a level", 1, true) then
     error("tas.level.load inside a level should fail, got " .. tostring(loadOk) .. " " .. tostring(loadErr))
   end
+  if math.type(tas.get_life_count()) ~= "integer" or tas.get_life_count() < 1 then
+    error("tas.get_life_count should report the lives of a running level")
+  end
+  if math.type(tas.get_points()) ~= "integer" or type(tas.get_sr_score()) ~= "number"
+      or math.type(tas.get_hs_score()) ~= "integer" then
+    error("tas.get_points / get_sr_score / get_hs_score returned the wrong types")
+  end
+  local ball = tas.get_ball()
+  local moved = pcall(function() ball:set_position(ball:get_position()) end)
+  if moved then
+    error("moving the physicalized ball through CK3dEntity should be refused")
+  end
   tas.log("Level Smoke loaded Level 1")
 
-  -- Restart the level.
+  -- Restart the level; tas.once receives the event table.
   local reset = listen("post_reset_level")
+  local resetEvent = nil
+  tas.once("post_reset_level", function(event) resetEvent = event end)
   expect_ok("tas.level.restart()", tas.level.restart())
   wait_for("the level restart", function() return reset.fired end)
+  if type(resetEvent) ~= "table" or resetEvent.name ~= "post_reset_level" or type(resetEvent.tick) ~= "number" then
+    error("tas.once should deliver the post_reset_level event table")
+  end
   tas.log("Level Smoke restarted Level 1")
 
   -- The game only offers "next level" on the end screen.

@@ -193,6 +193,7 @@ add_library(tas_lua_bindings STATIC
         LuaApi/LuaApi_Concurrency.cpp
         LuaApi/LuaApi_Async.cpp
         LuaApi/LuaApi_Context.cpp
+        LuaApi/LuaApi_Prelude.cpp
 )
 target_link_libraries(tas_lua_bindings
         PRIVATE tas_core tas_game tas_scripting tas_features fmt::fmt

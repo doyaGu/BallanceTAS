@@ -294,6 +294,7 @@ try {
             }
 
             $requiredMarkers = @(
+                'API Surface Smoke PASS',
                 'Core Smoke PASS',
                 'Context Smoke PASS',
                 'Shared Smoke PASS',
@@ -305,6 +306,8 @@ try {
                 'World Smoke PASS',
                 'State Smoke PASS',
                 'Validation Smoke PASS',
+                'API Extras Smoke PASS',
+                'Menu Smoke PASS',
                 'Level Smoke PASS'
             )
             foreach ($marker in $requiredMarkers) {

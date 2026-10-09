@@ -27,6 +27,10 @@ static LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
     if (!scheduler) {
         luaL_error(L, "%s: Scheduler not available", functionName);
     }
+    // Every caller waits; refuse before registering a wait that could never resume.
+    if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
+        luaL_error(L, "%s must be called from a scheduler coroutine", functionName);
+    }
     return scheduler;
 }
 

@@ -9,6 +9,7 @@
 #include "LuaScheduler.h"
 #include "LuaApi/LuaApi.h"
 #include "LuaRuntime/LuaProtectedCall.h"
+#include "LuaRuntime/LuaStackGuard.h"
 #include "LuaRuntime/LuaValue.h"
 #include "EventManager.h"
 #include "InputSystem.h"
@@ -528,6 +529,8 @@ void ScriptContext::DispatchGameEvent(const LuaGameEvent &event) {
         m_EventManager->FireEvent(event.name);
     }
 
+    DispatchToLuaListeners(event);
+
     auto it = m_GameEventListeners.find(event.type);
     if (it == m_GameEventListeners.end() || it->second.empty()) {
         return;
@@ -550,6 +553,25 @@ void ScriptContext::DispatchGameEvent(const LuaGameEvent &event) {
         }
     } catch (const std::exception &e) {
         Log::Error("[%s] Exception dispatching typed game event: %s", m_Name.c_str(), e.what());
+    }
+}
+
+void ScriptContext::DispatchToLuaListeners(const LuaGameEvent &event) {
+    lua_State *state = m_LuaState.Get();
+    if (!state || !event.name || !*event.name) {
+        return;
+    }
+
+    tas::lua::LuaStackGuard guard(state);
+    if (lua_getfield(state, LUA_REGISTRYINDEX, LuaApi::kEventDispatchKey) != LUA_TFUNCTION) {
+        return;
+    }
+    lua_pushstring(state, event.name);
+    MakeGameEventValue(event).Push(state);
+    if (lua_pcall(state, 2, 0, 0) != LUA_OK) {
+        const char *message = lua_tostring(state, -1);
+        Log::Error("[%s] Exception dispatching event '%s' to tas.on listeners: %s",
+                   m_Name.c_str(), event.name, message ? message : "unknown error");
     }
 }
 

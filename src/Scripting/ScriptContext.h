@@ -296,6 +296,8 @@ public:
     void ClearGameEventListeners();
     bool HasGameEventListener(GameEventType eventType) const;
     void DispatchGameEvent(const LuaGameEvent &event);
+    /// Hands the event to listeners registered with tas.on / tas.once.
+    void DispatchToLuaListeners(const LuaGameEvent &event);
 
 private:
     /**

@@ -379,6 +379,16 @@ public:
                                            unsigned char *keyboardState);
 
     /**
+     * @brief Like ApplyMergedToKeyboardState, but only writes keys a context set this frame.
+     *
+     * Used outside TAS playback (e.g. in menus) so script keys reach the game while the
+     * player's real keyboard input for every other key is left alone.
+     */
+    static void OverlayMergedOnKeyboardState(size_t currentTick,
+                                             const std::vector<InputSystem *> &inputsHighToLow,
+                                             unsigned char *keyboardState);
+
+    /**
      * @brief Prepares for next frame
      */
     void PrepareNextFrame();

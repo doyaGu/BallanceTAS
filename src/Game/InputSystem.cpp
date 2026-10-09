@@ -707,6 +707,29 @@ void InputSystem::ApplyMergedToKeyboardState(size_t currentTick,
     }
 }
 
+void InputSystem::OverlayMergedOnKeyboardState(size_t currentTick,
+                                               const std::vector<InputSystem *> &inputsHighToLow,
+                                               unsigned char *keyboardState) {
+    if (!keyboardState) {
+        return;
+    }
+
+    std::array<bool, 256> mergedSet{};
+    for (InputSystem *input : inputsHighToLow) {
+        if (!input) {
+            continue;
+        }
+
+        const ExplicitKeyboardState state = input->CaptureExplicitKeyboardState(currentTick);
+        for (size_t code = 0; code < state.isSet.size(); ++code) {
+            if (state.isSet[code] && !mergedSet[code]) {
+                mergedSet[code] = true;
+                keyboardState[code] = state.values[code];
+            }
+        }
+    }
+}
+
 void InputSystem::PrepareNextFrame() {
     for (auto &keyState : m_KeyStates) {
         keyState.PrepareNextFrame();

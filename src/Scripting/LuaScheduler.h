@@ -70,6 +70,8 @@ public:
     void YieldWaitForEvent(const std::string &eventName);
     tas::lua::LuaValue YieldWaitForMessageResponse(const std::string &correlationId, int timeoutMs);
     void StartAsyncTask(const std::shared_ptr<AsyncTask> &task);
+    /// Starts the task and runs it right away until its first wait, instead of on the next tick.
+    void RunAsyncTaskNow(const std::shared_ptr<AsyncTask> &task);
 
     void StartRepeatFor(tas::lua::LuaFunction task, int ticks);
     void StartRepeatUntil(tas::lua::LuaFunction task, tas::lua::LuaFunction condition);

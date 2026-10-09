@@ -307,7 +307,7 @@ static int Fill(lua_State *L) {
     auto &buffer = CheckBuffer(L, 1);
     const auto value = static_cast<uint8_t>(luaL_checkinteger(L, 2));
     const size_t offset = OptionalSize(L, 3, 0, "offset");
-    if (offset >= buffer.Size()) {
+    if (offset > buffer.Size()) {
         return luaL_error(L, "SharedBuffer fill: offset out of bounds");
     }
     const size_t length = OptionalSize(L, 4, buffer.Size() - offset, "length");
@@ -324,7 +324,7 @@ static int Clone(lua_State *L) {
 static int ToHex(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = OptionalSize(L, 2, 0, "offset");
-    if (offset >= buffer.Size()) {
+    if (offset > buffer.Size()) {
         return luaL_error(L, "SharedBuffer to_hex: offset out of bounds");
     }
     const size_t length = OptionalSize(L, 3, buffer.Size() - offset, "length");
@@ -401,6 +401,11 @@ static int FromHex(lua_State *L) {
     const char *hex = luaL_checklstring(L, 1, &hexLength);
     if ((hexLength % 2) != 0) {
         return luaL_error(L, "shared_buffer.from_hex: hex string must have even length");
+    }
+
+    // Validate first: HexNibble raises a Lua error, which must not unwind past a live buffer.
+    for (size_t i = 0; i < hexLength; ++i) {
+        HexNibble(L, hex[i]);
     }
 
     const size_t size = hexLength / 2;

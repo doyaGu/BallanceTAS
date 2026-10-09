@@ -9,6 +9,7 @@
 
 constexpr const char *kVxQuaternionMt = "BallanceTAS.VxQuaternion";
 constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
+constexpr const char *kVxMatrixMt = "BallanceTAS.VxMatrix";
 
 static VxQuaternion *CheckQuat(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxQuaternion>(L, index, kVxQuaternionMt);
@@ -95,6 +96,23 @@ static int FromRotation(lua_State *L) {
     return 0;
 }
 
+// q:from_matrix(matrix[, is_unit[, restore]]) sets q in place from a rotation matrix.
+static int FromMatrix(lua_State *L) {
+    auto *q = CheckQuat(L, 1);
+    const auto *matrix = tas::lua::CheckUserdata<VxMatrix>(L, 2, kVxMatrixMt);
+    const XBOOL isUnit = lua_isnoneornil(L, 3) || lua_toboolean(L, 3) ? TRUE : FALSE;
+    const XBOOL restore = lua_isnoneornil(L, 4) || lua_toboolean(L, 4) ? TRUE : FALSE;
+    q->FromMatrix(*matrix, isUnit, restore);
+    return 0;
+}
+
+static int ToMatrix(lua_State *L) {
+    VxMatrix matrix;
+    CheckQuat(L, 1)->ToMatrix(matrix);
+    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, matrix);
+    return 1;
+}
+
 static int FromEulerAngles(lua_State *L) {
     CheckQuat(L, 1)->FromEulerAngles(static_cast<float>(luaL_checknumber(L, 2)),
                                      static_cast<float>(luaL_checknumber(L, 3)),
@@ -136,7 +154,9 @@ static int NumericIndex(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     if (index < 0 || index > 3) {
-        return luaL_error(L, "VxQuaternion index out of range [0-3]");
+        // Same as VxVector: out-of-range reads give nil.
+        lua_pushnil(L);
+        return 1;
     }
     lua_pushnumber(L, (*q)[index]);
     return 1;
@@ -225,6 +245,8 @@ void LuaApi::RegisterVxQuaternion(lua_State *state) {
         .ReadonlyProperty("euler_angles", EulerAnglesProperty)
         .Method("from_rotation", FromRotation)
         .Method("from_euler_angles", FromEulerAngles)
+        .Method("from_matrix", FromMatrix)
+        .Method("to_matrix", ToMatrix)
         .Method("to_euler_angles", ToEulerAngles)
         .Method("normalize", Normalize)
         .Method("dot", Dot)

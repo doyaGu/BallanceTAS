@@ -55,6 +55,9 @@ static int KeyboardHold(lua_State *state) {
     if (!scheduler) {
         return luaL_error(state, "keyboard.hold: scheduler is not available");
     }
+    if (!lua_isyieldable(state) || !scheduler->CanYieldCurrentThread()) {
+        return luaL_error(state, "keyboard.hold must be called from a scheduler coroutine");
+    }
 
     const std::string keyString = RequireString(state, 1, "key_string");
     const int ticks = static_cast<int>(lua_tointeger(state, 2));

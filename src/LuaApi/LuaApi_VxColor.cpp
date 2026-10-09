@@ -132,7 +132,8 @@ static int VxColorSet(lua_State *L) {
     const int argc = lua_gettop(L) - 1;
     if (argc == 1) {
         color->Set(static_cast<float>(luaL_checknumber(L, 2)));
-        return 0;
+        lua_settop(L, 1);
+        return 1;
     }
     if (argc == 3 || argc == 4) {
         const float r = static_cast<float>(luaL_checknumber(L, 2));
@@ -143,7 +144,9 @@ static int VxColorSet(lua_State *L) {
         } else {
             color->Set(r, g, b);
         }
-        return 0;
+        // Return self, like VxVector:set.
+        lua_settop(L, 1);
+        return 1;
     }
     return luaL_error(L, "VxColor:set(): expected 1, 3, or 4 numeric arguments");
 }
@@ -195,7 +198,11 @@ static int VxColorMul(lua_State *L) {
         PushVxColor(L, *a * static_cast<float>(lua_tonumber(L, 2)));
         return 1;
     }
-    return luaL_error(L, "VxColor multiplication expects VxColor*VxColor or VxColor*number");
+    if (b && lua_isnumber(L, 1)) {
+        PushVxColor(L, *b * static_cast<float>(lua_tonumber(L, 1)));
+        return 1;
+    }
+    return luaL_error(L, "VxColor multiplication expects VxColor*VxColor, VxColor*number or number*VxColor");
 }
 
 static int VxColorDiv(lua_State *L) {

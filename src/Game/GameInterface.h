@@ -2,6 +2,7 @@
 
 #include <CKAll.h>
 #include <string>
+#include <vector>
 #include <functional>
 #include <optional>
 
@@ -221,6 +222,10 @@ public:
     bool SendGameFlowEvent(GameFlowEvent event, std::string &error);
     /// Topmost active menu screen ("main", "start", "pause", ...); empty when none is active.
     std::string GetActiveMenu() const;
+    /// Button names click_button accepts on the given screen.
+    std::vector<std::string> GetMenuButtons(const std::string &screen) const;
+    /// Presses a button of the active menu by running the branch its own push button runs.
+    bool ClickMenuButton(const std::string &button, std::string &error);
 
     bool IsLevelCompleted() const { return m_LevelCompleted; }
     void SetLevelCompleted(bool completed) { m_LevelCompleted = completed; }

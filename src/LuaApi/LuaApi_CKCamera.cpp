@@ -1,5 +1,8 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
+#include "LuaApiValues.h"
+
 #include "../LuaRuntime/LuaStackGuard.h"
 #include "../LuaRuntime/LuaUserdata.h"
 
@@ -7,75 +10,11 @@
 #include <CKCamera.h>
 #include <VxMath.h>
 
-constexpr const char *kCKCameraMt = "BallanceTAS.CKCamera";
-constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
-constexpr const char *kVx2DVectorMt = "BallanceTAS.Vx2DVector";
-constexpr const char *kVxMatrixMt = "BallanceTAS.VxMatrix";
+
+using namespace LuaApiCommon;
 
 static CKCamera *CheckCKCamera(lua_State *L, int index) {
     return tas::lua::CheckUserdata<CKCamera>(L, index, kCKCameraMt);
-}
-
-static Vx2DVector *CheckVx2DVector(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<Vx2DVector>(L, index, kVx2DVectorMt);
-}
-
-static CK3dEntity *OptionalCK3dEntity(lua_State *L, int index) {
-    if (lua_isnoneornil(L, index)) {
-        return nullptr;
-    }
-    return tas::lua::CheckUserdata<CK3dEntity>(L, index, kCK3dEntityMt);
-}
-
-static void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
-    if (!entity) {
-        lua_pushnil(L);
-        return;
-    }
-    tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
-}
-
-static void PushVx2DVector(lua_State *L, float x, float y) {
-    lua_getglobal(L, "Vx2DVector");
-    lua_pushnumber(L, x);
-    lua_pushnumber(L, y);
-    lua_call(L, 2, 1);
-}
-
-static void PushVxVector(lua_State *L, const VxVector &value) {
-    lua_getglobal(L, "VxVector");
-    lua_pushnumber(L, value.x);
-    lua_pushnumber(L, value.y);
-    lua_pushnumber(L, value.z);
-    lua_call(L, 3, 1);
-}
-
-static int CameraName(lua_State *L) {
-    auto *camera = CheckCKCamera(L, 1);
-    lua_pushstring(L, camera && camera->GetName() ? camera->GetName() : "");
-    return 1;
-}
-
-static int CameraSetName(lua_State *L) {
-    auto *camera = CheckCKCamera(L, 1);
-    const char *name = luaL_checkstring(L, 2);
-    if (!camera) {
-        return luaL_error(L, "CKCamera is null");
-    }
-    camera->SetName(const_cast<char *>(name));
-    return 0;
-}
-
-static int CameraId(lua_State *L) {
-    auto *camera = CheckCKCamera(L, 1);
-    lua_pushinteger(L, camera ? camera->GetID() : 0);
-    return 1;
-}
-
-static int CameraClassId(lua_State *L) {
-    auto *camera = CheckCKCamera(L, 1);
-    lua_pushinteger(L, camera ? camera->GetClassID() : 0);
-    return 1;
 }
 
 
@@ -162,7 +101,7 @@ static int AspectRatio(lua_State *L) {
     if (camera) {
         camera->GetAspectRatio(width, height);
     }
-    PushVx2DVector(L, static_cast<float>(width), static_cast<float>(height));
+    PushVx2DVector(L, Vx2DVector(static_cast<float>(width), static_cast<float>(height)));
     return 1;
 }
 
@@ -170,7 +109,7 @@ static int SetAspectRatio(lua_State *L) {
     auto *camera = CheckCKCamera(L, 1);
     auto *aspect = CheckVx2DVector(L, 2);
     if (!camera || !aspect) {
-        return luaL_error(L, "CKCamera aspect_ratio requires camera and Vx2DVector");
+        return luaL_error(L, "CKCamera.aspect_ratio: expected a Vx2DVector");
     }
     camera->SetAspectRatio(static_cast<int>(aspect->x), static_cast<int>(aspect->y));
     return 0;
@@ -183,7 +122,7 @@ static int ComputeProjectionMatrix(lua_State *L) {
     }
     VxMatrix matrix;
     camera->ComputeProjectionMatrix(matrix);
-    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, matrix);
+    PushVxMatrix(L, matrix);
     return 1;
 }
 
@@ -214,7 +153,7 @@ static int SetTarget(lua_State *L) {
     if (!camera) {
         return luaL_error(L, "CKCamera is null");
     }
-    camera->SetTarget(OptionalCK3dEntity(L, 2));
+    camera->SetTarget(OptCK3dEntity(L, 2));
     return 0;
 }
 
@@ -231,9 +170,6 @@ void LuaApi::RegisterCKCamera(lua_State *state) {
 
     tas::lua::LuaUserdataRegistry<CKCamera>(state, kCKCameraMt)
         .Base<CK3dEntity>(kCK3dEntityMt)
-        .Property("name", CameraName, CameraSetName)
-        .ReadonlyProperty("id", CameraId)
-        .ReadonlyProperty("class_id", CameraClassId)
         .Property("front_plane", FrontPlane, SetFrontPlane)
         .Property("back_plane", BackPlane, SetBackPlane)
         .Property("fov", Fov, SetFov)

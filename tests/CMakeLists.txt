@@ -229,6 +229,7 @@ if(BUILD_MOD)
         SOURCES
             SharedBufferTest.cpp
             ../src/LuaApi/LuaApi_SharedBuffer.cpp
+            ../src/LuaApi/LuaApiCommon.cpp
         DEPENDENCIES
             tas_core
             tas_lua_runtime
@@ -243,6 +244,8 @@ if(BUILD_MOD)
         SOURCES
             LuaApiMathTest.cpp
             ../src/LuaApi/LuaApi_VxVector.cpp
+            ../src/LuaApi/LuaApiCommon.cpp
+            ../src/LuaApi/LuaApiValues.cpp
             ../src/LuaApi/LuaApi_VxColor.cpp
             ../src/LuaApi/LuaApi_VxRect.cpp
             ../src/LuaApi/LuaApi_VxQuaternion.cpp
@@ -269,6 +272,8 @@ add_tas_test(LuaSchedulerTest
         SOURCES
             LuaSchedulerTest.cpp
             ../src/LuaApi/LuaApi_Async.cpp
+            ../src/LuaApi/LuaApiCommon.cpp
+            ../src/LuaApi/LuaApiScheduler.cpp
             ../src/LuaApi/LuaApi_Concurrency.cpp
         DEPENDENCIES
             tas_core

@@ -24,6 +24,11 @@ public:
 
     /// Registry key of the prelude's event dispatcher: function(event_name, event_table).
     static const char *const kEventDispatchKey;
+    /// Registry key of run_task_now(fn): starts a task and runs it until its first wait.
+    static const char *const kRunTaskNowKey;
+
+    /// normalize(name) -> canonical menu screen name ("Menu_Opt_Keys" -> "options_keys").
+    static int NormalizeMenuNameFunction(lua_State *state);
 
 private:
     static void RegisterCoreApi(lua_State *state, ScriptContext *context);

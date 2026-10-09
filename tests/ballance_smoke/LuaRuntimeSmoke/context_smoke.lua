@@ -1,13 +1,10 @@
+local util = require("smoke_util")
+local check = util.check
+
 return function()
-  if tas.context.get_name() ~= "global" then
-    error("tas.context.get_name failed: " .. tostring(tas.context.get_name()))
-  end
-  if type(tas.context.get_type()) ~= "number" then
-    error("tas.context.get_type failed")
-  end
+  check(tas.context.get_name() == "global", "tas.context.get_name: " .. tostring(tas.context.get_name()))
+  check(math.type(tas.context.get_type()) == "integer", "tas.context.get_type")
 
   _G.__lua_runtime_smoke_context_value = "global"
-  if _G.__lua_runtime_smoke_context_value ~= "global" then
-    error("global VM write/read failed")
-  end
+  check(_G.__lua_runtime_smoke_context_value == "global", "global VM write/read")
 end

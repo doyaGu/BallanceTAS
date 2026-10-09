@@ -306,7 +306,7 @@ TEST(LuaSchedulerTest, YieldingApisFailClearlyOutsideSchedulerCoroutine) {
         "  local ok, err = pcall(fn)\n"
         "  assert(ok == false, 'expected yielding API to fail outside scheduler coroutine')\n"
         "  local message = type(err) == 'table' and err.message or tostring(err)\n"
-        "  assert(tostring(message):find('scheduler coroutine', 1, true), tostring(message))\n"
+        "  assert(tostring(message):find('script coroutine', 1, true), tostring(message))\n"
         "end\n"
         "expect_scheduler_error(function() tas.wait_ticks(1) end)\n"
         "expect_scheduler_error(function() tas.async.delay(1) end)\n"

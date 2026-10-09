@@ -1,6 +1,7 @@
 #include "LuaApi.h"
 
-#include "../LuaRuntime/LuaStackGuard.h"
+#include "LuaApiCommon.h"
+#include "LuaRuntime/LuaStackGuard.h"
 
 #include "PlaybackService.h"
 #include "RecordPlayer.h"
@@ -11,13 +12,15 @@
 
 #include <filesystem>
 
-static ScriptContext *GetContext(lua_State *L) {
-    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-}
+using namespace LuaApiCommon;
 
-static ValidationService *GetService(lua_State *L) {
-    auto *context = GetContext(L);
-    return context ? context->GetValidationService() : nullptr;
+static ValidationService *RequireService(lua_State *L, const char *where) {
+    ScriptContext *context = GetContext(L);
+    ValidationService *service = context ? context->GetValidationService() : nullptr;
+    if (!service) {
+        Raise(L, where, "the validation service is not available");
+    }
+    return service;
 }
 
 static PlaybackService *GetPlayback(lua_State *L) {
@@ -47,15 +50,6 @@ static std::string ResolveOutputPath(ScriptContext *context) {
     }
     auto *engine = context->GetEngine();
     return engine ? engine->GetPath() : "";
-}
-
-static void PushErrorOrNil(lua_State *L, const Result<void> &result) {
-    if (result.IsOk()) {
-        lua_pushnil(L);
-        return;
-    }
-    const auto &error = result.GetError();
-    lua_pushlstring(L, error.message.data(), error.message.size());
 }
 
 static void PushReportTable(lua_State *L, const ValidationReport &r) {
@@ -100,98 +94,55 @@ static void PushReportTable(lua_State *L, const ValidationReport &r) {
     lua_setfield(L, -2, "report_path");
 }
 
-static void SetValidationFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
-    lua_pushlightuserdata(L, context);
-    lua_pushcclosure(L, function, 1);
-    lua_setfield(L, -2, name);
-}
-
-// tas.validation.start([reference_path])
+// tas.validation.start([reference_path]) -> true | false, reason
 //   Begins capturing a validation recording during active playback. When a
 //   reference trace (a previous validation dump with physics) is supplied, the
 //   subsequent stop() compares the live run against it frame-by-frame.
-//   Returns nil on success, error string on failure.
 static int Start(lua_State *L) {
-    auto *service = GetService(L);
-    if (!service) {
-        lua_pushstring(L, "ValidationService not available");
-        return 1;
+    const char *reference = luaL_optstring(L, 1, "");
+    ValidationService *service = RequireService(L, "tas.validation.start");
+    PlaybackService *playback = GetPlayback(L);
+    RecordPlayer *recordPlayer = GetRecordPlayer(L);
+    if (!(playback && playback->IsPlaying()) && !(recordPlayer && recordPlayer->IsPlaying())) {
+        return PushFail(L, "validation recording requires an active playback");
     }
-    auto *playback = GetPlayback(L);
-    if (!playback) {
-        lua_pushstring(L, "PlaybackService not available");
-        return 1;
-    }
-    auto *recordPlayer = GetRecordPlayer(L);
-    if (!playback->IsPlaying() && !(recordPlayer && recordPlayer->IsPlaying())) {
-        lua_pushstring(L, "Validation recording requires active playback");
-        return 1;
-    }
-
-    std::string reference;
-    if (lua_gettop(L) >= 1 && !lua_isnil(L, 1)) {
-        const char *ref = luaL_checkstring(L, 1);
-        if (ref) reference = ref;
-    }
-
-    std::string outputPath = ResolveOutputPath(GetContext(L));
-    PushErrorOrNil(L, service->Start(outputPath, reference));
-    return 1;
+    const std::string outputPath = ResolveOutputPath(GetContext(L));
+    const auto result = service->Start(outputPath, reference);
+    return result.IsOk() ? PushOk(L) : PushFail(L, result.GetError().message);
 }
 
-// tas.validation.stop()
-//   Stops the validation recording, writes the dump (+ comparison report if a
-//   reference was given at start). Returns the report table on success.
+// tas.validation.stop() -> report table | nil, reason
+//   Stops the validation recording and writes the dump (plus a comparison report
+//   when a reference was given to start()).
 static int Stop(lua_State *L) {
-    // report on success, nil + error message on failure
-    auto *service = GetService(L);
-    if (!service) {
-        lua_pushnil(L);
-        lua_pushstring(L, "ValidationService not available");
-        return 2;
-    }
-    auto result = service->Stop();
+    ValidationService *service = RequireService(L, "tas.validation.stop");
+    const auto result = service->Stop();
     if (result.IsError()) {
-        lua_pushnil(L);
-        PushErrorOrNil(L, result);
-        return 2;
+        return PushNilReason(L, result.GetError().message);
     }
     PushReportTable(L, service->GetLastReport());
     return 1;
 }
 
-// tas.validation.get_report()
-//   Returns the report table from the most recent stop().
+// tas.validation.get_report() -> report table of the most recent stop()
 static int GetReport(lua_State *L) {
-    auto *service = GetService(L);
-    PushReportTable(L, service ? service->GetLastReport() : ValidationReport{});
+    PushReportTable(L, RequireService(L, "tas.validation.get_report")->GetLastReport());
     return 1;
 }
 
-// tas.validation.is_active()
 static int IsActive(lua_State *L) {
-    auto *service = GetService(L);
-    lua_pushboolean(L, service && service->IsActive());
+    lua_pushboolean(L, RequireService(L, "tas.validation.is_active")->IsActive());
     return 1;
 }
 
 void LuaApi::RegisterValidationApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);
-
     lua_getglobal(state, "tas");
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_setglobal(state, "tas");
-        lua_getglobal(state, "tas");
-    }
-
     lua_newtable(state);
-    SetValidationFunction(state, "start", Start, context);
-    SetValidationFunction(state, "stop", Stop, context);
-    SetValidationFunction(state, "get_report", GetReport, context);
-    SetValidationFunction(state, "is_active", IsActive, context);
+    SetClosure(state, "start", Start, context);
+    SetClosure(state, "stop", Stop, context);
+    SetClosure(state, "get_report", GetReport, context);
+    SetClosure(state, "is_active", IsActive, context);
     lua_setfield(state, -2, "validation");
-
     lua_pop(state, 1);
 }

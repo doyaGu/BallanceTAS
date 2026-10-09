@@ -1,5 +1,8 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
+#include "LuaApiValues.h"
+
 #include "../LuaRuntime/LuaStackGuard.h"
 #include "../LuaRuntime/LuaUserdata.h"
 
@@ -7,37 +10,11 @@
 
 #include <string>
 
-constexpr const char *kPhysicsObjectMt = "BallanceTAS.PhysicsObject";
-constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
-constexpr const char *kVxMatrixMt = "BallanceTAS.VxMatrix";
-constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
+
+using namespace LuaApiCommon;
 
 static PhysicsObject *CheckPhysicsObject(lua_State *L, int index) {
     return tas::lua::CheckUserdata<PhysicsObject>(L, index, kPhysicsObjectMt);
-}
-
-static VxVector *CheckVxVector(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<VxVector>(L, index, kVxVectorMt);
-}
-
-static void PushVxVector(lua_State *L, const VxVector &value) {
-    lua_getglobal(L, "VxVector");
-    lua_pushnumber(L, value.x);
-    lua_pushnumber(L, value.y);
-    lua_pushnumber(L, value.z);
-    lua_call(L, 3, 1);
-}
-
-static void PushVxMatrix(lua_State *L, const VxMatrix &value) {
-    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, value);
-}
-
-static void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
-    if (!entity) {
-        lua_pushnil(L);
-        return;
-    }
-    tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
 }
 
 static int Name(lua_State *L) {

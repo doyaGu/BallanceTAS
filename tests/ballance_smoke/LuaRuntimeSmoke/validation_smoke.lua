@@ -47,8 +47,8 @@ return function()
   tas.log("Validation Smoke DRIVER=" .. driver_name)
 
   local reference_path = read_reference_path()
-  local start_error = tas.validation.start(reference_path)
-  if start_error ~= nil then
+  local started, start_error = tas.validation.start(reference_path)
+  if not started then
     error("tas.validation.start failed: " .. tostring(start_error))
   end
   if not tas.validation.is_active() then
@@ -57,10 +57,14 @@ return function()
 
   tas.wait_ticks(4)
 
-  local report = tas.validation.stop()
+  local report, stop_error = tas.validation.stop()
   tas.record.stop()
   if type(report) ~= "table" then
-    error("tas.validation.stop did not return a report")
+    error("tas.validation.stop did not return a report: " .. tostring(stop_error))
+  end
+  local stopped_again, again_error = tas.validation.stop()
+  if stopped_again ~= nil or type(again_error) ~= "string" then
+    error("tas.validation.stop without a recording should return nil and a reason")
   end
   if tas.validation.is_active() then
     error("validation remained active after stop")

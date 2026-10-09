@@ -540,6 +540,10 @@ public:
      */
     bool Save(const std::string &path);
 
+    /// Why the last operation that returned false failed.
+    const std::string &GetLastError() const { return m_LastError; }
+    void ClearLastError() { m_LastError.clear(); }
+
     /// Sidecar file next to a record that keeps what the .tas format cannot hold.
     static std::string GetAnnotationsPath(const std::string &recordPath);
     bool SaveAnnotations(const std::string &path) const;
@@ -1139,7 +1143,12 @@ private:
     // Savestate links
     std::unordered_map<size_t, SavestateLink> m_SavestateLinks;
 
+    mutable std::string m_LastError;
+
     // Helper methods
+    /// Logs the formatted message as a warning (callers get it back as the failure reason),
+    /// keeps it for GetLastError and returns false.
+    bool Fail(const char *format, ...) const;
     /// Snapshots the edit state; call after validating an edit and before mutating anything.
     void PushUndoAction(EditActionType type, const std::string &description);
     RecordEditState CaptureEditState() const;

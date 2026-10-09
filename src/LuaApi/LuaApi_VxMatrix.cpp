@@ -1,47 +1,16 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
+#include "LuaApiValues.h"
+
 #include "../LuaRuntime/LuaStackGuard.h"
 #include "../LuaRuntime/LuaUserdata.h"
 
 #include <VxMath.h>
 #include <cstdio>
 
-constexpr const char *kVxMatrixMt = "BallanceTAS.VxMatrix";
-constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
-constexpr const char *kVxVector4Mt = "BallanceTAS.VxVector4";
 
-static VxMatrix *CheckVxMatrix(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<VxMatrix>(L, index, kVxMatrixMt);
-}
-
-static VxVector *CheckVxVector(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<VxVector>(L, index, kVxVectorMt);
-}
-
-static VxVector4 *CheckVxVector4(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<VxVector4>(L, index, kVxVector4Mt);
-}
-
-static void PushVxMatrix(lua_State *L, const VxMatrix &matrix) {
-    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, matrix);
-}
-
-static void PushVxVector(lua_State *L, const VxVector &value) {
-    lua_getglobal(L, "VxVector");
-    lua_pushnumber(L, value.x);
-    lua_pushnumber(L, value.y);
-    lua_pushnumber(L, value.z);
-    lua_call(L, 3, 1);
-}
-
-static void PushVxVector4(lua_State *L, const VxVector4 &value) {
-    lua_getglobal(L, "VxVector4");
-    lua_pushnumber(L, value.x);
-    lua_pushnumber(L, value.y);
-    lua_pushnumber(L, value.z);
-    lua_pushnumber(L, value.w);
-    lua_call(L, 4, 1);
-}
+using namespace LuaApiCommon;
 
 static int New(lua_State *L) {
     auto matrix = VxMatrix::Identity();
@@ -75,12 +44,14 @@ static int Transpose(lua_State *L) {
 
 static int Clear(lua_State *L) {
     CheckVxMatrix(L, 1)->Clear();
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int SetIdentity(lua_State *L) {
     CheckVxMatrix(L, 1)->SetIdentity();
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int Orthographic(lua_State *L) {
@@ -88,7 +59,8 @@ static int Orthographic(lua_State *L) {
                                       static_cast<float>(luaL_checknumber(L, 3)),
                                       static_cast<float>(luaL_checknumber(L, 4)),
                                       static_cast<float>(luaL_checknumber(L, 5)));
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int Perspective(lua_State *L) {
@@ -96,7 +68,8 @@ static int Perspective(lua_State *L) {
                                      static_cast<float>(luaL_checknumber(L, 3)),
                                      static_cast<float>(luaL_checknumber(L, 4)),
                                      static_cast<float>(luaL_checknumber(L, 5)));
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int OrthographicRect(lua_State *L) {
@@ -106,7 +79,8 @@ static int OrthographicRect(lua_State *L) {
                                           static_cast<float>(luaL_checknumber(L, 5)),
                                           static_cast<float>(luaL_checknumber(L, 6)),
                                           static_cast<float>(luaL_checknumber(L, 7)));
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int PerspectiveRect(lua_State *L) {
@@ -116,7 +90,8 @@ static int PerspectiveRect(lua_State *L) {
                                          static_cast<float>(luaL_checknumber(L, 5)),
                                          static_cast<float>(luaL_checknumber(L, 6)),
                                          static_cast<float>(luaL_checknumber(L, 7)));
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int Multiply(lua_State *L) {
@@ -178,12 +153,7 @@ static int Decompose(lua_State *L) {
     VxVector scale;
     Vx3DDecomposeMatrix(*CheckVxMatrix(L, 1), quat, pos, scale);
 
-    lua_getglobal(L, "VxQuaternion");
-    lua_pushnumber(L, quat.x);
-    lua_pushnumber(L, quat.y);
-    lua_pushnumber(L, quat.z);
-    lua_pushnumber(L, quat.w);
-    lua_call(L, 4, 1);
+    PushVxQuaternion(L, quat);
     PushVxVector(L, pos);
     PushVxVector(L, scale);
     return 3;
@@ -233,7 +203,7 @@ static int Index(lua_State *L) {
     auto *matrix = CheckVxMatrix(L, 1);
     const int row = static_cast<int>(luaL_checkinteger(L, 2));
     if (row < 1 || row > 4) {
-        return luaL_error(L, "VxMatrix row index out of range");
+        return luaL_error(L, "VxMatrix: row index out of range (rows are 1-4)");
     }
     lua_newtable(L);
     for (int column = 0; column < 4; ++column) {
@@ -257,11 +227,6 @@ static int ToString(lua_State *L) {
     return 1;
 }
 
-static void SetFunction(lua_State *L, const char *name, lua_CFunction function) {
-    lua_pushcfunction(L, function);
-    lua_setfield(L, -2, name);
-}
-
 static void RegisterClassTable(lua_State *L) {
     lua_newtable(L);
     SetFunction(L, "new", New);
@@ -273,7 +238,15 @@ static void RegisterClassTable(lua_State *L) {
     lua_pushcfunction(L, Call);
     lua_setfield(L, -2, "__call");
     lua_setmetatable(L, -2);
+    // Global and tas.VxMatrix, like the other math classes.
+    lua_pushvalue(L, -1);
     lua_setglobal(L, "VxMatrix");
+    lua_getglobal(L, "tas");
+    if (lua_istable(L, -1)) {
+        lua_pushvalue(L, -2);
+        lua_setfield(L, -2, "VxMatrix");
+    }
+    lua_pop(L, 2);
 }
 
 void LuaApi::RegisterVxMatrix(lua_State *state) {

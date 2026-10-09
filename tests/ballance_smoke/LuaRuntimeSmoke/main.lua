@@ -88,14 +88,14 @@ end
 function main()
   local ok, err = xpcall(run_all, debug.traceback)
   if ok then
-    if tas.harness and tas.harness.active() then
+    if tas.harness and tas.harness.is_active() then
       tas.harness.pass("BallanceTAS LuaRuntime Full Smoke PASS")
     end
     return
   end
 
   tas.log("BallanceTAS LuaRuntime Full Smoke FAIL: " .. tostring(err))
-  if tas.harness and tas.harness.active() then
+  if tas.harness and tas.harness.is_active() then
     tas.harness.fail(tostring(err))
     return
   end

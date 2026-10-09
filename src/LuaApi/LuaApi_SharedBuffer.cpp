@@ -1,5 +1,7 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
+
 #include "../LuaRuntime/LuaStackGuard.h"
 #include "../LuaRuntime/LuaUserdata.h"
 
@@ -57,9 +59,10 @@ static void AppendString(std::vector<uint8_t> &out, const char *data, size_t len
     out.insert(out.end(), reinterpret_cast<const uint8_t *>(data), reinterpret_cast<const uint8_t *>(data) + length);
 }
 
-static bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out, int depth) {
+// On failure returns false with *error set to a static message (the stack may hold leftovers).
+static bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out, int depth, const char **error) {
     if (depth <= 0) {
-        luaL_error(L, "shared_buffer.from_table: table nesting exceeds limit");
+        *error = "table nesting exceeds limit";
         return false;
     }
 
@@ -97,11 +100,12 @@ static bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out
         lua_pushnil(L);
         while (lua_next(L, index) != 0) {
             if (!lua_isinteger(L, -2) && !lua_isstring(L, -2)) {
-                luaL_error(L, "shared_buffer.from_table: table keys must be integer or string");
+                *error = "table keys must be integers or strings";
                 return false;
             }
-            SerializeLuaValue(L, -2, out, depth - 1);
-            SerializeLuaValue(L, -1, out, depth - 1);
+            if (!SerializeLuaValue(L, -2, out, depth - 1, error) || !SerializeLuaValue(L, -1, out, depth - 1, error)) {
+                return false;
+            }
             ++count;
             lua_pop(L, 1);
         }
@@ -109,7 +113,10 @@ static bool SerializeLuaValue(lua_State *L, int index, std::vector<uint8_t> &out
         return true;
     }
     default:
-        luaL_error(L, "shared_buffer.from_table: unsupported value type '%s'", lua_typename(L, type));
+        *error = type == LUA_TFUNCTION ? "unsupported value type (functions cannot be stored)"
+               : type == LUA_TUSERDATA || type == LUA_TLIGHTUSERDATA ? "unsupported value type (userdata cannot be stored)"
+               : type == LUA_TTHREAD ? "unsupported value type (coroutines cannot be stored)"
+               : "unsupported value type";
         return false;
     }
 }
@@ -127,10 +134,10 @@ static T ReadPodValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, 
 
 static void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint8_t *end, int depth) {
     if (depth <= 0) {
-        luaL_error(L, "shared_buffer.to_table: table nesting exceeds limit");
+        luaL_error(L, "tas.shared_buffer.to_table: table nesting exceeds limit");
     }
     if (cursor >= end) {
-        luaL_error(L, "shared_buffer.to_table: truncated buffer");
+        luaL_error(L, "tas.shared_buffer.to_table: truncated buffer");
     }
 
     const uint8_t tag = *cursor++;
@@ -140,27 +147,27 @@ static void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint
         return;
     case kValueBool:
         if (cursor >= end) {
-            luaL_error(L, "shared_buffer.to_table: truncated boolean");
+            luaL_error(L, "tas.shared_buffer.to_table: truncated boolean");
         }
         lua_pushboolean(L, *cursor++ != 0);
         return;
     case kValueInteger:
-        lua_pushinteger(L, ReadPodValue<lua_Integer>(L, cursor, end, "shared_buffer.to_table"));
+        lua_pushinteger(L, ReadPodValue<lua_Integer>(L, cursor, end, "tas.shared_buffer.to_table"));
         return;
     case kValueNumber:
-        lua_pushnumber(L, ReadPodValue<lua_Number>(L, cursor, end, "shared_buffer.to_table"));
+        lua_pushnumber(L, ReadPodValue<lua_Number>(L, cursor, end, "tas.shared_buffer.to_table"));
         return;
     case kValueString: {
-        const uint32_t length = ReadPodValue<uint32_t>(L, cursor, end, "shared_buffer.to_table");
+        const uint32_t length = ReadPodValue<uint32_t>(L, cursor, end, "tas.shared_buffer.to_table");
         if (static_cast<size_t>(end - cursor) < length) {
-            luaL_error(L, "shared_buffer.to_table: truncated string");
+            luaL_error(L, "tas.shared_buffer.to_table: truncated string");
         }
         lua_pushlstring(L, reinterpret_cast<const char *>(cursor), length);
         cursor += length;
         return;
     }
     case kValueTable: {
-        const uint32_t count = ReadPodValue<uint32_t>(L, cursor, end, "shared_buffer.to_table");
+        const uint32_t count = ReadPodValue<uint32_t>(L, cursor, end, "tas.shared_buffer.to_table");
         lua_newtable(L);
         for (uint32_t i = 0; i < count; ++i) {
             PushSerializedValue(L, cursor, end, depth - 1);
@@ -170,7 +177,7 @@ static void PushSerializedValue(lua_State *L, const uint8_t *&cursor, const uint
         return;
     }
     default:
-        luaL_error(L, "shared_buffer.to_table: invalid value tag");
+        luaL_error(L, "tas.shared_buffer.to_table: invalid value tag");
     }
 }
 
@@ -263,7 +270,7 @@ static int ReadString(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = CheckSize(L, 2, "offset");
     if (offset >= buffer.Size()) {
-        return luaL_error(L, "SharedBuffer read_string: offset out of bounds");
+        return luaL_error(L, "SharedBuffer:read_string: offset out of bounds");
     }
 
     size_t length = 0;
@@ -308,7 +315,7 @@ static int Fill(lua_State *L) {
     const auto value = static_cast<uint8_t>(luaL_checkinteger(L, 2));
     const size_t offset = OptionalSize(L, 3, 0, "offset");
     if (offset > buffer.Size()) {
-        return luaL_error(L, "SharedBuffer fill: offset out of bounds");
+        return luaL_error(L, "SharedBuffer:fill: offset out of bounds");
     }
     const size_t length = OptionalSize(L, 4, buffer.Size() - offset, "length");
     CheckRange(L, buffer, offset, length, "SharedBuffer fill");
@@ -325,7 +332,7 @@ static int ToHex(lua_State *L) {
     const auto &buffer = CheckConstBuffer(L, 1);
     const size_t offset = OptionalSize(L, 2, 0, "offset");
     if (offset > buffer.Size()) {
-        return luaL_error(L, "SharedBuffer to_hex: offset out of bounds");
+        return luaL_error(L, "SharedBuffer:to_hex: offset out of bounds");
     }
     const size_t length = OptionalSize(L, 3, buffer.Size() - offset, "length");
     CheckRange(L, buffer, offset, length, "SharedBuffer to_hex");
@@ -354,9 +361,15 @@ static int ToTable(lua_State *L) {
     const uint8_t *end = cursor + buffer.Size();
     PushSerializedValue(L, cursor, end, kMaxSerializedDepth);
     if (cursor != end) {
-        return luaL_error(L, "shared_buffer.to_table: trailing data");
+        return luaL_error(L, "tas.shared_buffer.to_table: trailing data");
     }
     return 1;
+}
+
+// Raising from inside a catch block would skip the exception object's cleanup.
+static int RaiseCaught(lua_State *L, const char *where) {
+    Log::Error("%s: %s", where, lua_tostring(L, -1));
+    return LuaApiCommon::Raise(L, where, "%s", lua_tostring(L, -1));
 }
 
 static int Create(lua_State *L) {
@@ -365,9 +378,9 @@ static int Create(lua_State *L) {
         PushBuffer(L, SharedBuffer::Create(size));
         return 1;
     } catch (const std::exception &e) {
-        Log::Error("Error in shared_buffer.create: %s", e.what());
-        return luaL_error(L, "shared_buffer.create: %s", e.what());
+        lua_pushstring(L, e.what());
     }
+    return RaiseCaught(L, "tas.shared_buffer.create");
 }
 
 static int FromString(lua_State *L) {
@@ -377,9 +390,9 @@ static int FromString(lua_State *L) {
         PushBuffer(L, SharedBuffer::CreateFrom(data, length));
         return 1;
     } catch (const std::exception &e) {
-        Log::Error("Error in shared_buffer.from_string: %s", e.what());
-        return luaL_error(L, "shared_buffer.from_string: %s", e.what());
+        lua_pushstring(L, e.what());
     }
+    return RaiseCaught(L, "tas.shared_buffer.from_string");
 }
 
 static int HexNibble(lua_State *L, char c) {
@@ -392,7 +405,7 @@ static int HexNibble(lua_State *L, char c) {
     if (c >= 'A' && c <= 'F') {
         return c - 'A' + 10;
     }
-    luaL_error(L, "shared_buffer.from_hex: invalid hex character");
+    luaL_error(L, "tas.shared_buffer.from_hex: invalid hex character");
     return 0;
 }
 
@@ -400,7 +413,7 @@ static int FromHex(lua_State *L) {
     size_t hexLength = 0;
     const char *hex = luaL_checklstring(L, 1, &hexLength);
     if ((hexLength % 2) != 0) {
-        return luaL_error(L, "shared_buffer.from_hex: hex string must have even length");
+        return luaL_error(L, "tas.shared_buffer.from_hex: hex string must have even length");
     }
 
     // Validate first: HexNibble raises a Lua error, which must not unwind past a live buffer.
@@ -419,23 +432,30 @@ static int FromHex(lua_State *L) {
         PushBuffer(L, std::move(buffer));
         return 1;
     } catch (const std::exception &e) {
-        Log::Error("Error in shared_buffer.from_hex: %s", e.what());
-        return luaL_error(L, "shared_buffer.from_hex: %s", e.what());
+        lua_pushstring(L, e.what());
     }
+    return RaiseCaught(L, "tas.shared_buffer.from_hex");
 }
 
 static int FromTable(lua_State *L) {
     luaL_checktype(L, 1, LUA_TTABLE);
-    std::vector<uint8_t> encoded;
-    encoded.reserve(256);
-    SerializeLuaValue(L, 1, encoded, kMaxSerializedDepth);
-    try {
-        PushBuffer(L, SharedBuffer::CreateFrom(encoded.data(), encoded.size()));
-        return 1;
-    } catch (const std::exception &e) {
-        Log::Error("Error in shared_buffer.from_table: %s", e.what());
-        return luaL_error(L, "shared_buffer.from_table: %s", e.what());
+    const int top = lua_gettop(L);
+    const char *error = nullptr;
+    {
+        std::vector<uint8_t> encoded;
+        encoded.reserve(256);
+        if (SerializeLuaValue(L, 1, encoded, kMaxSerializedDepth, &error)) {
+            try {
+                PushBuffer(L, SharedBuffer::CreateFrom(encoded.data(), encoded.size()));
+                return 1;
+            } catch (const std::exception &e) {
+                lua_settop(L, top);
+                lua_pushstring(L, e.what());
+                error = lua_tostring(L, -1);
+            }
+        }
     }
+    return LuaApiCommon::Raise(L, "tas.shared_buffer.from_table", "%s", error ? error : "serialization failed");
 }
 
 static int GetMaxSize(lua_State *L) {

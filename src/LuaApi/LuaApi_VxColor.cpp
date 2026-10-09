@@ -43,7 +43,7 @@ static int VxColorNew(lua_State *L) {
         PushVxColor(L, VxColor(r, g, b, a));
         return 1;
     }
-    return luaL_error(L, "VxColor(): expected 0, 1, 3, or 4 numeric arguments");
+    return luaL_error(L, "VxColor.new: expected 0, 1, 3, or 4 numeric arguments");
 }
 
 static int VxColorCall(lua_State *L) {
@@ -119,12 +119,14 @@ static int VxColorSetAlpha(lua_State *L) {
 
 static int VxColorClear(lua_State *L) {
     CheckVxColor(L, 1)->Clear();
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int VxColorCheck(lua_State *L) {
     CheckVxColor(L, 1)->Check();
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int VxColorSet(lua_State *L) {
@@ -148,7 +150,7 @@ static int VxColorSet(lua_State *L) {
         lua_settop(L, 1);
         return 1;
     }
-    return luaL_error(L, "VxColor:set(): expected 1, 3, or 4 numeric arguments");
+    return luaL_error(L, "VxColor:set: expected 1, 3, or 4 numeric arguments");
 }
 
 static int VxColorSquareDistance(lua_State *L) {
@@ -170,7 +172,7 @@ static int VxColorConvert(lua_State *L) {
         lua_pushinteger(L, static_cast<lua_Integer>(value));
         return 1;
     }
-    return luaL_error(L, "VxColor.convert(): expected 3 or 4 numeric arguments");
+    return luaL_error(L, "VxColor.convert: expected 3 or 4 numeric arguments");
 }
 
 static int VxColorAdd(lua_State *L) {

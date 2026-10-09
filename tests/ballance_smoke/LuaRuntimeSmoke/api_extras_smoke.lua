@@ -1,12 +1,5 @@
-local function check(condition, message)
-  if not condition then
-    error(message, 2)
-  end
-end
-
-local function near(a, b)
-  return math.abs(a - b) < 1e-4
-end
+local util = require("smoke_util")
+local check, near = util.check, util.near
 
 local function events()
   local calls = {}
@@ -114,6 +107,16 @@ local function math_extras()
   local color = VxColor(0, 0, 0, 1)
   check(color:set(1, 0, 0) == color and near((2 * color).r, 2), "VxColor:set returns self; number * color")
   check(VxQuaternion(0, 0, 0, 1)[7] == nil, "VxQuaternion out-of-range index gives nil")
+  local mq = VxQuaternion()
+  check(mq:from_rotation(VxVector(0, 1, 0), 0.5) == mq and mq:normalize() == mq, "VxQuaternion mutators return self")
+  local mm = VxMatrix()
+  check(mm:set_identity() == mm, "VxMatrix mutators return self")
+  -- Engine getters do not go through the global constructors.
+  local savedVxVector = VxVector
+  VxVector = nil
+  local ok, position = pcall(function() return tas.get_camera():get_position() end)
+  VxVector = savedVxVector
+  check(ok and type(position.x) == "number", "engine getters must not depend on the global VxVector")
   check(not pcall(tas.wait, 1.5), "tas.wait with a fractional tick count should fail")
   check(not pcall(function() return tas.result.ok(1):unwrap_err() end), "unwrap_err on Ok should fail")
 end
@@ -175,7 +178,9 @@ local function record_editing()
   check(r.create_branch("smoke_alt", first) and r.switch_branch("smoke_alt"), "switch to branch")
   check(r.set_frame_key(first + 5, "space", true), "edit branch")
   check(r.switch_branch("") and not r.get_frame_input(first + 5).keys.space, "main branch untouched")
-  check(r.delete_branch("smoke_alt"), "delete_branch")
+  check(r.remove_branch("smoke_alt"), "remove_branch")
+  local removed, why = r.remove_branch("smoke_alt")
+  check(removed == false and why:find("smoke_alt", 1, true), "record actions report why they failed")
 
   -- Annotations survive save + load through the sidecar file.
   local path = "../ModLoader/TAS/LuaRuntimeSmoke/annotations_smoke.tas"

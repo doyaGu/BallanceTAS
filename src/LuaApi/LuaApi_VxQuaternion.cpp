@@ -46,7 +46,7 @@ static int New(lua_State *L) {
                                  static_cast<float>(luaL_checknumber(L, 4))));
         return 1;
     }
-    return luaL_error(L, "VxQuaternion(): expected 0 args, VxVector+angle, or 4 numeric args");
+    return luaL_error(L, "VxQuaternion.new: expected 0 args, VxVector+angle, or 4 numeric args");
 }
 
 static int Call(lua_State *L) {
@@ -90,10 +90,11 @@ static int FromRotation(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     auto *axis = TestVector(L, 2);
     if (!axis) {
-        return luaL_error(L, "VxQuaternion:from_rotation(axis, angle): expected VxVector axis");
+        return luaL_error(L, "VxQuaternion:from_rotation: expected VxVector axis");
     }
     q->FromRotation(*axis, static_cast<float>(luaL_checknumber(L, 3)));
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 // q:from_matrix(matrix[, is_unit[, restore]]) sets q in place from a rotation matrix.
@@ -103,7 +104,8 @@ static int FromMatrix(lua_State *L) {
     const XBOOL isUnit = lua_isnoneornil(L, 3) || lua_toboolean(L, 3) ? TRUE : FALSE;
     const XBOOL restore = lua_isnoneornil(L, 4) || lua_toboolean(L, 4) ? TRUE : FALSE;
     q->FromMatrix(*matrix, isUnit, restore);
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int ToMatrix(lua_State *L) {
@@ -117,12 +119,14 @@ static int FromEulerAngles(lua_State *L) {
     CheckQuat(L, 1)->FromEulerAngles(static_cast<float>(luaL_checknumber(L, 2)),
                                      static_cast<float>(luaL_checknumber(L, 3)),
                                      static_cast<float>(luaL_checknumber(L, 4)));
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int Normalize(lua_State *L) {
     CheckQuat(L, 1)->Normalize();
-    return 0;
+    lua_settop(L, 1);
+    return 1;
 }
 
 static int Dot(lua_State *L) {
@@ -166,7 +170,7 @@ static int NumericNewIndex(lua_State *L) {
     auto *q = CheckQuat(L, 1);
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
     if (index < 0 || index > 3) {
-        return luaL_error(L, "VxQuaternion index out of range [0-3]");
+        return luaL_error(L, "VxQuaternion: index out of range (components are 0-based)");
     }
     (*q)[index] = static_cast<float>(luaL_checknumber(L, 3));
     return 0;

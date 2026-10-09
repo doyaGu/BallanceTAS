@@ -1,108 +1,79 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
 #include "LuaRuntime/LuaFunction.h"
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
-static ScriptContext *GetContext(lua_State *state) {
-    return static_cast<ScriptContext *>(lua_touserdata(state, lua_upvalueindex(1)));
-}
+using namespace LuaApiCommon;
 
-static LuaScheduler *RequireScheduler(lua_State *state) {
-    if (lua_islightuserdata(state, lua_upvalueindex(2))) {
-        auto *scheduler = static_cast<LuaScheduler *>(lua_touserdata(state, lua_upvalueindex(2)));
-        if (scheduler) {
-            return scheduler;
-        }
+// The scheduler comes from upvalue 2 when registered with one (tests), else from the context.
+static LuaScheduler *RequireWaitScheduler(lua_State *L, const char *where) {
+    LuaScheduler *scheduler = nullptr;
+    if (lua_islightuserdata(L, lua_upvalueindex(2))) {
+        scheduler = static_cast<LuaScheduler *>(lua_touserdata(L, lua_upvalueindex(2)));
     }
-    ScriptContext *context = GetContext(state);
-    LuaScheduler *scheduler = context ? context->GetScheduler() : nullptr;
     if (!scheduler) {
-        luaL_error(state, "scheduler is not available");
+        return RequireYieldableScheduler(L, where);
+    }
+    if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
+        Raise(L, where, "waits, so it must be called from a script coroutine (main, a task or a listener)");
     }
     return scheduler;
 }
 
-static LuaScheduler *RequireYieldableScheduler(lua_State *state, const char *functionName) {
-    LuaScheduler *scheduler = RequireScheduler(state);
-    if (!lua_isyieldable(state) || !scheduler->CanYieldCurrentThread()) {
-        luaL_error(state, "%s must be called from a scheduler coroutine", functionName);
-    }
-    return scheduler;
+// tas.wait_ticks(ticks)
+static int TasWaitTicks(lua_State *L) {
+    const int ticks = CheckTicks(L, 1, "tas.wait_ticks");
+    RequireWaitScheduler(L, "tas.wait_ticks")->YieldTicks(ticks);
+    return lua_yieldk(L, 0, 0, nullptr);
 }
 
-static int TasWaitTicks(lua_State *state) {
-    if (lua_gettop(state) != 1 || !lua_isinteger(state, 1)) {
-        return luaL_error(state, "tas.wait_ticks(ticks): expected one integer argument");
-    }
-
-    const int ticks = static_cast<int>(lua_tointeger(state, 1));
-    if (ticks <= 0) {
-        return luaL_error(state, "tas.wait_ticks: tick count must be positive");
-    }
-
-    RequireYieldableScheduler(state, "tas.wait_ticks")->YieldTicks(ticks);
-    return lua_yieldk(state, 0, 0, nullptr);
-}
-
-static int TasWaitEvent(lua_State *state) {
-    if (lua_gettop(state) != 1 || !lua_isstring(state, 1)) {
-        return luaL_error(state, "tas.wait_event(event_name): expected one string argument");
-    }
-
+// tas.wait_event(name)
+static int TasWaitEvent(lua_State *L) {
     size_t length = 0;
-    const char *eventName = lua_tolstring(state, 1, &length);
-    if (!eventName || length == 0) {
-        return luaL_error(state, "tas.wait_event: event name cannot be empty");
-    }
-
-    RequireYieldableScheduler(state, "tas.wait_event")->YieldWaitForEvent(std::string(eventName, length));
-    return lua_yieldk(state, 0, 0, nullptr);
+    const char *name = CheckNonEmptyString(L, 1, "tas.wait_event", &length);
+    LuaScheduler *scheduler = RequireWaitScheduler(L, "tas.wait_event");
+    scheduler->YieldWaitForEvent(std::string(name, length));
+    return lua_yieldk(L, 0, 0, nullptr);
 }
 
-static int TasWaitUntil(lua_State *state) {
-    if (lua_gettop(state) != 1 || !lua_isfunction(state, 1)) {
-        return luaL_error(state, "tas.wait_until(predicate): expected one function argument");
-    }
-
-    lua_pushvalue(state, 1);
-    tas::lua::LuaFunction predicate = tas::lua::LuaFunction::FromStack(state, -1);
-    RequireYieldableScheduler(state, "tas.wait_until")->YieldUntil(std::move(predicate));
-    return lua_yieldk(state, 0, 0, nullptr);
+// tas.wait_until(predicate)
+static int TasWaitUntil(lua_State *L) {
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    LuaScheduler *scheduler = RequireWaitScheduler(L, "tas.wait_until");
+    lua_pushvalue(L, 1);
+    scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
+    return lua_yieldk(L, 0, 0, nullptr);
 }
 
-static int TasWait(lua_State *state) {
-    if (lua_gettop(state) != 1) {
-        return luaL_error(state, "tas.wait(value): expected one argument");
+// tas.wait(ticks | event_name | predicate)
+static int TasWait(lua_State *L) {
+    switch (lua_type(L, 1)) {
+    case LUA_TNUMBER:
+        return TasWaitTicks(L);
+    case LUA_TSTRING:
+        return TasWaitEvent(L);
+    case LUA_TFUNCTION:
+        return TasWaitUntil(L);
+    default:
+        return RaiseArg(L, "tas.wait", 1, "tick count, event name or predicate expected");
     }
-
-    if (lua_isinteger(state, 1)) {
-        return TasWaitTicks(state);
-    }
-    if (lua_type(state, 1) == LUA_TNUMBER) {
-        return luaL_error(state, "tas.wait: tick count must be an integer");
-    }
-    if (lua_type(state, 1) == LUA_TSTRING) {
-        return TasWaitEvent(state);
-    }
-    if (lua_isfunction(state, 1)) {
-        return TasWaitUntil(state);
-    }
-    return luaL_error(state, "tas.wait: expected integer ticks, event string, or predicate function");
 }
 
-static void SetTasFunction(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context, LuaScheduler *scheduler) {
-    lua_getglobal(state, "tas");
-    lua_pushlightuserdata(state, context);
-    lua_pushlightuserdata(state, scheduler);
-    lua_pushcclosure(state, function, 2);
-    lua_setfield(state, -2, name);
-    lua_pop(state, 1);
+static void SetWaitFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context,
+                            LuaScheduler *scheduler) {
+    lua_pushlightuserdata(L, context);
+    lua_pushlightuserdata(L, scheduler);
+    lua_pushcclosure(L, function, 2);
+    lua_setfield(L, -2, name);
 }
 
 void LuaApi::RegisterConcurrencyApi(lua_State *state, ScriptContext *context, LuaScheduler *scheduler) {
-    SetTasFunction(state, "wait_ticks", TasWaitTicks, context, scheduler);
-    SetTasFunction(state, "wait_event", TasWaitEvent, context, scheduler);
-    SetTasFunction(state, "wait_until", TasWaitUntil, context, scheduler);
-    SetTasFunction(state, "wait", TasWait, context, scheduler);
+    lua_getglobal(state, "tas");
+    SetWaitFunction(state, "wait_ticks", TasWaitTicks, context, scheduler);
+    SetWaitFunction(state, "wait_event", TasWaitEvent, context, scheduler);
+    SetWaitFunction(state, "wait_until", TasWaitUntil, context, scheduler);
+    SetWaitFunction(state, "wait", TasWait, context, scheduler);
+    lua_pop(state, 1);
 }

@@ -1,34 +1,13 @@
 -- Drives the real level flow through tas.level / tas.menu:
 -- main menu -> load Level 1 -> restart -> exit -> load Level 2 -> exit.
 
--- Level intros run on game time, which follows the real clock outside TAS
--- playback, so time out on wall-clock seconds rather than ticks.
+local util = require("smoke_util")
+local expect_ok, listen = util.expect_ok, util.listen
+
 local TIMEOUT_SECONDS = 30
 
 local function wait_for(description, predicate)
-  local deadline = os.time() + TIMEOUT_SECONDS
-  tas.wait_until(function()
-    return predicate() or os.time() > deadline
-  end)
-  if not predicate() then
-    error("timed out waiting for " .. description)
-  end
-end
-
--- Arm a one-shot event listener before triggering the action that fires it.
-local function listen(event)
-  local state = { fired = false }
-  tas.async.spawn(function()
-    tas.wait_event(event)
-    state.fired = true
-  end)
-  return state
-end
-
-local function expect_ok(description, ok, err)
-  if not ok then
-    error(description .. " failed: " .. tostring(err))
-  end
+  util.wait_for(description, predicate, TIMEOUT_SECONDS)
 end
 
 return function()
@@ -62,8 +41,8 @@ return function()
   expect_ok("tas.level.load(1)", tas.level.load("Level_01"))
   wait_for("Level 1 to start", function() return started.fired end)
   wait_for("ball control in Level 1", function() return controllable.fired end)
-  if tas.level.get_current_number() ~= 1 then
-    error("expected Level 1, got " .. tostring(tas.level.get_current_number()))
+  if tas.level.get_number() ~= 1 then
+    error("expected Level 1, got " .. tostring(tas.level.get_number()))
   end
   if tas.level.is_completed() then
     error("tas.level.is_completed should be false right after loading")
@@ -127,11 +106,11 @@ return function()
   -- A second load from wherever exit_to_menu() left us.
   local started2 = listen("start_level")
   local controllable2 = listen("ball_nav_active")
-  expect_ok("tas.level.load(2)", tas.menu.select_level(2))
+  expect_ok("tas.level.load(2)", tas.level.load(2))
   wait_for("Level 2 to start", function() return started2.fired end)
   wait_for("ball control in Level 2", function() return controllable2.fired end)
-  if tas.level.get_current_number() ~= 2 then
-    error("expected Level 2, got " .. tostring(tas.level.get_current_number()))
+  if tas.level.get_number() ~= 2 then
+    error("expected Level 2, got " .. tostring(tas.level.get_number()))
   end
   tas.log("Level Smoke loaded Level 2")
 

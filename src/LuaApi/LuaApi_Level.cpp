@@ -1,11 +1,11 @@
 #include "LuaApi.h"
 
-#include "../LuaRuntime/LuaFunction.h"
-#include "../LuaRuntime/LuaStackGuard.h"
+#include "LuaApiCommon.h"
+#include "LuaRuntime/LuaFunction.h"
+#include "LuaRuntime/LuaStackGuard.h"
 
 #include "GameInterface.h"
 #include "LevelNames.h"
-#include "Logger.h"
 #ifdef Yield
 #undef Yield
 #endif
@@ -13,209 +13,182 @@
 #include "ScriptContext.h"
 
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 
-static ScriptContext *GetContext(lua_State *L) {
-    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-}
+using namespace LuaApiCommon;
 
-static LuaScheduler *RequireScheduler(lua_State *L, const char *functionName) {
-    auto *context = GetContext(L);
-    auto *scheduler = context ? context->GetScheduler() : nullptr;
-    if (!scheduler) {
-        luaL_error(L, "%s: Scheduler not available", functionName);
+static GameInterface *RequireGame(lua_State *L, const char *where) {
+    ScriptContext *context = GetContext(L);
+    GameInterface *game = context ? context->GetGameInterface() : nullptr;
+    if (!game) {
+        Raise(L, where, "the game interface is not available");
     }
-    // Every caller waits; refuse before registering a wait that could never resume.
-    if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
-        luaL_error(L, "%s must be called from a scheduler coroutine", functionName);
+    return game;
+}
+
+// tas.level.get_name() -> "Level_03" | nil (no level loaded)
+static int GetName(lua_State *L) {
+    GameInterface *game = RequireGame(L, "tas.level.get_name");
+    if (!game->IsPlaying()) {
+        lua_pushnil(L);
+        return 1;
     }
-    return scheduler;
-}
-
-static void SetLevelFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
-    lua_pushlightuserdata(L, context);
-    lua_pushcclosure(L, function, 1);
-    lua_setfield(L, -2, name);
-}
-
-static int GetCurrent(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    const std::string name = game ? game->GetMapName() : "";
-    lua_pushlstring(L, name.data(), name.size());
+    PushString(L, game->GetMapName());
     return 1;
 }
 
-static int GetCurrentNumber(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    lua_pushinteger(L, game ? game->GetCurrentLevel() : 0);
+// tas.level.get_number() -> 1-13, or 0 when no level is loaded
+static int GetNumber(lua_State *L) {
+    lua_pushinteger(L, RequireGame(L, "tas.level.get_number")->GetCurrentLevel());
     return 1;
 }
 
 static int IsLoaded(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    lua_pushboolean(L, game && game->IsPlaying());
+    lua_pushboolean(L, RequireGame(L, "tas.level.is_loaded")->IsPlaying());
     return 1;
 }
 
 static int IsPaused(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    lua_pushboolean(L, game && game->IsPaused());
+    lua_pushboolean(L, RequireGame(L, "tas.level.is_paused")->IsPaused());
     return 1;
 }
 
 static int GetSector(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    lua_pushinteger(L, game ? game->GetCurrentSector() : 0);
+    lua_pushinteger(L, RequireGame(L, "tas.level.get_sector")->GetCurrentSector());
     return 1;
 }
 
-// Actions return true, or false plus a reason, instead of raising: whether a
-// level can be loaded depends on game state the script may want to handle.
-static int PushActionResult(lua_State *L, bool ok, const std::string &error) {
-    lua_pushboolean(L, ok);
-    if (ok) {
-        return 1;
-    }
-    lua_pushlstring(L, error.data(), error.size());
-    return 2;
-}
-
-static std::optional<int> CheckLevelArgument(lua_State *L, int index) {
-    if (lua_type(L, index) == LUA_TNUMBER) {
-        if (!lua_isinteger(L, index)) {
-            return std::nullopt;
+// A level as 1-13 or a name such as "Level_03"; raises on anything else.
+static int CheckLevel(lua_State *L, int arg, const char *where) {
+    std::optional<int> level;
+    if (lua_type(L, arg) == LUA_TNUMBER) {
+        int isInteger = 0;
+        const lua_Integer value = lua_tointegerx(L, arg, &isInteger);
+        if (isInteger && LevelNames::IsBuiltinLevel(static_cast<int>(value))) {
+            level = static_cast<int>(value);
         }
-        const lua_Integer level = lua_tointeger(L, index);
-        return LevelNames::IsBuiltinLevel(static_cast<int>(level)) ? std::optional<int>(static_cast<int>(level))
-                                                                   : std::nullopt;
+    } else if (lua_type(L, arg) == LUA_TSTRING) {
+        size_t length = 0;
+        const char *text = lua_tolstring(L, arg, &length);
+        level = LevelNames::Parse(std::string_view(text, length));
     }
-    size_t length = 0;
-    const char *text = luaL_checklstring(L, index, &length);
-    return LevelNames::Parse(std::string_view(text, length));
-}
-
-static int LoadLevel(lua_State *L) {
-    const std::optional<int> level = CheckLevelArgument(L, 1);
     if (!level) {
-        return luaL_argerror(L, 1, "expected a level 1-13 or a name such as \"Level_03\"");
+        RaiseArg(L, where, arg, "level 1-13 or a name such as \"Level_03\" expected");
     }
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    std::string error = "game interface is not available";
-    const bool ok = game && game->LoadLevel(*level, error);
-    return PushActionResult(L, ok, error);
+    return *level;
 }
 
-static int SendFlowEvent(lua_State *L, GameInterface::GameFlowEvent event) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    std::string error = "game interface is not available";
-    const bool ok = game && game->SendGameFlowEvent(event, error);
-    return PushActionResult(L, ok, error);
+// tas.level.load(level) -> true | false, reason
+static int LoadLevel(lua_State *L) {
+    const int level = CheckLevel(L, 1, "tas.level.load");
+    GameInterface *game = RequireGame(L, "tas.level.load");
+    std::string reason;
+    const bool ok = game->LoadLevel(level, reason);
+    return PushResult(L, ok, reason);
+}
+
+static int SendFlowEvent(lua_State *L, GameInterface::GameFlowEvent event, const char *where) {
+    GameInterface *game = RequireGame(L, where);
+    std::string reason;
+    const bool ok = game->SendGameFlowEvent(event, reason);
+    return PushResult(L, ok, reason);
 }
 
 static int Restart(lua_State *L) {
-    return SendFlowEvent(L, GameInterface::GameFlowEvent::ResetLevel);
+    return SendFlowEvent(L, GameInterface::GameFlowEvent::ResetLevel, "tas.level.restart");
 }
 
 static int ExitToMenu(lua_State *L) {
-    return SendFlowEvent(L, GameInterface::GameFlowEvent::ExitLevel);
+    return SendFlowEvent(L, GameInterface::GameFlowEvent::ExitLevel, "tas.level.exit_to_menu");
 }
 
 static int Next(lua_State *L) {
-    return SendFlowEvent(L, GameInterface::GameFlowEvent::NextLevel);
+    return SendFlowEvent(L, GameInterface::GameFlowEvent::NextLevel, "tas.level.next");
 }
 
 static int IsCompleted(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    lua_pushboolean(L, game && game->IsLevelCompleted());
+    lua_pushboolean(L, RequireGame(L, "tas.level.is_completed")->IsLevelCompleted());
     return 1;
 }
 
+// tas.level.is_at_checkpoint(sector): currently in exactly that sector
 static int IsAtCheckpoint(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    const int sector = static_cast<int>(luaL_checkinteger(L, 1));
-    lua_pushboolean(L, game && game->GetCurrentSector() == sector);
+    const lua_Integer sector = luaL_checkinteger(L, 1);
+    lua_pushboolean(L, RequireGame(L, "tas.level.is_at_checkpoint")->GetCurrentSector() == sector);
     return 1;
 }
 
 static int IsPlayingPredicate(lua_State *L) {
-    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-    auto *game = context ? context->GetGameInterface() : nullptr;
+    auto *game = static_cast<GameInterface *>(lua_touserdata(L, lua_upvalueindex(1)));
     lua_pushboolean(L, game && game->IsPlaying());
     return 1;
 }
 
 static int CheckpointPredicate(lua_State *L) {
-    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-    const int targetSector = static_cast<int>(lua_tointeger(L, lua_upvalueindex(2)));
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    lua_pushboolean(L, game && game->GetCurrentSector() >= targetSector);
+    auto *game = static_cast<GameInterface *>(lua_touserdata(L, lua_upvalueindex(1)));
+    const lua_Integer target = lua_tointeger(L, lua_upvalueindex(2));
+    lua_pushboolean(L, game && game->GetCurrentSector() >= target);
     return 1;
 }
 
 static int WaitForLoad(lua_State *L) {
-    lua_pushlightuserdata(L, GetContext(L));
+    LuaScheduler *scheduler = RequireYieldableScheduler(L, "tas.level.wait_for_load");
+    lua_pushlightuserdata(L, RequireGame(L, "tas.level.wait_for_load"));
     lua_pushcclosure(L, IsPlayingPredicate, 1);
-    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
-    RequireScheduler(L, "level.wait_for_load")->YieldUntil(std::move(predicate));
+    scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
 static int WaitForComplete(lua_State *L) {
-    RequireScheduler(L, "level.wait_for_complete")->YieldWaitForEvent("level_finish");
+    RequireYieldableScheduler(L, "tas.level.wait_for_complete")->YieldWaitForEvent("level_finish");
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
+// tas.level.wait_for_checkpoint(sector): until that sector or a later one is reached
 static int WaitForCheckpoint(lua_State *L) {
-    const int targetSector = static_cast<int>(luaL_checkinteger(L, 1));
-    lua_pushlightuserdata(L, GetContext(L));
-    lua_pushinteger(L, targetSector);
+    const lua_Integer target = luaL_checkinteger(L, 1);
+    LuaScheduler *scheduler = RequireYieldableScheduler(L, "tas.level.wait_for_checkpoint");
+    lua_pushlightuserdata(L, RequireGame(L, "tas.level.wait_for_checkpoint"));
+    lua_pushinteger(L, target);
     lua_pushcclosure(L, CheckpointPredicate, 2);
-    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
-    RequireScheduler(L, "level.wait_for_checkpoint")->YieldUntil(std::move(predicate));
+    scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
     return lua_yieldk(L, 0, 0, nullptr);
 }
 
 void LuaApi::RegisterLevelApi(lua_State *state, ScriptContext *context) {
-    if (!context) {
-        throw std::runtime_error("LuaApi::RegisterLevelApi requires a valid ScriptContext");
-    }
-
     tas::lua::LuaStackGuard guard(state);
     lua_getglobal(state, "tas");
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_setglobal(state, "tas");
-        lua_getglobal(state, "tas");
-    }
 
     lua_newtable(state);
-    SetLevelFunction(state, "get_current", GetCurrent, context);
-    SetLevelFunction(state, "get_current_number", GetCurrentNumber, context);
-    SetLevelFunction(state, "is_loaded", IsLoaded, context);
-    SetLevelFunction(state, "is_paused", IsPaused, context);
-    SetLevelFunction(state, "get_sector", GetSector, context);
-    SetLevelFunction(state, "load", LoadLevel, context);
-    SetLevelFunction(state, "restart", Restart, context);
-    SetLevelFunction(state, "exit_to_menu", ExitToMenu, context);
-    SetLevelFunction(state, "next", Next, context);
-    SetLevelFunction(state, "is_completed", IsCompleted, context);
-    SetLevelFunction(state, "is_at_checkpoint", IsAtCheckpoint, context);
-    SetLevelFunction(state, "wait_for_load", WaitForLoad, context);
-    SetLevelFunction(state, "wait_for_complete", WaitForComplete, context);
-    SetLevelFunction(state, "wait_for_checkpoint", WaitForCheckpoint, context);
-    lua_setfield(state, -2, "level");
+    SetClosure(state, "get_name", GetName, context);
+    SetClosure(state, "get_number", GetNumber, context);
+    SetClosure(state, "is_loaded", IsLoaded, context);
+    SetClosure(state, "is_paused", IsPaused, context);
+    SetClosure(state, "get_sector", GetSector, context);
+    SetClosure(state, "load", LoadLevel, context);
+    SetClosure(state, "restart", Restart, context);
+    SetClosure(state, "exit_to_menu", ExitToMenu, context);
+    SetClosure(state, "next", Next, context);
+    SetClosure(state, "is_completed", IsCompleted, context);
+    SetClosure(state, "is_at_checkpoint", IsAtCheckpoint, context);
+    SetClosure(state, "wait_for_load", WaitForLoad, context);
+    SetClosure(state, "wait_for_complete", WaitForComplete, context);
+    SetClosure(state, "wait_for_checkpoint", WaitForCheckpoint, context);
+    // Deprecated names, kept as aliases.
+    SetAlias(state, "get_current", "get_name");
+    SetAlias(state, "get_current_number", "get_number");
 
+    // Top-level shortcuts are the same function objects.
+    lua_getfield(state, -1, "get_number");
+    lua_setfield(state, -3, "get_level");
+    lua_getfield(state, -1, "get_sector");
+    lua_setfield(state, -3, "get_sector");
+    lua_getfield(state, -1, "is_paused");
+    lua_setfield(state, -3, "is_paused");
+    lua_getfield(state, -1, "is_loaded");
+    lua_setfield(state, -3, "is_playing");
+
+    lua_setfield(state, -2, "level");
     lua_pop(state, 1);
 }

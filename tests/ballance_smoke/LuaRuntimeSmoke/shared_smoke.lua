@@ -1,38 +1,40 @@
+local util = require("smoke_util")
+local check, expect_ok = util.check, util.expect_ok
+
+-- tas.shared and tas.global are the same store in two namespaces.
+local function store_roundtrip(store, label)
+  store.clear()
+  expect_ok(label .. ".set number", store.set("smoke_number", 42))
+  expect_ok(label .. ".set table", store.set("smoke_table", { nested = { ok = true }, precise = 1.25 }))
+  check(store.get("smoke_number") == 42, label .. " number roundtrip")
+  local value = store.get("smoke_table")
+  check(type(value) == "table" and value.nested.ok == true and value.precise == 1.25, label .. " table roundtrip")
+  check(store.get("missing", "fallback") == "fallback", label .. ".get default")
+  check(store.has("smoke_table") == true and store.has("missing") == false, label .. ".has")
+  check(#store.keys() == 2, label .. ".keys")
+
+  expect_ok(label .. ".remove", store.remove("smoke_number"))
+  check(store.has("smoke_number") == false, label .. ".remove took effect")
+  local ok, reason = store.remove("smoke_number")
+  check(ok == false and type(reason) == "string", label .. ".remove of a missing key reports why")
+
+  local stored = pcall(store.set, "fn", function() end)
+  check(not stored, label .. ".set should refuse functions")
+  check(not pcall(store.get, ""), label .. ".get should refuse an empty key")
+  store.clear()
+  check(#store.keys() == 0, label .. ".clear")
+end
+
 return function()
-  tas.global.clear()
+  store_roundtrip(tas.global, "tas.global")
+  store_roundtrip(tas.shared, "tas.shared")
+
+  -- The namespaces are separate.
+  tas.shared.set("both", "shared")
+  tas.global.set("both", "global")
+  check(tas.shared.get("both") == "shared" and tas.global.get("both") == "global", "namespaces are separate")
   tas.shared.clear()
-
-  tas.global.set("smoke_number", 42)
-  tas.global.set("smoke_table", { nested = { ok = true }, name = "global" })
-  if tas.global.get("smoke_number") ~= 42 then
-    error("tas.global number roundtrip failed")
-  end
-  local global_table = tas.global.get("smoke_table")
-  if type(global_table) ~= "table" or global_table.nested.ok ~= true then
-    error("tas.global table roundtrip failed")
-  end
-  if tas.global.has("smoke_table") ~= true then
-    error("tas.global.has failed")
-  end
-  if #tas.global.keys() < 2 then
-    error("tas.global.keys failed")
-  end
-
-  tas.shared.set("shared_number", 7)
-  tas.shared.set("shared_table", { nested = { ok = true }, precise = 1.25 })
-  if tas.shared.get("shared_number") ~= 7 then
-    error("tas.shared number roundtrip failed")
-  end
-  local shared_table = tas.shared.get("shared_table")
-  if type(shared_table) ~= "table" or shared_table.nested.ok ~= true or shared_table.precise ~= 1.25 then
-    error("tas.shared table roundtrip failed")
-  end
-  if tas.shared.has("shared_table") ~= true then
-    error("tas.shared.has failed")
-  end
-  if #tas.shared.keys() < 2 then
-    error("tas.shared.keys failed")
-  end
+  tas.global.clear()
 
   local watched = false
   tas.shared.watch("watch_key", function(new_value, old_value, key)
@@ -40,17 +42,7 @@ return function()
   end)
   tas.shared.set("watch_key", "new")
   tas.wait_ticks(1)
-  if not watched then
-    error("tas.shared.watch failed")
-  end
+  check(watched, "tas.shared.watch")
   tas.shared.unwatch("watch_key")
-
-  tas.global.remove("smoke_number")
-  if tas.global.has("smoke_number") ~= false then
-    error("tas.global.remove failed")
-  end
-  tas.shared.remove("shared_number")
-  if tas.shared.has("shared_number") ~= false then
-    error("tas.shared.remove failed")
-  end
+  tas.shared.clear()
 end

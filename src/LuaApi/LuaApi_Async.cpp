@@ -9,6 +9,7 @@
 #include "../LuaRuntime/LuaYieldState.h"
 
 #include "AsyncTask.h"
+#include "LuaApiCommon.h"
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
@@ -19,8 +20,13 @@
 #include <vector>
 
 constexpr const char *kAsyncTaskMt = "BallanceTAS.AsyncTask";
+// Error tables raised or returned by async functions share this metatable, so
+// tostring(err) and error reporting show their message.
+constexpr const char *kAsyncErrorMt = "BallanceTAS.AsyncError";
 
 using AsyncTaskHandle = std::shared_ptr<AsyncTask>;
+
+const char *const LuaApi::kRunTaskNowKey = "BallanceTAS.RunTaskNow";
 
 struct AwaitState {
     explicit AwaitState(AsyncTaskHandle task) : task(std::move(task)) {}
@@ -46,7 +52,7 @@ static LuaScheduler *RequireScheduler(lua_State *L) {
     auto *context = GetContext(L);
     auto *scheduler = context ? context->GetScheduler() : nullptr;
     if (!scheduler) {
-        luaL_error(L, "async: scheduler is not available");
+        luaL_error(L, "tas.async: the scheduler is not available");
     }
     return scheduler;
 }
@@ -54,7 +60,7 @@ static LuaScheduler *RequireScheduler(lua_State *L) {
 static LuaScheduler *RequireYieldableScheduler(lua_State *L, const char *functionName) {
     LuaScheduler *scheduler = RequireScheduler(L);
     if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
-        luaL_error(L, "%s must be called from a scheduler coroutine", functionName);
+        luaL_error(L, "%s: waits, so it must be called from a script coroutine (main, a task or a listener)", functionName);
     }
     return scheduler;
 }
@@ -83,12 +89,29 @@ static void PushTaskResult(lua_State *L, const AsyncTask &task) {
     task.GetResult().Push(L);
 }
 
+static void MarkAsyncError(lua_State *L) {
+    luaL_getmetatable(L, kAsyncErrorMt);
+    lua_setmetatable(L, -2);
+}
+
+static int AsyncErrorToString(lua_State *L) {
+    lua_getfield(L, 1, "message");
+    if (!lua_isstring(L, -1)) {
+        lua_pop(L, 1);
+        lua_pushliteral(L, "async error");
+    }
+    return 1;
+}
+
 static int YieldabilityError(lua_State *L, const char *name) {
     lua_createtable(L, 0, 2);
     lua_pushstring(L, "not_yieldable");
     lua_setfield(L, -2, "kind");
-    lua_pushfstring(L, "%s must be called from a scheduler coroutine", name);
+    luaL_where(L, 1);
+    lua_pushfstring(L, "%s: waits, so it must be called from a script coroutine (main, a task or a listener)", name);
+    lua_concat(L, 2);
     lua_setfield(L, -2, "message");
+    MarkAsyncError(L);
     return lua_error(L);
 }
 
@@ -126,6 +149,7 @@ static int PushAwaitedOutcome(lua_State *L, const AsyncTask &task, const char *c
         lua_setfield(L, -2, "message");
         lua_pushlstring(L, error.data(), error.size());
         lua_setfield(L, -2, "traceback");
+        MarkAsyncError(L);
         return 2;
     }
     if (task.IsCancelled()) {
@@ -134,6 +158,7 @@ static int PushAwaitedOutcome(lua_State *L, const AsyncTask &task, const char *c
         lua_setfield(L, -2, "kind");
         lua_pushfstring(L, "%s was cancelled", context);
         lua_setfield(L, -2, "message");
+        MarkAsyncError(L);
         return 2;
     }
     lua_createtable(L, 0, 2);
@@ -141,6 +166,7 @@ static int PushAwaitedOutcome(lua_State *L, const AsyncTask &task, const char *c
     lua_setfield(L, -2, "kind");
     lua_pushfstring(L, "%s resumed before task completion", context);
     lua_setfield(L, -2, "message");
+    MarkAsyncError(L);
     return 2;
 }
 
@@ -163,6 +189,7 @@ static void PushTaskErrorTable(lua_State *L, const AsyncTask &task, size_t index
         lua_pushfstring(L, "%s task %d resumed before completion", context, static_cast<int>(index + 1));
         lua_setfield(L, -2, "message");
     }
+    MarkAsyncError(L);
 }
 
 static int RaiseTaskError(lua_State *L, const AsyncTask &task, size_t index, const char *context) {
@@ -180,7 +207,7 @@ static int AwaitTaskCont(lua_State *L, int, lua_KContext ctx) {
     auto *state = tas::lua::LuaYieldState<AwaitState>::TryGet(L, ctx);
     if (!state || !state->task) {
         tas::lua::LuaYieldState<AwaitState>::Release(L, ctx);
-        return luaL_error(L, "AsyncTask continuation lost task handle");
+        return luaL_error(L, "AsyncTask:await: lost its task");
     }
     if (!state->task->IsDone()) {
         RequireTaskScheduler(L, state->task)->YieldTicks(1);
@@ -227,8 +254,14 @@ static int GetResult(lua_State *L) {
     return 1;
 }
 
+// task:get_error() -> message | nil (no error)
 static int GetError(lua_State *L) {
-    const std::string error = CheckTask(L, 1).GetError();
+    const AsyncTask &task = CheckTask(L, 1);
+    if (!task.IsFailed()) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const std::string error = task.GetError();
     lua_pushlstring(L, error.data(), error.size());
     return 1;
 }
@@ -244,17 +277,23 @@ static int Cancel(lua_State *L) {
 }
 
 static int AwaitTaskRaw(lua_State *L) {
-    auto task = CheckTaskShared(L, 1);
-    if (task->IsDone()) {
-        return PushAwaitedOutcome(L, *task, "AsyncTask");
+    AsyncTask &task = CheckTask(L, 1);
+    if (task.IsDone()) {
+        return PushAwaitedOutcome(L, task, "AsyncTask");
     }
-    if (!lua_isyieldable(L) || !RequireTaskScheduler(L, task)->CanYieldCurrentThread()) {
-        return YieldabilityError(L, "AsyncTask.await");
+    LuaScheduler *scheduler = task.GetScheduler() ? task.GetScheduler() : RequireScheduler(L);
+    if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
+        return YieldabilityError(L, "AsyncTask:await");
     }
 
-    EnsureScheduled(L, task);
-    const auto ctx = tas::lua::LuaYieldState<AwaitState>::Create(L, task);
-    RequireTaskScheduler(L, task)->YieldTicks(1);
+    lua_KContext ctx = 0;
+    {
+        // lua_yieldk longjmps (Lua is built as C): release the handle before yielding.
+        AsyncTaskHandle handle = CheckTaskShared(L, 1);
+        EnsureScheduled(L, handle);
+        ctx = tas::lua::LuaYieldState<AwaitState>::Create(L, handle);
+    }
+    scheduler->YieldTicks(1);
     return lua_yieldk(L, 0, ctx, AwaitTaskCont);
 }
 
@@ -266,7 +305,7 @@ static int ThenTask(lua_State *L) {
     auto &task = CheckTask(L, 1);
     luaL_checktype(L, 2, LUA_TFUNCTION);
     if (!task.IsCompleted()) {
-        return luaL_error(L, "AsyncTask.then requires a completed task");
+        return luaL_error(L, "AsyncTask:then: the task has not completed");
     }
     lua_pushvalue(L, 2);
     PushTaskResult(L, task);
@@ -298,7 +337,7 @@ static int CreateTask(lua_State *L) {
     luaL_checktype(L, 1, LUA_TFUNCTION);
     auto thread = tas::lua::LuaThread::CreateFromFunction(L, 1);
     if (!thread.IsValid()) {
-        return luaL_error(L, "async.create: failed to create coroutine");
+        return luaL_error(L, "tas.async.create: failed to create coroutine");
     }
     PushTask(L, std::make_shared<AsyncTask>(scheduler, std::move(thread), context));
     return 1;
@@ -315,35 +354,12 @@ static int SpawnTask(lua_State *L) {
     return 1;
 }
 
-// Internal: create a task and run it immediately (used for tas.on listeners).
+// run_task_now(fn): create a task and run it until its first wait (tas.on listeners).
 static int RunNow(lua_State *L) {
     CreateTask(L);
     auto task = CheckTaskShared(L, -1);
     RequireTaskScheduler(L, task)->RunAsyncTaskNow(task);
     return 1;
-}
-
-static int Delay(lua_State *L) {
-    const int ticks = static_cast<int>(luaL_checkinteger(L, 1));
-    if (ticks <= 0) {
-        return luaL_error(L, "async.delay: ticks must be positive");
-    }
-    RequireYieldableScheduler(L, "tas.async.delay")->YieldTicks(ticks);
-    return lua_yieldk(L, 0, 0, nullptr);
-}
-
-static int WaitForEvent(lua_State *L) {
-    const char *eventName = luaL_checkstring(L, 1);
-    RequireYieldableScheduler(L, "tas.async.wait_for_event")->YieldWaitForEvent(eventName);
-    return lua_yieldk(L, 0, 0, nullptr);
-}
-
-static int WaitUntil(lua_State *L) {
-    luaL_checktype(L, 1, LUA_TFUNCTION);
-    lua_pushvalue(L, 1);
-    auto predicate = tas::lua::LuaFunction::FromStack(L, -1);
-    RequireYieldableScheduler(L, "tas.async.wait_until")->YieldUntil(std::move(predicate));
-    return lua_yieldk(L, 0, 0, nullptr);
 }
 
 static std::vector<AsyncTaskHandle> CollectTasks(lua_State *L, int tableIndex, const char *name, bool allowEmpty) {
@@ -457,10 +473,10 @@ static int PushAllOutcome(lua_State *L, const std::vector<AsyncTaskHandle> &task
     for (size_t i = 0; i < tasks.size(); ++i) {
         const auto &task = tasks[i];
         if (!task) {
-            return luaL_error(L, "async.all: invalid task");
+            return luaL_error(L, "tas.async.all: invalid task");
         }
         if (!task->IsCompleted()) {
-            return PushIndexedTaskFailureOutcome(L, *task, i, "async.all");
+            return PushIndexedTaskFailureOutcome(L, *task, i, "tas.async.all");
         }
     }
 
@@ -478,29 +494,29 @@ static int AllCont(lua_State *L, int, lua_KContext ctx) {
     auto *state = tas::lua::LuaYieldState<TaskListState>::TryGet(L, ctx);
     if (!state) {
         tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
-        return luaL_error(L, "async.all continuation lost task list");
+        return luaL_error(L, "tas.async.all continuation lost task list");
     }
     if (auto *scheduler = SchedulerWhilePending(
-            L, *state, "async.all", true,
+            L, *state, "tas.async.all", true,
             [](const auto &tasks) { return AreAllDone(tasks); })) {
         scheduler->YieldTicks(1);
         return lua_yieldk(L, 0, ctx, AllCont);
     }
 
-    auto tasks = CollectStateTasks(L, *state, "async.all", true);
+    auto tasks = CollectStateTasks(L, *state, "tas.async.all", true);
     tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
     return PushAllOutcome(L, tasks);
 }
 
 static int AllRaw(lua_State *L) {
-    auto tasks = CollectTasks(L, 1, "async.all", true);
+    auto tasks = CollectTasks(L, 1, "tas.async.all", true);
     if (AreAllDone(tasks)) {
         return PushAllOutcome(L, tasks);
     }
     LuaScheduler *scheduler = RequireTaskScheduler(L, tasks.empty() ? AsyncTaskHandle{} : tasks.front());
     if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
         std::vector<AsyncTaskHandle>().swap(tasks);
-        return YieldabilityError(L, "async.all");
+        return YieldabilityError(L, "tas.async.all");
     }
 
     EnsureAllScheduled(L, tasks);
@@ -541,29 +557,29 @@ static int RaceCont(lua_State *L, int, lua_KContext ctx) {
     auto *state = tas::lua::LuaYieldState<TaskListState>::TryGet(L, ctx);
     if (!state) {
         tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
-        return luaL_error(L, "async.race continuation lost task list");
+        return luaL_error(L, "tas.async.race continuation lost task list");
     }
     if (auto *scheduler = SchedulerWhilePending(
-            L, *state, "async.race", false,
+            L, *state, "tas.async.race", false,
             [](const auto &tasks) { return IsAnyDone(tasks); })) {
         scheduler->YieldTicks(1);
         return lua_yieldk(L, 0, ctx, RaceCont);
     }
 
-    auto tasks = CollectStateTasks(L, *state, "async.race", false);
+    auto tasks = CollectStateTasks(L, *state, "tas.async.race", false);
     tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
-    return PushRaceOutcome(L, tasks, "async.race");
+    return PushRaceOutcome(L, tasks, "tas.async.race");
 }
 
 static int RaceRaw(lua_State *L) {
-    auto tasks = CollectTasks(L, 1, "async.race", false);
+    auto tasks = CollectTasks(L, 1, "tas.async.race", false);
     if (IsAnyDone(tasks)) {
-        return PushRaceOutcome(L, tasks, "async.race");
+        return PushRaceOutcome(L, tasks, "tas.async.race");
     }
     LuaScheduler *scheduler = RequireTaskScheduler(L, tasks.front());
     if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
         std::vector<AsyncTaskHandle>().swap(tasks);
-        return YieldabilityError(L, "async.race");
+        return YieldabilityError(L, "tas.async.race");
     }
 
     EnsureAllScheduled(L, tasks);
@@ -604,19 +620,20 @@ static int PushAnyOutcome(lua_State *L, const std::vector<AsyncTaskHandle> &task
         }
     }
     if (sawPending) {
-        return luaL_error(L, "async.any: resumed before any task completed");
+        return luaL_error(L, "tas.async.any: resumed before any task completed");
     }
 
     lua_pushboolean(L, 0);
     lua_createtable(L, 0, 3);
     lua_pushstring(L, "all_failed");
     lua_setfield(L, -2, "kind");
-    lua_pushstring(L, "async.any: all tasks failed or were cancelled");
+    lua_pushstring(L, "tas.async.any: all tasks failed or were cancelled");
     lua_setfield(L, -2, "message");
+    MarkAsyncError(L);
     lua_createtable(L, static_cast<int>(errorIndexes.size()), 0);
     int outIndex = 1;
     for (size_t taskIndex : errorIndexes) {
-        PushTaskErrorTable(L, *tasks[taskIndex], taskIndex, "async.any");
+        PushTaskErrorTable(L, *tasks[taskIndex], taskIndex, "tas.async.any");
         lua_rawseti(L, -2, outIndex++);
     }
     lua_setfield(L, -2, "errors");
@@ -627,29 +644,29 @@ static int AnyCont(lua_State *L, int, lua_KContext ctx) {
     auto *state = tas::lua::LuaYieldState<TaskListState>::TryGet(L, ctx);
     if (!state) {
         tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
-        return luaL_error(L, "async.any continuation lost task list");
+        return luaL_error(L, "tas.async.any continuation lost task list");
     }
     if (auto *scheduler = SchedulerWhilePending(
-            L, *state, "async.any", false,
+            L, *state, "tas.async.any", false,
             [](const auto &tasks) { return IsAnyCompletedOrAllDone(tasks); })) {
         scheduler->YieldTicks(1);
         return lua_yieldk(L, 0, ctx, AnyCont);
     }
 
-    auto tasks = CollectStateTasks(L, *state, "async.any", false);
+    auto tasks = CollectStateTasks(L, *state, "tas.async.any", false);
     tas::lua::LuaYieldState<TaskListState>::Release(L, ctx);
     return PushAnyOutcome(L, tasks);
 }
 
 static int AnyRaw(lua_State *L) {
-    auto tasks = CollectTasks(L, 1, "async.any", false);
+    auto tasks = CollectTasks(L, 1, "tas.async.any", false);
     if (IsAnyCompletedOrAllDone(tasks)) {
         return PushAnyOutcome(L, tasks);
     }
     LuaScheduler *scheduler = RequireTaskScheduler(L, tasks.front());
     if (!lua_isyieldable(L) || !scheduler->CanYieldCurrentThread()) {
         std::vector<AsyncTaskHandle>().swap(tasks);
-        return YieldabilityError(L, "async.any");
+        return YieldabilityError(L, "tas.async.any");
     }
 
     EnsureAllScheduled(L, tasks);
@@ -662,10 +679,7 @@ static int AnyRaw(lua_State *L) {
 }
 
 static int AwaitTicks(lua_State *L) {
-    const int ticks = static_cast<int>(luaL_checkinteger(L, 1));
-    if (ticks <= 0) {
-        return luaL_error(L, "await: ticks must be positive");
-    }
+    const int ticks = LuaApiCommon::CheckTicks(L, 1, "tas.await");
     RequireYieldableScheduler(L, "tas.await")->YieldTicks(ticks);
     return lua_yieldk(L, 0, 0, nullptr);
 }
@@ -677,7 +691,7 @@ static int AwaitRaw(lua_State *L) {
     if (lua_isinteger(L, 1)) {
         return AwaitTicks(L);
     }
-    return luaL_error(L, "await requires AsyncTask or integer ticks");
+    return LuaApiCommon::RaiseArg(L, "tas.await", 1, "AsyncTask or tick count expected");
 }
 
 static void SetContextFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context, LuaScheduler *scheduler) {
@@ -687,20 +701,27 @@ static void SetContextFunction(lua_State *L, const char *name, lua_CFunction fun
     lua_setfield(L, -2, name);
 }
 
-static bool RunAsyncInstallChunk(lua_State *L, const char *chunk, const char *name) {
+// Runs an install chunk with the `nargs` values on the stack as its arguments.
+static void RunAsyncInstallChunk(lua_State *L, const char *chunk, const char *name, int nargs) {
     if (luaL_loadbuffer(L, chunk, std::strlen(chunk), name) != LUA_OK) {
         const char *message = lua_tostring(L, -1);
         std::string error = message ? message : "unknown Lua wrapper load error";
-        lua_pop(L, 1);
+        lua_pop(L, 1 + nargs);
         throw std::runtime_error(std::string(name) + ": " + error);
     }
-    if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+    lua_insert(L, -(nargs + 1));
+    if (lua_pcall(L, nargs, 0, 0) != LUA_OK) {
         const char *message = lua_tostring(L, -1);
         std::string error = message ? message : "unknown Lua wrapper install error";
         lua_pop(L, 1);
         throw std::runtime_error(std::string(name) + ": " + error);
     }
-    return true;
+}
+
+static void PushAsyncClosure(lua_State *L, lua_CFunction function, ScriptContext *context, LuaScheduler *scheduler) {
+    lua_pushlightuserdata(L, context);
+    lua_pushlightuserdata(L, scheduler);
+    lua_pushcclosure(L, function, 2);
 }
 
 static void InstallTaskAwaitWrapper(lua_State *L, ScriptContext *context, LuaScheduler *scheduler) {
@@ -715,26 +736,22 @@ static void InstallTaskAwaitWrapper(lua_State *L, ScriptContext *context, LuaSch
         return;
     }
 
-    lua_pushlightuserdata(L, context);
-    lua_pushlightuserdata(L, scheduler);
-    lua_pushcclosure(L, AwaitTaskRaw, 2);
-    lua_setfield(L, -2, "__await_raw");
-
     constexpr const char *chunk =
-        "local mt = debug.getregistry()['BallanceTAS.AsyncTask']\n"
-        "local methods = mt.__tas_methods\n"
-        "local raw = methods.__await_raw\n"
+        "local methods, raw = ...\n"
         "methods.await = function(self)\n"
         "  local ok, value = raw(self)\n"
         "  if ok then return value end\n"
         "  error(value, 0)\n"
         "end\n";
-    RunAsyncInstallChunk(L, chunk, "BallanceTAS.AsyncTask.await.wrapper");
+    lua_pushvalue(L, -1);
+    PushAsyncClosure(L, AwaitTaskRaw, context, scheduler);
+    RunAsyncInstallChunk(L, chunk, "=BallanceTAS.AsyncTask.await", 2);
     lua_pop(L, 2);
 }
 
-static void InstallAsyncWrappers(lua_State *L) {
+static void InstallAsyncWrappers(lua_State *L, ScriptContext *context, LuaScheduler *scheduler) {
     constexpr const char *chunk =
+        "local awaitRaw, allRaw, raceRaw, anyRaw = ...\n"
         "local tas = tas\n"
         "local async = tas.async\n"
         "local function unwrap(ok, value)\n"
@@ -742,13 +759,17 @@ static void InstallAsyncWrappers(lua_State *L) {
         "  error(value, 0)\n"
         "end\n"
         "tas.await = function(value)\n"
-        "  if type(value) == 'number' then return tas.__await_ticks(value) end\n"
-        "  return unwrap(tas.__await_raw(value))\n"
+        "  if type(value) == 'number' then return tas.wait_ticks(value) end\n"
+        "  return unwrap(awaitRaw(value))\n"
         "end\n"
-        "async.all = function(tasks) return unwrap(async.__all_raw(tasks)) end\n"
-        "async.race = function(tasks) return unwrap(async.__race_raw(tasks)) end\n"
-        "async.any = function(tasks) return unwrap(async.__any_raw(tasks)) end\n";
-    RunAsyncInstallChunk(L, chunk, "BallanceTAS.async.wrapper");
+        "tas.async.all = function(tasks) return unwrap(allRaw(tasks)) end\n"
+        "tas.async.race = function(tasks) return unwrap(raceRaw(tasks)) end\n"
+        "tas.async.any = function(tasks) return unwrap(anyRaw(tasks)) end\n";
+    PushAsyncClosure(L, AwaitRaw, context, scheduler);
+    PushAsyncClosure(L, AllRaw, context, scheduler);
+    PushAsyncClosure(L, RaceRaw, context, scheduler);
+    PushAsyncClosure(L, AnyRaw, context, scheduler);
+    RunAsyncInstallChunk(L, chunk, "=BallanceTAS.async", 4);
 }
 
 static void RegisterAsyncTable(lua_State *L, ScriptContext *context, LuaScheduler *scheduler) {
@@ -763,14 +784,15 @@ static void RegisterAsyncTable(lua_State *L, ScriptContext *context, LuaSchedule
     lua_newtable(L);
     SetContextFunction(L, "create", CreateTask, context, scheduler);
     SetContextFunction(L, "spawn", SpawnTask, context, scheduler);
-    SetContextFunction(L, "delay", Delay, context, scheduler);
-    SetContextFunction(L, "wait_for_event", WaitForEvent, context, scheduler);
-    SetContextFunction(L, "wait_until", WaitUntil, context, scheduler);
-    SetContextFunction(L, "__all_raw", AllRaw, context, scheduler);
-    SetContextFunction(L, "__race_raw", RaceRaw, context, scheduler);
-    SetContextFunction(L, "__any_raw", AnyRaw, context, scheduler);
-    SetContextFunction(L, "__run_now", RunNow, context, scheduler);
+    // Deprecated: the same function objects as tas.wait_ticks / wait_event / wait_until.
+    lua_getfield(L, -2, "wait_ticks");
+    lua_setfield(L, -2, "delay");
+    lua_getfield(L, -2, "wait_event");
+    lua_setfield(L, -2, "wait_for_event");
+    lua_getfield(L, -2, "wait_until");
+    lua_setfield(L, -2, "wait_until");
 
+    // tas.async(fn) is tas.async.create(fn).
     lua_newtable(L);
     lua_pushlightuserdata(L, context);
     lua_pushlightuserdata(L, scheduler);
@@ -779,10 +801,12 @@ static void RegisterAsyncTable(lua_State *L, ScriptContext *context, LuaSchedule
     lua_setmetatable(L, -2);
 
     lua_setfield(L, -2, "async");
-    SetContextFunction(L, "__await_raw", AwaitRaw, context, scheduler);
-    SetContextFunction(L, "__await_ticks", AwaitTicks, context, scheduler);
-    InstallAsyncWrappers(L);
+    InstallAsyncWrappers(L, context, scheduler);
     lua_pop(L, 1);
+
+    // For the prelude's event dispatch (see LuaApi::kRunTaskNowKey).
+    PushAsyncClosure(L, RunNow, context, scheduler);
+    lua_setfield(L, LUA_REGISTRYINDEX, LuaApi::kRunTaskNowKey);
 }
 
 void LuaApi::RegisterAsyncApi(lua_State *state, ScriptContext *context, LuaScheduler *scheduler) {
@@ -791,6 +815,11 @@ void LuaApi::RegisterAsyncApi(lua_State *state, ScriptContext *context, LuaSched
     }
 
     tas::lua::LuaStackGuard guard(state);
+    luaL_newmetatable(state, kAsyncErrorMt);
+    lua_pushcfunction(state, AsyncErrorToString);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+
     tas::lua::LuaUserdataRegistry<AsyncTaskHandle>(state, kAsyncTaskMt)
         .Method("is_pending", IsPending)
         .Method("is_running", IsRunning)

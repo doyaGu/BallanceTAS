@@ -1,140 +1,79 @@
 #include "LuaApi.h"
 
 #include "InputSystem.h"
+#include "LuaApiCommon.h"
+#ifdef Yield
+#undef Yield
+#endif
 #include "LuaScheduler.h"
 #include "ScriptContext.h"
 
-static ScriptContext *GetContext(lua_State *state) {
-    return static_cast<ScriptContext *>(lua_touserdata(state, lua_upvalueindex(1)));
-}
+using namespace LuaApiCommon;
 
-static InputSystem *RequireInput(lua_State *state) {
-    ScriptContext *context = GetContext(state);
+// Key strings name one or more keys: "up", "up right", "shift,left".
+
+static InputSystem *RequireInput(lua_State *L, const char *where) {
+    ScriptContext *context = GetContext(L);
     InputSystem *input = context ? context->GetInputSystem() : nullptr;
     if (!input) {
-        luaL_error(state, "input system is not available");
+        Raise(L, where, "the input system is not available");
     }
     return input;
 }
 
-static std::string RequireString(lua_State *state, int index, const char *name) {
-    if (!lua_isstring(state, index)) {
-        luaL_error(state, "%s must be a string", name);
-    }
-    size_t length = 0;
-    const char *value = lua_tolstring(state, index, &length);
-    if (!value || length == 0) {
-        luaL_error(state, "%s cannot be empty", name);
-    }
-    return std::string(value, length);
-}
-
-static int KeyboardPress(lua_State *state) {
-    if (lua_gettop(state) != 1) {
-        return luaL_error(state, "keyboard.press(key_string): expected one argument");
-    }
-    RequireInput(state)->PressKeysOneFrame(RequireString(state, 1, "key_string"));
+static int KeyboardPress(lua_State *L) {
+    const char *keys = CheckNonEmptyString(L, 1, "tas.keyboard.press");
+    RequireInput(L, "tas.keyboard.press")->PressKeysOneFrame(keys);
     return 0;
 }
 
-static int KeyboardKeyDown(lua_State *state) {
-    if (lua_gettop(state) != 1) {
-        return luaL_error(state, "keyboard.key_down(key_string): expected one argument");
-    }
-    RequireInput(state)->PressKeys(RequireString(state, 1, "key_string"));
+static int KeyboardKeyDown(lua_State *L) {
+    const char *keys = CheckNonEmptyString(L, 1, "tas.keyboard.key_down");
+    RequireInput(L, "tas.keyboard.key_down")->PressKeys(keys);
     return 0;
 }
 
-static int KeyboardHold(lua_State *state) {
-    if (lua_gettop(state) != 2 || !lua_isinteger(state, 2)) {
-        return luaL_error(state, "keyboard.hold(key_string, duration_ticks): expected string and integer");
-    }
-
-    ScriptContext *context = GetContext(state);
-    LuaScheduler *scheduler = context ? context->GetScheduler() : nullptr;
-    if (!scheduler) {
-        return luaL_error(state, "keyboard.hold: scheduler is not available");
-    }
-    if (!lua_isyieldable(state) || !scheduler->CanYieldCurrentThread()) {
-        return luaL_error(state, "keyboard.hold must be called from a scheduler coroutine");
-    }
-
-    const std::string keyString = RequireString(state, 1, "key_string");
-    const int ticks = static_cast<int>(lua_tointeger(state, 2));
-    if (ticks <= 0) {
-        return luaL_error(state, "keyboard.hold: duration must be positive");
-    }
-
-    RequireInput(state)->HoldKeys(keyString, ticks);
+// tas.keyboard.hold(keys, ticks): holds the keys and waits until they are released
+static int KeyboardHold(lua_State *L) {
+    const char *keys = CheckNonEmptyString(L, 1, "tas.keyboard.hold");
+    const int ticks = CheckTicks(L, 2, "tas.keyboard.hold");
+    LuaScheduler *scheduler = RequireYieldableScheduler(L, "tas.keyboard.hold");
+    RequireInput(L, "tas.keyboard.hold")->HoldKeys(keys, ticks);
     scheduler->YieldTicks(ticks);
-    return lua_yieldk(state, 0, 0, nullptr);
+    return lua_yieldk(L, 0, 0, nullptr);
 }
 
-static int KeyboardKeyUp(lua_State *state) {
-    if (lua_gettop(state) != 1) {
-        return luaL_error(state, "keyboard.key_up(key_string): expected one argument");
-    }
-    RequireInput(state)->ReleaseKeys(RequireString(state, 1, "key_string"));
+static int KeyboardKeyUp(lua_State *L) {
+    const char *keys = CheckNonEmptyString(L, 1, "tas.keyboard.key_up");
+    RequireInput(L, "tas.keyboard.key_up")->ReleaseKeys(keys);
     return 0;
 }
 
-static int KeyboardReleaseAll(lua_State *state) {
-    if (lua_gettop(state) != 0) {
-        return luaL_error(state, "keyboard.release_all(): expected no arguments");
-    }
-    RequireInput(state)->ReleaseAllKeys();
+static int KeyboardReleaseAll(lua_State *L) {
+    RequireInput(L, "tas.keyboard.release_all")->ReleaseAllKeys();
     return 0;
 }
 
-static int KeyboardAreDown(lua_State *state) {
-    if (lua_gettop(state) != 1) {
-        return luaL_error(state, "keyboard.are_keys_down(key_string): expected one argument");
-    }
-    lua_pushboolean(state, RequireInput(state)->AreKeysDown(RequireString(state, 1, "key_string")));
+static int KeyboardAreDown(lua_State *L) {
+    const char *keys = CheckNonEmptyString(L, 1, "tas.keyboard.are_keys_down");
+    lua_pushboolean(L, RequireInput(L, "tas.keyboard.are_keys_down")->AreKeysDown(keys));
     return 1;
 }
 
-static int KeyboardAreUp(lua_State *state) {
-    if (lua_gettop(state) != 1) {
-        return luaL_error(state, "keyboard.are_keys_up(key_string): expected one argument");
-    }
-    lua_pushboolean(state, RequireInput(state)->AreKeysUp(RequireString(state, 1, "key_string")));
+static int KeyboardAreUp(lua_State *L) {
+    const char *keys = CheckNonEmptyString(L, 1, "tas.keyboard.are_keys_up");
+    lua_pushboolean(L, RequireInput(L, "tas.keyboard.are_keys_up")->AreKeysUp(keys));
     return 1;
 }
 
-static int KeyboardAvailableKeys(lua_State *state) {
-    if (lua_gettop(state) != 0) {
-        return luaL_error(state, "keyboard.get_available_keys(): expected no arguments");
-    }
-
-    auto keys = RequireInput(state)->GetAvailableKeys();
-    lua_createtable(state, static_cast<int>(keys.size()), 0);
-    int index = 1;
-    for (const auto &key : keys) {
-        lua_pushlstring(state, key.data(), key.size());
-        lua_rawseti(state, -2, index++);
-    }
+static int KeyboardAvailableKeys(lua_State *L) {
+    PushStringList(L, RequireInput(L, "tas.keyboard.get_available_keys")->GetAvailableKeys());
     return 1;
-}
-
-static void SetClosure(lua_State *state, const char *name, lua_CFunction function, ScriptContext *context) {
-    lua_pushlightuserdata(state, context);
-    lua_pushcclosure(state, function, 1);
-    lua_setfield(state, -2, name);
-}
-
-static void Alias(lua_State *state, const char *sourceTable, const char *sourceName, const char *targetName) {
-    lua_getglobal(state, "tas");
-    lua_getfield(state, -1, sourceTable);
-    lua_getfield(state, -1, sourceName);
-    lua_setfield(state, -3, targetName);
-    lua_pop(state, 2);
 }
 
 void LuaApi::RegisterInputApi(lua_State *state, ScriptContext *context) {
     lua_getglobal(state, "tas");
     lua_newtable(state);
-
     SetClosure(state, "press", KeyboardPress, context);
     SetClosure(state, "hold", KeyboardHold, context);
     SetClosure(state, "key_down", KeyboardKeyDown, context);
@@ -144,14 +83,14 @@ void LuaApi::RegisterInputApi(lua_State *state, ScriptContext *context) {
     SetClosure(state, "are_keys_up", KeyboardAreUp, context);
     SetClosure(state, "get_available_keys", KeyboardAvailableKeys, context);
 
+    // tas.press, tas.hold, ... are the same function objects as tas.keyboard.*.
+    for (const char *name : {"press", "hold", "key_down", "key_up", "are_keys_down", "are_keys_up"}) {
+        lua_getfield(state, -1, name);
+        lua_setfield(state, -3, name);
+    }
+    lua_getfield(state, -1, "release_all");
+    lua_setfield(state, -3, "release_all_keys");
+
     lua_setfield(state, -2, "keyboard");
     lua_pop(state, 1);
-
-    Alias(state, "keyboard", "press", "press");
-    Alias(state, "keyboard", "hold", "hold");
-    Alias(state, "keyboard", "key_down", "key_down");
-    Alias(state, "keyboard", "key_up", "key_up");
-    Alias(state, "keyboard", "release_all", "release_all_keys");
-    Alias(state, "keyboard", "are_keys_down", "are_keys_down");
-    Alias(state, "keyboard", "are_keys_up", "are_keys_up");
 }

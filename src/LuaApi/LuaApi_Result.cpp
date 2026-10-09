@@ -82,7 +82,7 @@ static int IsErr(lua_State *L) {
 static int Unwrap(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (!result->isSuccess) {
-        return luaL_error(L, "Called unwrap() on Err result: %s", result->error.c_str());
+        return luaL_error(L, "Result:unwrap: the result is an error: %s", result->error.c_str());
     }
     PushResultValue(L, *result);
     return 1;
@@ -91,7 +91,7 @@ static int Unwrap(lua_State *L) {
 static int UnwrapErr(lua_State *L) {
     auto *result = CheckResult(L, 1);
     if (result->isSuccess) {
-        return luaL_error(L, "Called unwrap_err() on Ok result");
+        return luaL_error(L, "Result:unwrap_err: the result is ok");
     }
     lua_pushlstring(L, result->error.data(), result->error.size());
     return 1;
@@ -118,7 +118,7 @@ static int UnwrapOrElse(lua_State *L) {
     lua_pushlstring(L, result->error.data(), result->error.size());
     std::string error;
     if (!ProtectedCall(L, 1, 1, error)) {
-        return luaL_error(L, "unwrap_or_else function failed: %s", error.c_str());
+        return luaL_error(L, "Result:unwrap_or_else: callback failed: %s", error.c_str());
     }
     return 1;
 }
@@ -246,7 +246,7 @@ static int Match(lua_State *L) {
     }
     std::string error;
     if (!ProtectedCall(L, 1, 1, error)) {
-        return luaL_error(L, "result.match handler failed: %s", error.c_str());
+        return luaL_error(L, "Result:match: handler failed: %s", error.c_str());
     }
     return 1;
 }

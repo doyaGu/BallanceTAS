@@ -1,22 +1,15 @@
 #include "LuaApi.h"
 
-#include "../LuaRuntime/LuaFunction.h"
-#include "../LuaRuntime/LuaStackGuard.h"
+#include "LuaApiCommon.h"
+#include "LuaRuntime/LuaFunction.h"
+#include "LuaRuntime/LuaStackGuard.h"
 
 #include "GameInterface.h"
 #include "ScriptContext.h"
 
 #include <chrono>
 
-static ScriptContext *GetContext(lua_State *L) {
-    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-}
-
-static void SetDebugFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
-    lua_pushlightuserdata(L, context);
-    lua_pushcclosure(L, function, 1);
-    lua_setfield(L, -2, name);
-}
+using namespace LuaApiCommon;
 
 static double CurrentMemoryKB(lua_State *L) {
     const int kb = lua_gc(L, LUA_GCCOUNT, 0);
@@ -33,18 +26,20 @@ static int Assert(lua_State *L) {
     return luaL_error(L, "%s", message ? message : "Assertion failed!");
 }
 
+// tas.skip_rendering(ticks): don't draw the next `ticks` frames
 static int SkipRendering(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *game = context ? context->GetGameInterface() : nullptr;
-    const lua_Integer ticks = luaL_checkinteger(L, 1);
-    if (game && ticks > 0) {
-        game->SkipRenderForTicks(static_cast<size_t>(ticks));
+    const int ticks = CheckTicks(L, 1, "tas.skip_rendering");
+    ScriptContext *context = GetContext(L);
+    GameInterface *game = context ? context->GetGameInterface() : nullptr;
+    if (!game) {
+        return Raise(L, "tas.skip_rendering", "the game interface is not available");
     }
+    game->SkipRenderForTicks(static_cast<size_t>(ticks));
     return 0;
 }
 
 static int GetStackTrace(lua_State *L) {
-    const int maxDepth = lua_gettop(L) >= 1 && !lua_isnil(L, 1) ? static_cast<int>(luaL_checkinteger(L, 1)) : 20;
+    const int maxDepth = static_cast<int>(OptIndex(L, 1, "tas.get_stack_trace", 20));
     lua_newtable(L);
 
     for (int level = 1; level <= maxDepth; ++level) {
@@ -113,9 +108,7 @@ static int MemoryDiff(lua_State *L) {
 }
 
 static int Profile(lua_State *L) {
-    if (!lua_isfunction(L, 1)) {
-        return luaL_error(L, "tas.profile(function): expected function");
-    }
+    luaL_checktype(L, 1, LUA_TFUNCTION);
 
     const double memoryBefore = CurrentMemoryKB(L);
     const auto start = std::chrono::high_resolution_clock::now();
@@ -147,38 +140,15 @@ static int Profile(lua_State *L) {
     return 1;
 }
 
-// tas.force_gc() -> KB freed by a full collection
-static int ForceGC(lua_State *L) {
-    const double before = CurrentMemoryKB(L);
-    lua_gc(L, LUA_GCCOLLECT, 0);
-    lua_pushnumber(L, before - CurrentMemoryKB(L));
-    return 1;
-}
-
-static int GetMemoryUsage(lua_State *L) {
-    lua_pushnumber(L, CurrentMemoryKB(L));
-    return 1;
-}
-
 void LuaApi::RegisterDebugApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);
-
     lua_getglobal(state, "tas");
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_setglobal(state, "tas");
-        lua_getglobal(state, "tas");
-    }
-
-    SetDebugFunction(state, "assert", Assert, context);
-    SetDebugFunction(state, "skip_rendering", SkipRendering, context);
-    SetDebugFunction(state, "get_stack_trace", GetStackTrace, context);
-    SetDebugFunction(state, "memory_snapshot", MemorySnapshot, context);
-    SetDebugFunction(state, "memory_diff", MemoryDiff, context);
-    SetDebugFunction(state, "profile", Profile, context);
-    SetDebugFunction(state, "force_gc", ForceGC, context);
-    SetDebugFunction(state, "get_memory_usage", GetMemoryUsage, context);
-
+    SetClosure(state, "assert", Assert, context);
+    SetClosure(state, "skip_rendering", SkipRendering, context);
+    SetClosure(state, "get_stack_trace", GetStackTrace, context);
+    SetClosure(state, "memory_snapshot", MemorySnapshot, context);
+    SetClosure(state, "memory_diff", MemoryDiff, context);
+    SetClosure(state, "profile", Profile, context);
+    // tas.force_gc and tas.get_memory_usage are aliases set up by RegisterGCApi.
     lua_pop(state, 1);
 }

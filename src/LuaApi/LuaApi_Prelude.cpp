@@ -1,25 +1,54 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
+
 #include <stdexcept>
 #include <string>
 
 // Script-level helpers built on the C API. They run in the script's own VM, so they can
-// yield through tas.wait_* like any other script code.
+// yield through tas.wait_* like any other script code. The chunk receives the internals it
+// needs as arguments (normalize_menu_name, run_task_now) instead of reading them from tas.
 static constexpr const char kPrelude[] = R"LUA(
+local normalizeMenuName, runTaskNow = ...
 local tas = tas
 
--- Event listeners --------------------------------------------------------------------
+local function fail(where, message, level)
+  error(where .. ": " .. message, (level or 1) + 2)
+end
+
+local function checkType(value, kind, where, what)
+  if type(value) ~= kind then
+    fail(where, what .. " must be a " .. kind, 2)
+  end
+end
+
+local function checkName(value, where)
+  if type(value) ~= "string" or value == "" then
+    fail(where, "event name must be a non-empty string", 2)
+  end
+end
+
+local function checkCount(value, where, what)
+  if math.type(value) ~= "integer" or value < 0 then
+    fail(where, what .. " must be a non-negative integer", 2)
+  end
+end
+
+-- Functions that wait refuse up front, before doing anything, outside a coroutine.
+local function requireYield(where)
+  if not coroutine.isyieldable() then
+    fail(where, "waits, so it must be called from a script coroutine (main, a task or a listener)", 2)
+  end
+end
+
+-- Event listeners ----------------------------------------------------------------------
 
 local listeners = {}
 local nextListenerId = 0
 
-local function addListener(name, callback, once)
-  if type(name) ~= "string" or name == "" then
-    error("event name must be a non-empty string", 3)
-  end
-  if type(callback) ~= "function" then
-    error("callback must be a function", 3)
-  end
+local function addListener(name, callback, once, where)
+  checkName(name, where)
+  checkType(callback, "function", where, "callback")
   nextListenerId = nextListenerId + 1
   local list = listeners[name]
   if not list then
@@ -30,38 +59,7 @@ local function addListener(name, callback, once)
   return nextListenerId
 end
 
-local function dispatch(name, ...)
-  local list = listeners[name]
-  if not list then
-    return
-  end
-  -- Snapshot so callbacks can add or remove listeners while we iterate.
-  local snapshot = table.move(list, 1, #list, 1, {})
-  local args = table.pack(...)
-  for _, entry in ipairs(snapshot) do
-    if entry.once then
-      tas.off(entry.id)
-    end
-    -- Each listener runs now, in its own task, so it may tas.wait_* and resume on later ticks.
-    local callback = entry.callback
-    tas.async.__run_now(function()
-      local ok, err = pcall(callback, table.unpack(args, 1, args.n))
-      if not ok then
-        tas.warn("event '%s' listener failed: %s", name, tostring(err))
-      end
-    end)
-  end
-end
-
-function tas.on(name, callback)
-  return addListener(name, callback, false)
-end
-
-function tas.once(name, callback)
-  return addListener(name, callback, true)
-end
-
-function tas.off(id)
+local function removeListener(id)
   for name, list in pairs(listeners) do
     for i, entry in ipairs(list) do
       if entry.id == id then
@@ -76,10 +74,49 @@ function tas.off(id)
   return false
 end
 
-function tas.fire_event(name, ...)
-  if type(name) ~= "string" or name == "" then
-    error("tas.fire_event: event name must be a non-empty string", 2)
+local function dispatch(name, ...)
+  local list = listeners[name]
+  if not list then
+    return
   end
+  -- Snapshot so callbacks can add or remove listeners while we iterate.
+  local snapshot = table.move(list, 1, #list, 1, {})
+  local args = table.pack(...)
+  for _, entry in ipairs(snapshot) do
+    if entry.once then
+      removeListener(entry.id)
+    end
+    -- Each listener runs now, in its own task, so it may tas.wait_* and resume on later ticks.
+    local callback = entry.callback
+    runTaskNow(function()
+      local ok, err = pcall(callback, table.unpack(args, 1, args.n))
+      if not ok then
+        tas.warn("event '%s' listener failed: %s", name, tostring(err))
+      end
+    end)
+  end
+end
+
+-- tas.on(name, callback) -> listener id
+function tas.on(name, callback)
+  return addListener(name, callback, false, "tas.on")
+end
+
+-- tas.once(name, callback) -> listener id
+function tas.once(name, callback)
+  return addListener(name, callback, true, "tas.once")
+end
+
+-- tas.off(id) -> true | false, reason
+function tas.off(id)
+  if removeListener(id) then
+    return true
+  end
+  return false, "no listener with id " .. tostring(id)
+end
+
+function tas.fire_event(name, ...)
+  checkName(name, "tas.fire_event")
   dispatch(name, ...)
 end
 
@@ -87,36 +124,28 @@ function tas.clear_listeners(name)
   if name == nil then
     listeners = {}
   else
+    checkName(name, "tas.clear_listeners")
     listeners[name] = nil
   end
 end
 
 function tas.get_listener_count(name)
+  checkName(name, "tas.get_listener_count")
   local list = listeners[name]
   return list and #list or 0
 end
 
 function tas.has_listeners(name)
+  checkName(name, "tas.has_listeners")
   return listeners[name] ~= nil
 end
 
--- Flow control -----------------------------------------------------------------------
-
-local function checkFunction(value, fn, what)
-  if type(value) ~= "function" then
-    error(fn .. ": " .. what .. " must be a function", 3)
-  end
-end
-
-local function checkCount(value, fn, what)
-  if math.type(value) ~= "integer" or value < 0 then
-    error(fn .. ": " .. what .. " must be a non-negative integer", 3)
-  end
-end
+-- Flow control -------------------------------------------------------------------------
 
 function tas.repeat_for(task, ticks)
-  checkFunction(task, "tas.repeat_for", "task")
+  checkType(task, "function", "tas.repeat_for", "task")
   checkCount(ticks, "tas.repeat_for", "ticks")
+  requireYield("tas.repeat_for")
   for i = 1, ticks do
     task(i)
     tas.wait_ticks(1)
@@ -124,8 +153,9 @@ function tas.repeat_for(task, ticks)
 end
 
 function tas.repeat_count(task, count)
-  checkFunction(task, "tas.repeat_count", "task")
+  checkType(task, "function", "tas.repeat_count", "task")
   checkCount(count, "tas.repeat_count", "count")
+  requireYield("tas.repeat_count")
   for i = 1, count do
     task(i)
     if i < count then
@@ -135,8 +165,9 @@ function tas.repeat_count(task, count)
 end
 
 function tas.repeat_until(task, condition)
-  checkFunction(task, "tas.repeat_until", "task")
-  checkFunction(condition, "tas.repeat_until", "condition")
+  checkType(task, "function", "tas.repeat_until", "task")
+  checkType(condition, "function", "tas.repeat_until", "condition")
+  requireYield("tas.repeat_until")
   while true do
     task()
     if condition() then
@@ -147,17 +178,20 @@ function tas.repeat_until(task, condition)
 end
 
 function tas.repeat_while(task, condition)
-  checkFunction(task, "tas.repeat_while", "task")
-  checkFunction(condition, "tas.repeat_while", "condition")
+  checkType(task, "function", "tas.repeat_while", "task")
+  checkType(condition, "function", "tas.repeat_while", "condition")
+  requireYield("tas.repeat_while")
   while condition() do
     task()
     tas.wait_ticks(1)
   end
 end
 
+-- tas.timeout(task, ticks) -> true, result | false, "timeout" | false, error
 function tas.timeout(task, ticks)
-  checkFunction(task, "tas.timeout", "task")
+  checkType(task, "function", "tas.timeout", "task")
   checkCount(ticks, "tas.timeout", "ticks")
+  requireYield("tas.timeout")
   local handle = tas.async.spawn(task)
   local waited = 0
   while not handle:is_done() and waited < ticks do
@@ -171,14 +205,14 @@ function tas.timeout(task, ticks)
   if handle:is_completed() then
     return true, handle:get_result()
   end
-  local err = handle:get_error()
-  return false, type(err) == "table" and err.message or tostring(err)
+  return false, tostring(handle:get_error())
 end
 
+-- tas.retry(task, attempts) -> task's results; raises the last error when every attempt fails
 function tas.retry(task, attempts)
-  checkFunction(task, "tas.retry", "task")
+  checkType(task, "function", "tas.retry", "task")
   if math.type(attempts) ~= "integer" or attempts < 1 then
-    error("tas.retry: attempts must be a positive integer", 2)
+    fail("tas.retry", "attempts must be a positive integer")
   end
   local lastError
   for attempt = 1, attempts do
@@ -191,13 +225,14 @@ function tas.retry(task, attempts)
   error(lastError, 0)
 end
 
--- Shared data helpers ----------------------------------------------------------------
+-- Shared data helpers ------------------------------------------------------------------
 
 function tas.shared.increment(key, delta)
   delta = delta or 1
+  checkType(delta, "number", "tas.shared.increment", "delta")
   local value = tas.shared.get(key, 0)
   if type(value) ~= "number" then
-    error("tas.shared.increment: value of '" .. tostring(key) .. "' is not a number", 2)
+    fail("tas.shared.increment", "value of '" .. tostring(key) .. "' is not a number")
   end
   value = value + delta
   tas.shared.set(key, value)
@@ -205,7 +240,9 @@ function tas.shared.increment(key, delta)
 end
 
 function tas.shared.decrement(key, delta)
-  return tas.shared.increment(key, -(delta or 1))
+  delta = delta or 1
+  checkType(delta, "number", "tas.shared.decrement", "delta")
+  return tas.shared.increment(key, -delta)
 end
 
 function tas.shared.get_or_set(key, default)
@@ -216,16 +253,9 @@ function tas.shared.get_or_set(key, default)
   return default
 end
 
--- Menu navigation ------------------------------------------------------------------
+-- Menu navigation ----------------------------------------------------------------------
 
 local menu = tas.menu
-
-local function normalizeScreen(name)
-  name = string.lower(name)
-  name = name:gsub("^menu_", "")
-  name = name:gsub("^opt_", "options_")
-  return name
-end
 
 -- Buttons that lead to a known screen. "back" from options/highscore depends on where
 -- they were opened from, so it is only used when no forward route exists.
@@ -275,11 +305,13 @@ local function waitForScreenChange(from, ticks)
   return false
 end
 
+-- tas.menu.navigate_to(screen) -> true | false, reason; waits until the screen is shown
 function menu.navigate_to(target)
   if type(target) ~= "string" or target == "" then
-    error("tas.menu.navigate_to: expected a screen name", 2)
+    fail("tas.menu.navigate_to", "screen name must be a non-empty string")
   end
-  target = normalizeScreen(target)
+  requireYield("tas.menu.navigate_to")
+  target = normalizeMenuName(target)
   for _ = 1, 12 do
     local current = menu.get_current()
     if current == target then
@@ -300,19 +332,24 @@ function menu.navigate_to(target)
   return false, "gave up navigating to '" .. target .. "'"
 end
 
+-- tas.menu.go_to_main() -> true | false, reason. In a level it leaves the level (and
+-- returns at once); in the menus it walks there and waits.
 local exitLevelToMain = menu.go_to_main
 function menu.go_to_main()
   if menu.is_in_game() then
     return exitLevelToMain()
   end
+  requireYield("tas.menu.go_to_main")
   return menu.navigate_to("main")
 end
 
+-- tas.menu.send_key(key[, ticks]) -> true; holds the key, then waits one released frame
 function menu.send_key(key, duration)
   duration = duration or 1
   if math.type(duration) ~= "integer" or duration < 1 then
-    error("tas.menu.send_key: duration must be a positive integer", 2)
+    fail("tas.menu.send_key", "duration must be a positive integer")
   end
+  requireYield("tas.menu.send_key")
   tas.hold(key, duration)
   -- One released frame, so the next press of the same key is a new edge.
   tas.wait_ticks(1)
@@ -334,11 +371,17 @@ return dispatch
 const char *const LuaApi::kEventDispatchKey = "BallanceTAS.DispatchEvent";
 
 void LuaApi::RegisterPrelude(lua_State *state) {
-    if (luaL_loadbufferx(state, kPrelude, sizeof(kPrelude) - 1, "=tas.prelude", "t") != LUA_OK ||
-        lua_pcall(state, 0, 1, 0) != LUA_OK) {
+    if (luaL_loadbufferx(state, kPrelude, sizeof(kPrelude) - 1, "=tas.prelude", "t") != LUA_OK) {
         std::string message = lua_tostring(state, -1) ? lua_tostring(state, -1) : "unknown error";
         lua_pop(state, 1);
-        throw std::runtime_error("LuaApi prelude failed: " + message);
+        throw std::runtime_error("tas.prelude failed to load: " + message);
+    }
+    lua_pushcfunction(state, LuaApi::NormalizeMenuNameFunction);
+    lua_getfield(state, LUA_REGISTRYINDEX, LuaApi::kRunTaskNowKey);
+    if (lua_pcall(state, 2, 1, 0) != LUA_OK) {
+        std::string message = lua_tostring(state, -1) ? lua_tostring(state, -1) : "unknown error";
+        lua_pop(state, 1);
+        throw std::runtime_error("tas.prelude failed: " + message);
     }
     lua_setfield(state, LUA_REGISTRYINDEX, kEventDispatchKey);
 }

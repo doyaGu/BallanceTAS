@@ -1,46 +1,9 @@
 -- Drives the in-level menus (pause, yes/no, dead, score, end) through their own buttons.
 local TIMEOUT_SECONDS = 150
 
-local function check(condition, message)
-  if not condition then
-    error(message, 2)
-  end
-end
-
-local function expect_ok(what, ok, err)
-  if not ok then
-    error(what .. " failed: " .. tostring(err), 2)
-  end
-end
-
--- Wall-clock bounded wait (os.time, seconds); ticks run slower while levels load.
-local function wait_for(what, predicate, seconds)
-  local deadline = os.time() + (seconds or 30)
-  while not predicate() do
-    if os.time() > deadline then
-      error("timed out waiting for " .. what, 2)
-    end
-    tas.wait_ticks(1)
-  end
-end
-
-local function listen(name)
-  local state = { fired = false }
-  tas.once(name, function(event) state.fired = true; state.event = event end)
-  return state
-end
-
-local function wait_screen(name, seconds)
-  wait_for("the '" .. tostring(name) .. "' screen", function() return tas.menu.get_current() == name end, seconds)
-  tas.wait_ticks(2) -- the screen switches its buttons on a frame after it appears
-end
-
-local function click(button, screen)
-  expect_ok("click_button(" .. button .. ")", tas.menu.click_button(button))
-  if screen then
-    wait_screen(screen)
-  end
-end
+local util = require("smoke_util")
+local check, expect_ok, wait_for, listen = util.check, util.expect_ok, util.wait_for, util.listen
+local wait_screen, click = util.wait_screen, util.click
 
 local function load_level(level)
   local controllable = listen("ball_nav_active")
@@ -184,7 +147,7 @@ local function end_menu()
   local started = listen("start_level")
   click("next")
   wait_for("Level 2 to start", function() return started.fired end, 60)
-  check(tas.level.get_current_number() == 2, "next should load Level 2")
+  check(tas.level.get_number() == 2, "next should load Level 2")
   tas.log("Game Flow end screen: options, next level")
 
   local exited = listen("post_exit_level")

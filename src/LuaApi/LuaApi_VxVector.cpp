@@ -175,7 +175,7 @@ static int VxVectorNew(lua_State *L) {
                      static_cast<float>(luaL_checknumber(L, 3)));
         return 1;
     }
-    return luaL_error(L, "VxVector expects 0, 1, or 3 arguments");
+    return luaL_error(L, "VxVector.new: expected 0, 1, or 3 arguments");
 }
 
 static int VxVectorCall(lua_State *L) {
@@ -200,7 +200,7 @@ static int Vx2DVectorNew(lua_State *L) {
                        static_cast<float>(luaL_checknumber(L, 2)));
         return 1;
     }
-    return luaL_error(L, "Vx2DVector expects 0, 1, or 2 arguments");
+    return luaL_error(L, "Vx2DVector.new: expected 0, 1, or 2 arguments");
 }
 
 static int VxVector4New(lua_State *L) {
@@ -222,7 +222,7 @@ static int VxVector4New(lua_State *L) {
                       static_cast<float>(luaL_checknumber(L, 4)));
         return 1;
     }
-    return luaL_error(L, "VxVector4 expects 0, 1, or 4 arguments");
+    return luaL_error(L, "VxVector4.new: expected 0, 1, or 4 arguments");
 }
 
 static int VxVector4Call(lua_State *L) {
@@ -253,7 +253,7 @@ static int VxBboxNew(lua_State *L) {
         PushVxBbox(L, *min, *max);
         return 1;
     }
-    return luaL_error(L, "VxBbox expects 0, 1, or 2 arguments");
+    return luaL_error(L, "VxBbox.new: expected 0, 1, or 2 arguments");
 }
 
 static int VxBboxCall(lua_State *L) {
@@ -277,7 +277,7 @@ static int VxCompressedVectorNew(lua_State *L) {
                                static_cast<float>(luaL_checknumber(L, 3)));
         return 1;
     }
-    return luaL_error(L, "VxCompressedVector expects 0 or 3 arguments");
+    return luaL_error(L, "VxCompressedVector.new: expected 0 or 3 arguments");
 }
 
 static int VxCompressedVectorCall(lua_State *L) {
@@ -301,7 +301,7 @@ static int VxCompressedVectorOldNew(lua_State *L) {
                                   static_cast<float>(luaL_checknumber(L, 3)));
         return 1;
     }
-    return luaL_error(L, "VxCompressedVectorOld expects 0 or 3 arguments");
+    return luaL_error(L, "VxCompressedVectorOld.new: expected 0 or 3 arguments");
 }
 
 static int VxCompressedVectorOldCall(lua_State *L) {
@@ -519,7 +519,7 @@ static int VxVector4NumericNewIndex(lua_State *L) {
         value->w = number;
         return 0;
     default:
-        return luaL_error(L, "VxVector4 index out of range");
+        return luaL_error(L, "VxVector4: index out of range (components are 0-based)");
     }
 }
 
@@ -645,7 +645,7 @@ static int VxVectorNumericNewIndex(lua_State *L) {
         value->z = number;
         return 0;
     default:
-        return luaL_error(L, "VxVector index out of range");
+        return luaL_error(L, "VxVector: index out of range (components are 0-based)");
     }
 }
 
@@ -829,7 +829,7 @@ static int Vx2DVectorNumericNewIndex(lua_State *L) {
         value->y = number;
         return 0;
     default:
-        return luaL_error(L, "Vx2DVector index out of range");
+        return luaL_error(L, "Vx2DVector: index out of range (components are 0-based)");
     }
 }
 

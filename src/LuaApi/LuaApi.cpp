@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 
+#include "LuaApiCommon.h"
 #include "ScriptContext.h"
 
 static void EnsureTasTable(lua_State *state) {
@@ -22,6 +23,8 @@ void LuaApi::Register(ScriptContext *context) {
 
     lua_State *state = context->GetLuaState().Get();
     EnsureTasTable(state);
+    lua_pushlightuserdata(state, context);
+    lua_setfield(state, LUA_REGISTRYINDEX, LuaApiCommon::kContextRegistryKey);
 
     RegisterVxVector(state);
     RegisterVxColor(state);

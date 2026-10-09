@@ -1,5 +1,8 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
+#include "LuaApiValues.h"
+
 #include "../LuaRuntime/LuaStackGuard.h"
 #include "../LuaRuntime/LuaUserdata.h"
 
@@ -7,19 +10,11 @@
 #include <CKTypes.h>
 #include <string>
 
-constexpr const char *kVxIntersectionDescMt = "BallanceTAS.VxIntersectionDesc";
-constexpr const char *kCKRenderObjectMt = "BallanceTAS.CKRenderObject";
+
+using namespace LuaApiCommon;
 
 static VxIntersectionDesc *CheckDesc(lua_State *L, int index) {
     return tas::lua::CheckUserdata<VxIntersectionDesc>(L, index, kVxIntersectionDescMt);
-}
-
-static void PushVxVector(lua_State *L, const VxVector &value) {
-    lua_getglobal(L, "VxVector");
-    lua_pushnumber(L, value.x);
-    lua_pushnumber(L, value.y);
-    lua_pushnumber(L, value.z);
-    lua_call(L, 3, 1);
 }
 
 static int Object(lua_State *L) {

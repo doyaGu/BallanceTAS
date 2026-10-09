@@ -1,5 +1,6 @@
 #include "LuaApi.h"
 
+#include "LuaApiCommon.h"
 #include "RecordPlayer.h"
 #include "ScriptContext.h"
 
@@ -8,58 +9,66 @@
 #include <string>
 #include <vector>
 
-static ScriptContext *GetContext(lua_State *L) {
-    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-}
+using namespace LuaApiCommon;
 
-static RecordPlayer *RequireRecordPlayer(lua_State *L, const char *functionName) {
-    auto *context = GetContext(L);
-    auto *recordPlayer = context ? context->GetRecordPlayer() : nullptr;
-    if (!recordPlayer) {
-        luaL_error(L, "%s: RecordPlayer not available", functionName);
+// Frame numbers are 0-based positions in the record.
+
+static RecordPlayer *RequireRecordPlayer(lua_State *L, const char *where) {
+    ScriptContext *context = GetContext(L);
+    RecordPlayer *player = context ? context->GetRecordPlayer() : nullptr;
+    if (!player) {
+        Raise(L, where, "the record player is not available");
     }
-    return recordPlayer;
+    player->ClearLastError();
+    return player;
 }
 
 static size_t CheckFrame(lua_State *L, int index, const char *name) {
-    const lua_Integer value = luaL_checkinteger(L, index);
-    if (value < 0) {
-        luaL_error(L, "%s must be non-negative", name);
+    int isInteger = 0;
+    const lua_Integer value = lua_tointegerx(L, index, &isInteger);
+    if (!isInteger || value < 0) {
+        Raise(L, "tas.record", "bad argument #%d (%s must be a non-negative integer)", index, name);
     }
     return static_cast<size_t>(value);
 }
 
-static void PushString(lua_State *L, const std::string &value) {
-    lua_pushlstring(L, value.data(), value.size());
+// Actions: true, or false and why the record player refused.
+static int PushRecordResult(lua_State *L, bool ok) {
+    if (ok) {
+        return PushOk(L);
+    }
+    ScriptContext *context = GetContext(L);
+    RecordPlayer *player = context ? context->GetRecordPlayer() : nullptr;
+    const std::string reason = player && !player->GetLastError().empty() ? player->GetLastError()
+                                                                          : std::string("the operation failed");
+    return PushFail(L, reason);
 }
 
 static int Load(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     if (!path || !*path) {
-        return luaL_error(L, "record.load: path cannot be empty");
+        return RaiseArg(L, "tas.record.load", 1, "non-empty path expected");
     }
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.load")->LoadAndPlay(path));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.load")->LoadAndPlay(path));
 }
 
 static int Stop(lua_State *L) {
-    RequireRecordPlayer(L, "record.stop")->Stop();
+    RequireRecordPlayer(L, "tas.record.stop")->Stop();
     return 0;
 }
 
 static int Pause(lua_State *L) {
-    RequireRecordPlayer(L, "record.pause")->Pause();
+    RequireRecordPlayer(L, "tas.record.pause")->Pause();
     return 0;
 }
 
 static int Resume(lua_State *L) {
-    RequireRecordPlayer(L, "record.resume")->Resume();
+    RequireRecordPlayer(L, "tas.record.resume")->Resume();
     return 0;
 }
 
 static int Seek(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.seek")->Seek(CheckFrame(L, 1, "frame")));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.seek")->Seek(CheckFrame(L, 1, "frame")));
 }
 
 static int IsPlaying(lua_State *L) {
@@ -112,7 +121,7 @@ static void PushFrameInput(lua_State *L, const RecordFrameData &frameData) {
 }
 
 static int GetFrameInput(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_frame_input");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_frame_input");
     RecordFrameData data;
     if (!recordPlayer->GetFrameInput(CheckFrame(L, 1, "frame"), &data)) {
         lua_pushnil(L);
@@ -123,121 +132,115 @@ static int GetFrameInput(lua_State *L) {
 }
 
 static int SetFrameKey(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.set_frame_key");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.set_frame_key");
     const size_t frame = CheckFrame(L, 1, "frame");
     const char *key = luaL_checkstring(L, 2);
     const bool pressed = lua_toboolean(L, 3) != 0;
-    lua_pushboolean(L, recordPlayer->SetFrameKey(frame, key ? key : "", pressed));
-    return 1;
+    return PushRecordResult(L, recordPlayer->SetFrameKey(frame, key ? key : "", pressed));
 }
 
+// tas.record.get_frame_delta_time(frame) -> milliseconds | nil (no such frame)
 static int GetFrameDeltaTime(lua_State *L) {
-    lua_pushnumber(L, RequireRecordPlayer(L, "record.get_frame_delta_time")->GetFrameDeltaTimeByFrame(CheckFrame(L, 1, "frame")));
+    const size_t frame = CheckFrame(L, 1, "frame");
+    RecordPlayer *player = RequireRecordPlayer(L, "tas.record.get_frame_delta_time");
+    if (frame >= player->GetTotalFrames()) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushnumber(L, player->GetFrameDeltaTimeByFrame(frame));
     return 1;
 }
 
 static int SetFrameDeltaTime(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.set_frame_delta_time");
-    lua_pushboolean(L, recordPlayer->SetFrameDeltaTime(CheckFrame(L, 1, "frame"), static_cast<float>(luaL_checknumber(L, 2))));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.set_frame_delta_time");
+    const size_t frame = CheckFrame(L, 1, "frame");
+    const auto deltaTime = static_cast<float>(luaL_checknumber(L, 2));
+    return PushRecordResult(L, recordPlayer->SetFrameDeltaTime(frame, deltaTime));
 }
 
 static int InsertFrames(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.insert_frames")->InsertFrames(CheckFrame(L, 1, "start_frame"), CheckFrame(L, 2, "count")));
-    return 1;
+    const size_t start = CheckFrame(L, 1, "start_frame");
+    const size_t count = CheckFrame(L, 2, "count");
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.insert_frames")->InsertFrames(start, count));
 }
 
 static int DeleteFrames(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.delete_frames")->DeleteFrames(CheckFrame(L, 1, "start_frame"), CheckFrame(L, 2, "count")));
-    return 1;
+    const size_t start = CheckFrame(L, 1, "start_frame");
+    const size_t count = CheckFrame(L, 2, "count");
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.delete_frames")->DeleteFrames(start, count));
 }
 
 static int SeekRelative(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.seek_relative")->SeekRelative(static_cast<int>(luaL_checkinteger(L, 1))));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.seek_relative")->SeekRelative(static_cast<int>(luaL_checkinteger(L, 1))));
 }
 
 static int GetProgress(lua_State *L) {
-    lua_pushnumber(L, RequireRecordPlayer(L, "record.get_progress")->GetProgress());
+    lua_pushnumber(L, RequireRecordPlayer(L, "tas.record.get_progress")->GetProgress());
     return 1;
 }
 
 static int GetInputString(lua_State *L) {
-    PushString(L, RequireRecordPlayer(L, "record.get_input_string")->GetInputString(CheckFrame(L, 1, "frame")));
+    PushString(L, RequireRecordPlayer(L, "tas.record.get_input_string")->GetInputString(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
 static int Validate(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.validate")->Validate());
+    lua_pushboolean(L, RequireRecordPlayer(L, "tas.record.validate")->Validate());
     return 1;
 }
 
 static int Save(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     if (!path || !*path) {
-        return luaL_error(L, "record.save: path cannot be empty");
+        return RaiseArg(L, "tas.record.save", 1, "non-empty path expected");
     }
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.save")->Save(path));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.save")->Save(path));
 }
 
 static int ExportInputs(lua_State *L) {
     const char *path = luaL_checkstring(L, 1);
     const char *format = luaL_optstring(L, 2, "txt");
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.export_inputs")->ExportInputs(path ? path : "", format ? format : ""));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.export_inputs")->ExportInputs(path ? path : "", format ? format : ""));
 }
 
 static int CopyFrames(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.copy_frames");
-    lua_pushboolean(L, recordPlayer->CopyFrames(CheckFrame(L, 1, "source_frame"), CheckFrame(L, 2, "target_frame"),
-                                                CheckFrame(L, 3, "count")));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.copy_frames");
+    const size_t source = CheckFrame(L, 1, "source_frame");
+    const size_t target = CheckFrame(L, 2, "target_frame");
+    const size_t count = CheckFrame(L, 3, "count");
+    return PushRecordResult(L, recordPlayer->CopyFrames(source, target, count));
 }
 
 static int DuplicateFrame(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.duplicate_frame");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.duplicate_frame");
     const size_t frame = CheckFrame(L, 1, "frame");
     const size_t count = lua_isnoneornil(L, 2) ? 1 : CheckFrame(L, 2, "count");
-    lua_pushboolean(L, recordPlayer->DuplicateFrame(frame, count));
-    return 1;
+    return PushRecordResult(L, recordPlayer->DuplicateFrame(frame, count));
 }
 
 static int IsAtEnd(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.is_at_end")->IsAtEnd());
+    lua_pushboolean(L, RequireRecordPlayer(L, "tas.record.is_at_end")->IsAtEnd());
     return 1;
 }
 
 // --- Search & analysis ---
 
-static void PushFrameList(lua_State *L, const std::vector<size_t> &frames) {
-    lua_createtable(L, static_cast<int>(frames.size()), 0);
-    for (size_t i = 0; i < frames.size(); ++i) {
-        lua_pushinteger(L, static_cast<lua_Integer>(frames[i]));
-        lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
-    }
-}
 
-static void PushStringList(lua_State *L, const std::vector<std::string> &values) {
-    lua_createtable(L, static_cast<int>(values.size()), 0);
-    for (size_t i = 0; i < values.size(); ++i) {
-        PushString(L, values[i]);
-        lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
-    }
-}
 
 static size_t OptEndFrame(lua_State *L, int index) {
     return lua_isnoneornil(L, index) ? static_cast<size_t>(-1) : CheckFrame(L, index, "end_frame");
 }
 
 static int GetPressedKeys(lua_State *L) {
-    PushStringList(L, RequireRecordPlayer(L, "record.get_pressed_keys")->GetPressedKeys(CheckFrame(L, 1, "frame")));
+    PushStringList(L, RequireRecordPlayer(L, "tas.record.get_pressed_keys")->GetPressedKeys(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
 static int FindInputChange(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.find_input_change");
-    const int frame = recordPlayer->FindInputChange(CheckFrame(L, 1, "start_frame"), luaL_checkstring(L, 2));
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.find_input_change");
+    const size_t start = CheckFrame(L, 1, "start_frame");
+    const char *key = luaL_checkstring(L, 2);
+    const int frame = recordPlayer->FindInputChange(start, key);
     if (frame < 0) {
         lua_pushnil(L);
     } else {
@@ -247,29 +250,31 @@ static int FindInputChange(lua_State *L) {
 }
 
 static int CompareFrames(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.compare_frames");
-    lua_pushboolean(L, recordPlayer->CompareFrames(CheckFrame(L, 1, "frame1"), CheckFrame(L, 2, "frame2")));
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.compare_frames");
+    const size_t first = CheckFrame(L, 1, "frame1");
+    const size_t second = CheckFrame(L, 2, "frame2");
+    lua_pushboolean(L, recordPlayer->CompareFrames(first, second));
     return 1;
 }
 
 static int FindFramesWithKeys(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.find_frames_with_keys");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.find_frames_with_keys");
     const char *keys = luaL_checkstring(L, 1);
     const size_t start = lua_isnoneornil(L, 2) ? 0 : CheckFrame(L, 2, "start_frame");
-    PushFrameList(L, recordPlayer->FindFramesWithKeys(keys, start, OptEndFrame(L, 3)));
+    PushIndexList(L, recordPlayer->FindFramesWithKeys(keys, start, OptEndFrame(L, 3)));
     return 1;
 }
 
 static int FindFramesByDeltaTime(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.find_frames_by_delta_time");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.find_frames_by_delta_time");
     const auto deltaTime = static_cast<float>(luaL_checknumber(L, 1));
     const auto tolerance = static_cast<float>(luaL_optnumber(L, 2, 0.01));
-    PushFrameList(L, recordPlayer->FindFramesByDeltaTime(deltaTime, tolerance));
+    PushIndexList(L, recordPlayer->FindFramesByDeltaTime(deltaTime, tolerance));
     return 1;
 }
 
 static int GetStatistics(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_statistics");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_statistics");
     const size_t start = lua_isnoneornil(L, 1) ? 0 : CheckFrame(L, 1, "start_frame");
     const auto stats = recordPlayer->GetStatistics(start, OptEndFrame(L, 2));
     lua_createtable(L, 0, static_cast<int>(stats.size()));
@@ -301,26 +306,26 @@ static void PushSection(lua_State *L, const RecordSection *section) {
 }
 
 static int AddSection(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.add_section");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.add_section");
     const size_t start = CheckFrame(L, 1, "start_frame");
     const size_t end = CheckFrame(L, 2, "end_frame");
     const char *name = luaL_checkstring(L, 3);
-    lua_pushboolean(L, recordPlayer->AddSection(start, end, name, luaL_optstring(L, 4, ""), luaL_optstring(L, 5, "")));
-    return 1;
+    const char *description = luaL_optstring(L, 4, "");
+    const char *color = luaL_optstring(L, 5, "");
+    return PushRecordResult(L, recordPlayer->AddSection(start, end, name, description, color));
 }
 
 static int RemoveSection(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.remove_section")->RemoveSection(luaL_checkstring(L, 1)));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.remove_section")->RemoveSection(luaL_checkstring(L, 1)));
 }
 
 static int GetSection(lua_State *L) {
-    PushSection(L, RequireRecordPlayer(L, "record.get_section")->GetSection(luaL_checkstring(L, 1)));
+    PushSection(L, RequireRecordPlayer(L, "tas.record.get_section")->GetSection(luaL_checkstring(L, 1)));
     return 1;
 }
 
 static int GetSections(lua_State *L) {
-    auto sections = RequireRecordPlayer(L, "record.get_sections")->GetAllSections();
+    auto sections = RequireRecordPlayer(L, "tas.record.get_sections")->GetAllSections();
     std::sort(sections.begin(), sections.end(), [](const RecordSection &a, const RecordSection &b) {
         return a.startFrame < b.startFrame;
     });
@@ -333,27 +338,30 @@ static int GetSections(lua_State *L) {
 }
 
 static int GetSectionAtFrame(lua_State *L) {
-    PushSection(L, RequireRecordPlayer(L, "record.get_section_at_frame")->GetSectionAtFrame(CheckFrame(L, 1, "frame")));
+    PushSection(L, RequireRecordPlayer(L, "tas.record.get_section_at_frame")->GetSectionAtFrame(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
 static int RenameSection(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.rename_section");
-    lua_pushboolean(L, recordPlayer->RenameSection(luaL_checkstring(L, 1), luaL_checkstring(L, 2)));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.rename_section");
+    const char *name = luaL_checkstring(L, 1);
+    const char *newName = luaL_checkstring(L, 2);
+    return PushRecordResult(L, recordPlayer->RenameSection(name, newName));
 }
 
 static int MoveSection(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.move_section");
-    lua_pushboolean(L, recordPlayer->MoveSection(luaL_checkstring(L, 1), CheckFrame(L, 2, "start_frame")));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.move_section");
+    const char *name = luaL_checkstring(L, 1);
+    const size_t start = CheckFrame(L, 2, "start_frame");
+    return PushRecordResult(L, recordPlayer->MoveSection(name, start));
 }
 
 static int ResizeSection(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.resize_section");
-    lua_pushboolean(L, recordPlayer->ResizeSection(luaL_checkstring(L, 1), CheckFrame(L, 2, "start_frame"),
-                                                   CheckFrame(L, 3, "end_frame")));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.resize_section");
+    const char *name = luaL_checkstring(L, 1);
+    const size_t start = CheckFrame(L, 2, "start_frame");
+    const size_t end = CheckFrame(L, 3, "end_frame");
+    return PushRecordResult(L, recordPlayer->ResizeSection(name, start, end));
 }
 
 // --- Markers ---
@@ -364,7 +372,7 @@ static MarkerType CheckMarkerType(lua_State *L, int index) {
     }
     const lua_Integer value = luaL_checkinteger(L, index);
     if (value < static_cast<lua_Integer>(MarkerType::Bookmark) || value > static_cast<lua_Integer>(MarkerType::Custom)) {
-        luaL_error(L, "marker type must be one of tas.record.MarkerType");
+        Raise(L, "tas.record", "marker type must be one of tas.record.MarkerType");
     }
     return static_cast<MarkerType>(value);
 }
@@ -407,66 +415,69 @@ static void PushMarkerList(lua_State *L, std::vector<RecordMarker> markers) {
 }
 
 static int AddMarker(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.add_marker");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.add_marker");
     const size_t frame = CheckFrame(L, 1, "frame");
     const char *name = luaL_checkstring(L, 2);
     const MarkerType type = CheckMarkerType(L, 3);
-    lua_pushboolean(L, recordPlayer->AddMarker(frame, name, type, luaL_optstring(L, 4, ""), luaL_optstring(L, 5, "")));
-    return 1;
+    const char *description = luaL_optstring(L, 4, "");
+    const char *color = luaL_optstring(L, 5, "");
+    return PushRecordResult(L, recordPlayer->AddMarker(frame, name, type, description, color));
 }
 
 static int RemoveMarker(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.remove_marker")->RemoveMarker(luaL_checkstring(L, 1)));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.remove_marker")->RemoveMarker(luaL_checkstring(L, 1)));
 }
 
 static int GetMarker(lua_State *L) {
-    PushMarker(L, RequireRecordPlayer(L, "record.get_marker")->GetMarker(luaL_checkstring(L, 1)));
+    PushMarker(L, RequireRecordPlayer(L, "tas.record.get_marker")->GetMarker(luaL_checkstring(L, 1)));
     return 1;
 }
 
 static int GetMarkers(lua_State *L) {
-    PushMarkerList(L, RequireRecordPlayer(L, "record.get_markers")->GetAllMarkers());
+    PushMarkerList(L, RequireRecordPlayer(L, "tas.record.get_markers")->GetAllMarkers());
     return 1;
 }
 
 static int GetMarkersAtFrame(lua_State *L) {
-    PushMarkerList(L, RequireRecordPlayer(L, "record.get_markers_at_frame")->GetMarkersAtFrame(CheckFrame(L, 1, "frame")));
+    PushMarkerList(L, RequireRecordPlayer(L, "tas.record.get_markers_at_frame")->GetMarkersAtFrame(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
 static int GetMarkersInRange(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_markers_in_range");
-    PushMarkerList(L, recordPlayer->GetMarkersInRange(CheckFrame(L, 1, "start_frame"), CheckFrame(L, 2, "end_frame")));
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_markers_in_range");
+    const size_t start = CheckFrame(L, 1, "start_frame");
+    const size_t end = CheckFrame(L, 2, "end_frame");
+    PushMarkerList(L, recordPlayer->GetMarkersInRange(start, end));
     return 1;
 }
 
 static int RenameMarker(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.rename_marker");
-    lua_pushboolean(L, recordPlayer->RenameMarker(luaL_checkstring(L, 1), luaL_checkstring(L, 2)));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.rename_marker");
+    const char *name = luaL_checkstring(L, 1);
+    const char *newName = luaL_checkstring(L, 2);
+    return PushRecordResult(L, recordPlayer->RenameMarker(name, newName));
 }
 
 static int MoveMarker(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.move_marker");
-    lua_pushboolean(L, recordPlayer->MoveMarker(luaL_checkstring(L, 1), CheckFrame(L, 2, "frame")));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.move_marker");
+    const char *name = luaL_checkstring(L, 1);
+    const size_t frame = CheckFrame(L, 2, "frame");
+    return PushRecordResult(L, recordPlayer->MoveMarker(name, frame));
 }
 
 static int SeekToMarker(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.seek_to_marker")->SeekToMarker(luaL_checkstring(L, 1)));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.seek_to_marker")->SeekToMarker(luaL_checkstring(L, 1)));
 }
 
 static int GetNextMarker(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_next_marker");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_next_marker");
     const size_t frame = lua_isnoneornil(L, 1) ? recordPlayer->GetCurrentFrame() : CheckFrame(L, 1, "frame");
     PushMarker(L, recordPlayer->GetNextMarker(frame, OptMarkerFilter(L, 2)));
     return 1;
 }
 
 static int GetPreviousMarker(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_previous_marker");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_previous_marker");
     const size_t frame = lua_isnoneornil(L, 1) ? recordPlayer->GetCurrentFrame() : CheckFrame(L, 1, "frame");
     PushMarker(L, recordPlayer->GetPreviousMarker(frame, OptMarkerFilter(L, 2)));
     return 1;
@@ -497,45 +508,49 @@ static void PushComment(lua_State *L, const RecordComment *comment) {
 }
 
 static int AddComment(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.add_comment");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.add_comment");
     const size_t frame = CheckFrame(L, 1, "frame");
     const char *text = luaL_checkstring(L, 2);
+    const char *author = luaL_optstring(L, 3, "");
+    const char *category = luaL_optstring(L, 4, "");
     lua_pushinteger(L, static_cast<lua_Integer>(
-        recordPlayer->AddComment(frame, text, luaL_optstring(L, 3, ""), luaL_optstring(L, 4, ""))));
+        recordPlayer->AddComment(frame, text, author, category)));
     return 1;
 }
 
 static int AddRangeComment(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.add_range_comment");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.add_range_comment");
     const size_t start = CheckFrame(L, 1, "start_frame");
     const size_t end = CheckFrame(L, 2, "end_frame");
     if (end < start) {
-        return luaL_error(L, "record.add_range_comment: end_frame must not be before start_frame");
+        return Raise(L, "tas.record.add_range_comment", "end_frame must not be before start_frame");
     }
     const char *text = luaL_checkstring(L, 3);
+    const char *author = luaL_optstring(L, 4, "");
+    const char *category = luaL_optstring(L, 5, "");
     lua_pushinteger(L, static_cast<lua_Integer>(
-        recordPlayer->AddRangeComment(start, end, text, luaL_optstring(L, 4, ""), luaL_optstring(L, 5, ""))));
+        recordPlayer->AddRangeComment(start, end, text, author, category)));
     return 1;
 }
 
 static int RemoveComment(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.remove_comment")->RemoveComment(CheckFrame(L, 1, "id")));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.remove_comment")->RemoveComment(CheckFrame(L, 1, "id")));
 }
 
 static int GetComment(lua_State *L) {
-    PushComment(L, RequireRecordPlayer(L, "record.get_comment")->GetComment(CheckFrame(L, 1, "id")));
+    PushComment(L, RequireRecordPlayer(L, "tas.record.get_comment")->GetComment(CheckFrame(L, 1, "id")));
     return 1;
 }
 
 static int EditComment(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.edit_comment");
-    lua_pushboolean(L, recordPlayer->EditComment(CheckFrame(L, 1, "id"), luaL_checkstring(L, 2)));
-    return 1;
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.edit_comment");
+    const size_t id = CheckFrame(L, 1, "id");
+    const char *text = luaL_checkstring(L, 2);
+    return PushRecordResult(L, recordPlayer->EditComment(id, text));
 }
 
 static int GetAllComments(lua_State *L) {
-    const auto comments = RequireRecordPlayer(L, "record.get_all_comments")->GetAllComments();
+    const auto comments = RequireRecordPlayer(L, "tas.record.get_all_comments")->GetAllComments();
     lua_createtable(L, static_cast<int>(comments.size()), 0);
     for (size_t i = 0; i < comments.size(); ++i) {
         PushComment(L, &comments[i]);
@@ -545,7 +560,7 @@ static int GetAllComments(lua_State *L) {
 }
 
 static int GetCommentsAtFrame(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_comments_at_frame");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_comments_at_frame");
     const size_t frame = CheckFrame(L, 1, "frame");
     const auto comments = recordPlayer->GetAllComments();
     lua_newtable(L);
@@ -576,26 +591,24 @@ static void PushMacro(lua_State *L, const RecordMacro *macro) {
 }
 
 static int SaveMacro(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.save_macro");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.save_macro");
     const char *name = luaL_checkstring(L, 1);
     const size_t start = CheckFrame(L, 2, "start_frame");
     const size_t end = CheckFrame(L, 3, "end_frame");
-    lua_pushboolean(L, recordPlayer->SaveMacro(name, start, end, luaL_optstring(L, 4, "")));
-    return 1;
+    return PushRecordResult(L, recordPlayer->SaveMacro(name, start, end, luaL_optstring(L, 4, "")));
 }
 
 static int DeleteMacro(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.delete_macro")->DeleteMacro(luaL_checkstring(L, 1)));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.delete_macro")->DeleteMacro(luaL_checkstring(L, 1)));
 }
 
 static int GetMacro(lua_State *L) {
-    PushMacro(L, RequireRecordPlayer(L, "record.get_macro")->GetMacro(luaL_checkstring(L, 1)));
+    PushMacro(L, RequireRecordPlayer(L, "tas.record.get_macro")->GetMacro(luaL_checkstring(L, 1)));
     return 1;
 }
 
 static int GetMacros(lua_State *L) {
-    auto macros = RequireRecordPlayer(L, "record.get_macros")->GetAllMacros();
+    auto macros = RequireRecordPlayer(L, "tas.record.get_macros")->GetAllMacros();
     std::sort(macros.begin(), macros.end(), [](const RecordMacro &a, const RecordMacro &b) { return a.name < b.name; });
     lua_createtable(L, static_cast<int>(macros.size()), 0);
     for (size_t i = 0; i < macros.size(); ++i) {
@@ -606,23 +619,24 @@ static int GetMacros(lua_State *L) {
 }
 
 static int InsertMacro(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.insert_macro");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.insert_macro");
     const char *name = luaL_checkstring(L, 1);
     const size_t frame = CheckFrame(L, 2, "frame");
     const size_t repeat = lua_isnoneornil(L, 3) ? 1 : CheckFrame(L, 3, "repeat_count");
-    lua_pushboolean(L, recordPlayer->InsertMacro(name, frame, repeat));
-    return 1;
+    return PushRecordResult(L, recordPlayer->InsertMacro(name, frame, repeat));
 }
 
 // --- Metadata & tags ---
 
 static int SetMetadata(lua_State *L) {
-    RequireRecordPlayer(L, "record.set_metadata")->SetMetadataField(luaL_checkstring(L, 1), luaL_checkstring(L, 2));
+    const char *field = luaL_checkstring(L, 1);
+    const char *value = luaL_checkstring(L, 2);
+    RequireRecordPlayer(L, "tas.record.set_metadata")->SetMetadataField(field, value);
     return 0;
 }
 
 static int GetMetadata(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.get_metadata");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.get_metadata");
     if (!lua_isnoneornil(L, 1)) {
         PushString(L, recordPlayer->GetMetadataField(luaL_checkstring(L, 1)));
         return 1;
@@ -654,107 +668,102 @@ static int GetMetadata(lua_State *L) {
 }
 
 static int AddTag(lua_State *L) {
-    RequireRecordPlayer(L, "record.add_tag")->AddTag(luaL_checkstring(L, 1));
+    RequireRecordPlayer(L, "tas.record.add_tag")->AddTag(luaL_checkstring(L, 1));
     return 0;
 }
 
 static int RemoveTag(lua_State *L) {
-    RequireRecordPlayer(L, "record.remove_tag")->RemoveTag(luaL_checkstring(L, 1));
+    RequireRecordPlayer(L, "tas.record.remove_tag")->RemoveTag(luaL_checkstring(L, 1));
     return 0;
 }
 
 static int GetTags(lua_State *L) {
-    PushStringList(L, RequireRecordPlayer(L, "record.get_tags")->GetTags());
+    PushStringList(L, RequireRecordPlayer(L, "tas.record.get_tags")->GetTags());
     return 1;
 }
 
 static int IncrementRerecordCount(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.increment_rerecord_count");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.increment_rerecord_count");
     recordPlayer->IncrementRerecordCount();
     lua_pushinteger(L, static_cast<lua_Integer>(recordPlayer->GetRerecordCount()));
     return 1;
 }
 
 static int GetRerecordCount(lua_State *L) {
-    lua_pushinteger(L, static_cast<lua_Integer>(RequireRecordPlayer(L, "record.get_rerecord_count")->GetRerecordCount()));
+    lua_pushinteger(L, static_cast<lua_Integer>(RequireRecordPlayer(L, "tas.record.get_rerecord_count")->GetRerecordCount()));
     return 1;
 }
 
 // --- Undo / redo ---
 
 static int Undo(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.undo")->Undo());
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.undo")->Undo());
 }
 
 static int Redo(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.redo")->Redo());
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.redo")->Redo());
 }
 
 static int CanUndo(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.can_undo")->CanUndo());
+    lua_pushboolean(L, RequireRecordPlayer(L, "tas.record.can_undo")->CanUndo());
     return 1;
 }
 
 static int CanRedo(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.can_redo")->CanRedo());
+    lua_pushboolean(L, RequireRecordPlayer(L, "tas.record.can_redo")->CanRedo());
     return 1;
 }
 
 static int GetUndoDescription(lua_State *L) {
-    PushString(L, RequireRecordPlayer(L, "record.get_undo_description")->GetUndoDescription());
+    PushString(L, RequireRecordPlayer(L, "tas.record.get_undo_description")->GetUndoDescription());
     return 1;
 }
 
 static int GetRedoDescription(lua_State *L) {
-    PushString(L, RequireRecordPlayer(L, "record.get_redo_description")->GetRedoDescription());
+    PushString(L, RequireRecordPlayer(L, "tas.record.get_redo_description")->GetRedoDescription());
     return 1;
 }
 
 static int ClearHistory(lua_State *L) {
-    RequireRecordPlayer(L, "record.clear_history")->ClearHistory();
+    RequireRecordPlayer(L, "tas.record.clear_history")->ClearHistory();
     return 0;
 }
 
 static int GetHistorySize(lua_State *L) {
-    lua_pushinteger(L, static_cast<lua_Integer>(RequireRecordPlayer(L, "record.get_history_size")->GetHistorySize()));
+    lua_pushinteger(L, static_cast<lua_Integer>(RequireRecordPlayer(L, "tas.record.get_history_size")->GetHistorySize()));
     return 1;
 }
 
 static int SetMaxHistorySize(lua_State *L) {
-    RequireRecordPlayer(L, "record.set_max_history_size")->SetMaxHistorySize(CheckFrame(L, 1, "size"));
+    RequireRecordPlayer(L, "tas.record.set_max_history_size")->SetMaxHistorySize(CheckFrame(L, 1, "size"));
     return 0;
 }
 
 // --- Branches ---
 
 static int CreateBranch(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.create_branch");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.create_branch");
     const char *name = luaL_checkstring(L, 1);
     const size_t frame = CheckFrame(L, 2, "divergence_frame");
-    lua_pushboolean(L, recordPlayer->CreateBranch(name, frame, luaL_optstring(L, 3, "")));
-    return 1;
+    return PushRecordResult(L, recordPlayer->CreateBranch(name, frame, luaL_optstring(L, 3, "")));
 }
 
 static int DeleteBranch(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.delete_branch")->DeleteBranch(luaL_checkstring(L, 1)));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.delete_branch")->DeleteBranch(luaL_checkstring(L, 1)));
 }
 
 static int SwitchBranch(lua_State *L) {
     const char *name = luaL_optstring(L, 1, "");
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.switch_branch")->SwitchBranch(name));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.switch_branch")->SwitchBranch(name));
 }
 
 static int GetCurrentBranch(lua_State *L) {
-    PushString(L, RequireRecordPlayer(L, "record.get_current_branch")->GetCurrentBranch());
+    PushString(L, RequireRecordPlayer(L, "tas.record.get_current_branch")->GetCurrentBranch());
     return 1;
 }
 
 static int GetBranches(lua_State *L) {
-    auto branches = RequireRecordPlayer(L, "record.get_branches")->GetAllBranches();
+    auto branches = RequireRecordPlayer(L, "tas.record.get_branches")->GetAllBranches();
     std::sort(branches.begin(), branches.end(), [](const RecordBranch &a, const RecordBranch &b) { return a.name < b.name; });
     lua_createtable(L, static_cast<int>(branches.size()), 0);
     for (size_t i = 0; i < branches.size(); ++i) {
@@ -794,25 +803,23 @@ static void PushSavestateLink(lua_State *L, const SavestateLink *link) {
 }
 
 static int LinkSavestate(lua_State *L) {
-    auto *recordPlayer = RequireRecordPlayer(L, "record.link_savestate");
+    auto *recordPlayer = RequireRecordPlayer(L, "tas.record.link_savestate");
     const size_t frame = CheckFrame(L, 1, "frame");
     const char *path = luaL_checkstring(L, 2);
-    lua_pushboolean(L, recordPlayer->LinkSavestate(frame, path, luaL_optstring(L, 3, "")));
-    return 1;
+    return PushRecordResult(L, recordPlayer->LinkSavestate(frame, path, luaL_optstring(L, 3, "")));
 }
 
 static int UnlinkSavestate(lua_State *L) {
-    lua_pushboolean(L, RequireRecordPlayer(L, "record.unlink_savestate")->UnlinkSavestate(CheckFrame(L, 1, "frame")));
-    return 1;
+    return PushRecordResult(L, RequireRecordPlayer(L, "tas.record.unlink_savestate")->UnlinkSavestate(CheckFrame(L, 1, "frame")));
 }
 
 static int GetSavestateLink(lua_State *L) {
-    PushSavestateLink(L, RequireRecordPlayer(L, "record.get_savestate_link")->GetSavestateLink(CheckFrame(L, 1, "frame")));
+    PushSavestateLink(L, RequireRecordPlayer(L, "tas.record.get_savestate_link")->GetSavestateLink(CheckFrame(L, 1, "frame")));
     return 1;
 }
 
 static int GetAllSavestateLinks(lua_State *L) {
-    auto links = RequireRecordPlayer(L, "record.get_all_savestate_links")->GetAllSavestateLinks();
+    auto links = RequireRecordPlayer(L, "tas.record.get_all_savestate_links")->GetAllSavestateLinks();
     std::sort(links.begin(), links.end(), [](const SavestateLink &a, const SavestateLink &b) { return a.frame < b.frame; });
     lua_createtable(L, static_cast<int>(links.size()), 0);
     for (size_t i = 0; i < links.size(); ++i) {
@@ -914,10 +921,10 @@ void LuaApi::RegisterRecordApi(lua_State *state, ScriptContext *context) {
     SetRecordFunction(state, "remove_comment", RemoveComment, context);
     SetRecordFunction(state, "get_comment", GetComment, context);
     SetRecordFunction(state, "edit_comment", EditComment, context);
-    SetRecordFunction(state, "get_all_comments", GetAllComments, context);
+    SetRecordFunction(state, "get_comments", GetAllComments, context);
     SetRecordFunction(state, "get_comments_at_frame", GetCommentsAtFrame, context);
     SetRecordFunction(state, "save_macro", SaveMacro, context);
-    SetRecordFunction(state, "delete_macro", DeleteMacro, context);
+    SetRecordFunction(state, "remove_macro", DeleteMacro, context);
     SetRecordFunction(state, "get_macro", GetMacro, context);
     SetRecordFunction(state, "get_macros", GetMacros, context);
     SetRecordFunction(state, "insert_macro", InsertMacro, context);
@@ -938,14 +945,19 @@ void LuaApi::RegisterRecordApi(lua_State *state, ScriptContext *context) {
     SetRecordFunction(state, "get_history_size", GetHistorySize, context);
     SetRecordFunction(state, "set_max_history_size", SetMaxHistorySize, context);
     SetRecordFunction(state, "create_branch", CreateBranch, context);
-    SetRecordFunction(state, "delete_branch", DeleteBranch, context);
+    SetRecordFunction(state, "remove_branch", DeleteBranch, context);
     SetRecordFunction(state, "switch_branch", SwitchBranch, context);
     SetRecordFunction(state, "get_current_branch", GetCurrentBranch, context);
     SetRecordFunction(state, "get_branches", GetBranches, context);
     SetRecordFunction(state, "link_savestate", LinkSavestate, context);
     SetRecordFunction(state, "unlink_savestate", UnlinkSavestate, context);
     SetRecordFunction(state, "get_savestate_link", GetSavestateLink, context);
-    SetRecordFunction(state, "get_all_savestate_links", GetAllSavestateLinks, context);
+    SetRecordFunction(state, "get_savestate_links", GetAllSavestateLinks, context);
+    // Deprecated names, the same function objects.
+    SetAlias(state, "delete_macro", "remove_macro");
+    SetAlias(state, "delete_branch", "remove_branch");
+    SetAlias(state, "get_all_comments", "get_comments");
+    SetAlias(state, "get_all_savestate_links", "get_savestate_links");
     lua_setfield(state, -2, "record");
     lua_pop(state, 1);
 }

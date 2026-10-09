@@ -1,6 +1,8 @@
 #include "LuaApi.h"
 
-#include "../LuaRuntime/LuaStackGuard.h"
+#include "LuaApiCommon.h"
+#include "LuaRuntime/LuaFunction.h"
+#include "LuaRuntime/LuaStackGuard.h"
 
 #include "GameInterface.h"
 #include "Logger.h"
@@ -8,7 +10,6 @@
 #include "RecordPlayer.h"
 #include "ScriptContext.h"
 #include "ScriptContextManager.h"
-#include "../LuaRuntime/LuaFunction.h"
 #ifdef Yield
 #undef Yield
 #endif
@@ -16,20 +17,21 @@
 #include "TASEngine.h"
 #include "TASProject.h"
 
-#include <stdexcept>
+#include <string>
 
-static ScriptContext *GetContext(lua_State *L) {
-    return static_cast<ScriptContext *>(lua_touserdata(L, lua_upvalueindex(1)));
-}
+using namespace LuaApiCommon;
 
-static void SetProjectFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
-    lua_pushlightuserdata(L, context);
-    lua_pushcclosure(L, function, 1);
-    lua_setfield(L, -2, name);
+static ProjectManager *RequireManager(lua_State *L, const char *where) {
+    ScriptContext *context = GetContext(L);
+    ProjectManager *manager = context ? context->GetProjectManager() : nullptr;
+    if (!manager) {
+        Raise(L, where, "the project manager is not available");
+    }
+    return manager;
 }
 
 static void PushStringField(lua_State *L, const char *name, const std::string &value) {
-    lua_pushlstring(L, value.data(), value.size());
+    PushString(L, value);
     lua_setfield(L, -2, name);
 }
 
@@ -43,18 +45,8 @@ static void PushProjectInfo(lua_State *L, const TASProject &project) {
     PushStringField(L, "target_level", project.GetTargetLevel());
 }
 
-static const char *CheckProjectName(lua_State *L, int index, const char *functionName) {
-    size_t length = 0;
-    const char *name = luaL_checklstring(L, index, &length);
-    if (length == 0) {
-        luaL_error(L, "%s: project name cannot be empty", functionName);
-    }
-    return name;
-}
-
-static TASProject *FindProject(ProjectManager &manager, const std::string &name) {
-    const auto &projects = manager.GetProjects();
-    for (const auto &project : projects) {
+static TASProject *FindProject(ProjectManager &manager, const char *name) {
+    for (const auto &project : manager.GetProjects()) {
         if (project && project->IsValid() && project->GetName() == name) {
             return project.get();
         }
@@ -62,118 +54,150 @@ static TASProject *FindProject(ProjectManager &manager, const std::string &name)
     return nullptr;
 }
 
-static std::string ResolveProjectLevelKey(const TASProject &project, GameInterface *game) {
-    return ScriptContextManager::ResolveLevelKey(
-        project.GetTargetLevel(),
-        game ? game->GetMapName() : "",
-        game ? game->GetCurrentLevel() : 0);
+// Stopping the context that is running this call would tear down the coroutine we are in.
+static bool IsCallersProject(ScriptContext *context, const TASProject *project) {
+    return project && context->GetCurrentProject() == project;
+}
+
+// Starts a project right away: scripts in their context, records in the record player.
+static bool StartProjectNow(ScriptContext *context, TASProject *project, std::string &reason) {
+    if (project->IsScriptProject()) {
+        ScriptContextManager *contexts = context->GetScriptContextManager();
+        if (!contexts) {
+            reason = "the script context manager is not available";
+            return false;
+        }
+        GameInterface *game = context->GetGameInterface();
+        auto target = project->IsGlobalProject()
+            ? contexts->GetOrCreateGlobalContext()
+            : contexts->GetOrCreateLevelContext(ScriptContextManager::ResolveLevelKey(
+                  project->GetTargetLevel(), game ? game->GetMapName() : "", game ? game->GetCurrentLevel() : 0));
+        if (!target) {
+            reason = "could not create a script context";
+            return false;
+        }
+        if (!target->LoadAndExecute(project)) {
+            reason = "the script failed to load (see the log)";
+            return false;
+        }
+        return true;
+    }
+    RecordPlayer *player = context->GetRecordPlayer();
+    if (!player) {
+        reason = "the record player is not available";
+        return false;
+    }
+    if (!player->LoadAndPlay(project->GetRecordFilePath())) {
+        reason = "the record could not be loaded (see the log)";
+        return false;
+    }
+    return true;
+}
+
+static void StopProject(ScriptContext *context, TASProject *project) {
+    if (project->IsScriptProject()) {
+        if (ScriptContextManager *contexts = context->GetScriptContextManager()) {
+            for (const auto &scriptContext : contexts->GetContextsByPriority()) {
+                if (scriptContext && scriptContext->GetCurrentProject() == project) {
+                    scriptContext->Stop();
+                }
+            }
+        }
+    } else if (RecordPlayer *player = context->GetRecordPlayer()) {
+        player->Stop();
+    }
 }
 
 static int List(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    if (!manager) {
-        lua_pushnil(L);
-        return 1;
-    }
-
+    ProjectManager *manager = RequireManager(L, "tas.project.list");
     lua_newtable(L);
-    int index = 1;
+    lua_Integer index = 1;
     for (const auto &project : manager->GetProjects()) {
         if (project && project->IsValid()) {
             PushProjectInfo(L, *project);
-            lua_seti(L, -2, index++);
+            lua_rawseti(L, -2, index++);
         }
     }
     return 1;
 }
 
+// tas.project.get_current() -> info | nil
 static int GetCurrent(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    if (!manager || !manager->GetCurrentProject()) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    PushProjectInfo(L, *manager->GetCurrentProject());
-    return 1;
-}
-
-static int Find(lua_State *L) {
-    auto *context = GetContext(L);
-    const std::string name = CheckProjectName(L, 1, "project.find");
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    if (!manager) {
-        lua_pushnil(L);
-        return 1;
-    }
-
-    TASProject *project = FindProject(*manager, name);
+    TASProject *project = RequireManager(L, "tas.project.get_current")->GetCurrentProject();
     if (!project) {
         lua_pushnil(L);
         return 1;
     }
-
     PushProjectInfo(L, *project);
     return 1;
 }
 
-static int Load(lua_State *L) {
-    auto *context = GetContext(L);
-    const std::string name = CheckProjectName(L, 1, "project.load");
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    if (!manager) {
-        return luaL_error(L, "project.load: ProjectManager not available");
-    }
-
-    TASProject *project = FindProject(*manager, name);
+// tas.project.find(name) -> info | nil
+static int Find(lua_State *L) {
+    const char *name = CheckNonEmptyString(L, 1, "tas.project.find");
+    TASProject *project = FindProject(*RequireManager(L, "tas.project.find"), name);
     if (!project) {
-        Log::Warn("project.load: Project '%s' not found", name.c_str());
-        lua_pushboolean(L, 0);
+        lua_pushnil(L);
         return 1;
     }
-
-    manager->SetCurrentProject(project);
-    if (project->IsScriptProject()) {
-        auto *contextManager = context->GetScriptContextManager();
-        auto *game = context->GetGameInterface();
-        if (!contextManager) {
-            return luaL_error(L, "project.load: ScriptContextManager not available");
-        }
-
-        const bool isGlobal = project->IsGlobalProject();
-        auto targetContext = isGlobal
-                                 ? contextManager->GetOrCreateGlobalContext()
-                                 : contextManager->GetOrCreateLevelContext(ResolveProjectLevelKey(*project, game));
-        if (!targetContext) {
-            return luaL_error(L, "project.load: Failed to create script context");
-        }
-
-        Log::Info("Loading script project: %s", name.c_str());
-        lua_pushboolean(L, targetContext->LoadAndExecute(project));
-        return 1;
-    }
-
-    if (project->IsRecordProject()) {
-        auto *recordPlayer = context->GetRecordPlayer();
-        if (!recordPlayer) {
-            return luaL_error(L, "project.load: RecordPlayer not available");
-        }
-
-        const std::string recordPath = project->GetRecordFilePath();
-        Log::Info("Loading record project: %s (%s)", name.c_str(), recordPath.c_str());
-        lua_pushboolean(L, recordPlayer->LoadAndPlay(recordPath));
-        return 1;
-    }
-
-    lua_pushboolean(L, 0);
+    PushProjectInfo(L, *project);
     return 1;
 }
 
-// Stopping the context that is running this call would tear down the coroutine we are in.
-static bool IsRunningInCaller(ScriptContext *context, TASProject *project) {
-    return project && context->GetCurrentProject() == project;
+static int IsLoaded(lua_State *L) {
+    lua_pushboolean(L, RequireManager(L, "tas.project.is_loaded")->GetCurrentProject() != nullptr);
+    return 1;
+}
+
+// tas.project.load(name) -> true | false, reason. Starts the project right away.
+static int Load(lua_State *L) {
+    const char *name = CheckNonEmptyString(L, 1, "tas.project.load");
+    ProjectManager *manager = RequireManager(L, "tas.project.load");
+    TASProject *project = FindProject(*manager, name);
+    if (!project) {
+        return PushFail(L, "no project with that name");
+    }
+    if (IsCallersProject(GetContext(L), project)) {
+        return Raise(L, "tas.project.load", "a script cannot reload its own project");
+    }
+    manager->SetCurrentProject(project);
+    Log::Info("Loading project: %s", project->GetName().c_str());
+    std::string reason;
+    const bool ok = StartProjectNow(GetContext(L), project, reason);
+    return PushResult(L, ok, reason);
+}
+
+// tas.project.unload() -> true | false, reason
+static int Unload(lua_State *L) {
+    ProjectManager *manager = RequireManager(L, "tas.project.unload");
+    TASProject *current = manager->GetCurrentProject();
+    if (!current) {
+        return PushFail(L, "no project is loaded");
+    }
+    if (IsCallersProject(GetContext(L), current)) {
+        return Raise(L, "tas.project.unload", "a script cannot unload its own project");
+    }
+    Log::Info("Unloading project: %s", current->GetName().c_str());
+    StopProject(GetContext(L), current);
+    manager->SetCurrentProject(nullptr);
+    return PushOk(L);
+}
+
+// tas.project.reload() -> true | false, reason
+static int Reload(lua_State *L) {
+    ProjectManager *manager = RequireManager(L, "tas.project.reload");
+    TASProject *current = manager->GetCurrentProject();
+    if (!current) {
+        return PushFail(L, "no project is loaded");
+    }
+    if (IsCallersProject(GetContext(L), current)) {
+        return Raise(L, "tas.project.reload", "a script cannot reload its own project");
+    }
+    Log::Info("Reloading project: %s", current->GetName().c_str());
+    StopProject(GetContext(L), current);
+    std::string reason;
+    const bool ok = StartProjectNow(GetContext(L), current, reason);
+    return PushResult(L, ok, reason);
 }
 
 static int PlaybackArmedPredicate(lua_State *L) {
@@ -183,185 +207,57 @@ static int PlaybackArmedPredicate(lua_State *L) {
 }
 
 static int PlayContinuation(lua_State *L, int, lua_KContext) {
-    lua_pushboolean(L, 1);
-    return 1;
+    return PushOk(L);
 }
 
-// tas.project.play(name) -> true | false, err
-// Arms a project the way the TAS menu's Play button does: playback starts when its level starts.
+// tas.project.play(name) -> true | false, reason
+// Arms a project the way the TAS menu's Play button does: playback starts when its level
+// starts. Waits until the engine is armed, so a following tas.level.load is safe.
 static int Play(lua_State *L) {
-    auto *context = GetContext(L);
-    const std::string name = CheckProjectName(L, 1, "project.play");
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    auto *engine = context ? context->GetEngine() : nullptr;
-    if (!manager || !engine) {
-        return luaL_error(L, "project.play: ProjectManager not available");
-    }
+    const char *name = CheckNonEmptyString(L, 1, "tas.project.play");
+    LuaScheduler *scheduler = RequireYieldableScheduler(L, "tas.project.play");
+    ProjectManager *manager = RequireManager(L, "tas.project.play");
+    ScriptContext *context = GetContext(L);
+    TASEngine *engine = context->GetEngine();
     TASProject *project = FindProject(*manager, name);
     if (!project) {
-        lua_pushboolean(L, 0);
-        lua_pushstring(L, "project not found");
-        return 2;
+        return PushFail(L, "no project with that name");
     }
-    if (IsRunningInCaller(context, project)) {
-        return luaL_error(L, "project.play: a script cannot replay its own project");
+    if (IsCallersProject(context, project)) {
+        return Raise(L, "tas.project.play", "a script cannot replay its own project");
     }
     manager->SetCurrentProject(project);
     if (!engine->StartReplay()) {
-        lua_pushboolean(L, 0);
-        lua_pushstring(L, engine->IsIdle() ? "the project cannot be played" : "a TAS is already running or armed");
-        return 2;
+        return PushFail(L, engine->IsIdle() ? "the project cannot be played" : "a TAS is already running or armed");
     }
-
-    // The playback must be armed before the level starts loading; loading in the same
-    // frame starts the level ahead of the TAS. Wait for the engine when we can.
-    LuaScheduler *scheduler = context->GetScheduler();
-    if (scheduler && lua_isyieldable(L) && scheduler->CanYieldCurrentThread()) {
-        lua_pushlightuserdata(L, engine);
-        lua_pushcclosure(L, PlaybackArmedPredicate, 1);
-        scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
-        return lua_yieldk(L, 0, 0, PlayContinuation);
-    }
-    lua_pushboolean(L, 1);
-    return 1;
+    lua_pushlightuserdata(L, engine);
+    lua_pushcclosure(L, PlaybackArmedPredicate, 1);
+    scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
+    return lua_yieldk(L, 0, 0, PlayContinuation);
 }
 
-// tas.project.stop_playback(): stops or disarms the playback started by play().
+// tas.project.stop_playback(): stops or disarms the playback started by play()
 static int StopPlayback(lua_State *L) {
-    auto *context = GetContext(L);
-    if (auto *engine = context ? context->GetEngine() : nullptr) {
+    ScriptContext *context = GetContext(L);
+    if (TASEngine *engine = context ? context->GetEngine() : nullptr) {
         engine->StopReplay();
     }
     return 0;
 }
 
-static int Unload(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    if (!manager) {
-        return luaL_error(L, "project.unload: ProjectManager not available");
-    }
-
-    TASProject *current = manager->GetCurrentProject();
-    if (!current) {
-        Log::Warn("project.unload: No project currently loaded");
-        return 0;
-    }
-
-    if (IsRunningInCaller(context, current)) {
-        return luaL_error(L, "project.unload: cannot unload the project this script belongs to");
-    }
-
-    Log::Info("Unloading project: %s", current->GetName().c_str());
-    if (current->IsScriptProject()) {
-        auto *contextManager = context->GetScriptContextManager();
-        if (contextManager) {
-            for (const auto &scriptContext : contextManager->GetContextsByPriority()) {
-                if (scriptContext && scriptContext->GetCurrentProject() == current) {
-                    scriptContext->Stop();
-                    Log::Info("Stopped context: %s", scriptContext->GetName().c_str());
-                }
-            }
-        }
-    } else if (current->IsRecordProject()) {
-        auto *recordPlayer = context->GetRecordPlayer();
-        if (recordPlayer) {
-            recordPlayer->Stop();
-        }
-    }
-
-    manager->SetCurrentProject(nullptr);
-    return 0;
-}
-
-static int Reload(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    if (!manager) {
-        return luaL_error(L, "project.reload: ProjectManager not available");
-    }
-
-    TASProject *current = manager->GetCurrentProject();
-    if (!current) {
-        Log::Warn("project.reload: No project currently loaded");
-        lua_pushboolean(L, 0);
-        return 1;
-    }
-
-    if (IsRunningInCaller(context, current)) {
-        return luaL_error(L, "project.reload: cannot reload the project this script belongs to");
-    }
-
-    const std::string projectName = current->GetName();
-    Log::Info("Reloading project: %s", projectName.c_str());
-
-    if (current->IsScriptProject()) {
-        auto *contextManager = context->GetScriptContextManager();
-        if (contextManager) {
-            for (const auto &scriptContext : contextManager->GetContextsByPriority()) {
-                if (scriptContext && scriptContext->GetCurrentProject() == current) {
-                    scriptContext->Stop();
-                }
-            }
-        }
-        if (!contextManager) {
-            return luaL_error(L, "project.reload: ScriptContextManager not available");
-        }
-
-        auto *game = context->GetGameInterface();
-        auto targetContext = current->IsGlobalProject()
-                                 ? contextManager->GetOrCreateGlobalContext()
-                                 : contextManager->GetOrCreateLevelContext(ResolveProjectLevelKey(*current, game));
-        if (!targetContext) {
-            return luaL_error(L, "project.reload: Failed to create script context");
-        }
-
-        lua_pushboolean(L, targetContext->LoadAndExecute(current));
-        return 1;
-    }
-
-    if (current->IsRecordProject()) {
-        auto *recordPlayer = context->GetRecordPlayer();
-        lua_pushboolean(L, recordPlayer && recordPlayer->LoadAndPlay(current->GetRecordFilePath()));
-        return 1;
-    }
-
-    lua_pushboolean(L, 0);
-    return 1;
-}
-
-static int IsLoaded(lua_State *L) {
-    auto *context = GetContext(L);
-    auto *manager = context ? context->GetProjectManager() : nullptr;
-    lua_pushboolean(L, manager && manager->GetCurrentProject());
-    return 1;
-}
-
 void LuaApi::RegisterProjectApi(lua_State *state, ScriptContext *context) {
-    if (!context) {
-        throw std::runtime_error("LuaApi::RegisterProjectApi requires a valid ScriptContext");
-    }
-
     tas::lua::LuaStackGuard guard(state);
     lua_getglobal(state, "tas");
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_setglobal(state, "tas");
-        lua_getglobal(state, "tas");
-    }
-
     lua_newtable(state);
-    SetProjectFunction(state, "list", List, context);
-    SetProjectFunction(state, "get_current", GetCurrent, context);
-    SetProjectFunction(state, "find", Find, context);
-    SetProjectFunction(state, "load", Load, context);
-    SetProjectFunction(state, "unload", Unload, context);
-    SetProjectFunction(state, "reload", Reload, context);
-    SetProjectFunction(state, "is_loaded", IsLoaded, context);
-    SetProjectFunction(state, "play", Play, context);
-    SetProjectFunction(state, "stop_playback", StopPlayback, context);
+    SetClosure(state, "list", List, context);
+    SetClosure(state, "get_current", GetCurrent, context);
+    SetClosure(state, "find", Find, context);
+    SetClosure(state, "load", Load, context);
+    SetClosure(state, "unload", Unload, context);
+    SetClosure(state, "reload", Reload, context);
+    SetClosure(state, "is_loaded", IsLoaded, context);
+    SetClosure(state, "play", Play, context);
+    SetClosure(state, "stop_playback", StopPlayback, context);
     lua_setfield(state, -2, "project");
-
     lua_pop(state, 1);
 }

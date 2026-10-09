@@ -1,6 +1,8 @@
 #include "RecordPlayer.h"
 
 #include <cctype>
+#include <cstdarg>
+#include <cstdio>
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
@@ -33,6 +35,17 @@ static bool CanUseLegacyPackSize(size_t byteCount) {
         && byteCount <= static_cast<size_t>((std::numeric_limits<uint32_t>::max)());
 }
 
+bool RecordPlayer::Fail(const char *format, ...) const {
+    char buffer[512];
+    va_list args;
+    va_start(args, format);
+    std::vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    m_LastError = buffer;
+    Log::Warn("%s", buffer);
+    return false;
+}
+
 RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
     if (!m_Engine) {
         throw std::runtime_error("RecordPlayer requires a valid TASEngine instance.");
@@ -41,9 +54,7 @@ RecordPlayer::RecordPlayer(TASEngine *engine) : m_Engine(engine) {
 
 bool RecordPlayer::LoadAndPlay(const TASProject *project) {
     if (!project || !project->IsRecordProject() || !project->CanPlayRecord()) {
-        Log::Error("Invalid record project provided: %s",
-                   project ? project->GetValidationMessage().c_str() : "null project");
-        return false;
+        return Fail("Invalid record project provided: %s", project ? project->GetValidationMessage().c_str() : "null project");
     }
 
     // Stop any current playback
@@ -51,8 +62,7 @@ bool RecordPlayer::LoadAndPlay(const TASProject *project) {
 
     std::string recordPath = project->GetRecordFilePath();
     if (!LoadRecord(recordPath)) {
-        Log::Error("Failed to load record: %s", recordPath.c_str());
-        return false;
+        return Fail("Failed to load record: %s", recordPath.c_str());
     }
 
     // Acquire remapped keys from game interface
@@ -108,13 +118,11 @@ void RecordPlayer::Resume() {
 
 bool RecordPlayer::Seek(size_t frame) {
     if (!m_IsPlaying) {
-        Log::Error("Cannot seek: no record is playing.");
-        return false;
+        return Fail("Cannot seek: no record is playing.");
     }
 
     if (frame >= m_TotalFrames) {
-        Log::Error("Seek frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
-        return false;
+        return Fail("Seek frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
     }
 
     m_CurrentFrame = frame;
@@ -127,8 +135,7 @@ bool RecordPlayer::LoadAndPlay(const std::string &recordPath) {
     Stop();
 
     if (!LoadRecord(recordPath)) {
-        Log::Error("Failed to load record: %s", recordPath.c_str());
-        return false;
+        return Fail("Failed to load record: %s", recordPath.c_str());
     }
 
     // Acquire remapped keys from game interface
@@ -204,59 +211,49 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         // --- 1. Read the entire file ---
         std::ifstream file(recordPath, std::ios::binary);
         if (!file) {
-            Log::Error("Could not open record file: %s", recordPath.c_str());
-            return false;
+            return Fail("Could not open record file: %s", recordPath.c_str());
         }
 
         // --- 2. Read the 4-byte header for uncompressed size (legacy format) ---
         uint32_t uncompressedSize = 0;
         file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
         if (file.gcount() != sizeof(uncompressedSize)) {
-            Log::Error("Failed to read uncompressed size header from file.");
-            return false;
+            return Fail("Failed to read uncompressed size header from file.");
         }
 
         if (uncompressedSize == 0) {
-            Log::Error("Record has no frames.");
             m_TotalFrames = 0;
             m_Frames.clear();
-            return false;
+            return Fail("Record has no frames.");
         }
 
         // The uncompressed data must be a multiple of the FrameData size.
         if (uncompressedSize % sizeof(RecordFrameData) != 0) {
-            Log::Error(
-                "Uncompressed size is not a multiple of FrameData size. File may be corrupt.");
-            return false;
+            return Fail( "Uncompressed size is not a multiple of FrameData size. File may be corrupt.");
         }
 
         if (!CanUseLegacyPackSize(uncompressedSize)) {
-            Log::Error("Record payload is too large for legacy packing format: %u bytes.",
-                       uncompressedSize);
-            return false;
+            return Fail("Record payload is too large for legacy packing format: %u bytes.", uncompressedSize);
         }
 
         // --- 3. Read the compressed payload ---
         file.seekg(0, std::ios::end);
         std::streampos fileSize = file.tellg();
         if (fileSize < static_cast<std::streampos>(sizeof(uncompressedSize))) {
-            Log::Error("Record file is truncated or has an invalid size.");
-            return false;
+            return Fail("Record file is truncated or has an invalid size.");
         }
 
         file.seekg(sizeof(uncompressedSize), std::ios::beg);
 
         size_t compressedSize = static_cast<size_t>(fileSize) - sizeof(uncompressedSize);
         if (compressedSize == 0) {
-            Log::Error("Record file is missing the compressed payload.");
-            return false;
+            return Fail("Record file is missing the compressed payload.");
         }
 
         std::vector<char> compressedData(compressedSize);
         file.read(compressedData.data(), compressedSize);
         if (static_cast<size_t>(file.gcount()) != compressedSize) {
-            Log::Error("Failed to read compressed data payload.");
-            return false;
+            return Fail("Failed to read compressed data payload.");
         }
         file.close();
 
@@ -264,8 +261,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         char *uncompressedData = CKUnPackData(static_cast<int>(uncompressedSize), compressedData.data(),
                                               compressedSize);
         if (!uncompressedData) {
-            Log::Error("Failed to decompress TAS record data using CKUnPackData.");
-            return false;
+            return Fail("Failed to decompress TAS record data using CKUnPackData.");
         }
 
         // --- 5. Copy the decompressed data to our frame vector ---
@@ -285,8 +281,7 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         Log::Info("Record loaded successfully: %zu frames", m_TotalFrames);
         return true;
     } catch (const std::exception &e) {
-        Log::Error("Exception loading record: %s", e.what());
-        return false;
+        return Fail("Exception loading record: %s", e.what());
     }
 }
 
@@ -328,13 +323,11 @@ unsigned char RecordPlayer::ConvertKeyState(bool current, bool next) {
 
 bool RecordPlayer::GetFrameInput(size_t frame, RecordFrameData *outData) const {
     if (!outData) {
-        Log::Error("GetFrameInput: outData pointer is null.");
-        return false;
+        return Fail("GetFrameInput: outData pointer is null.");
     }
 
     if (frame >= m_TotalFrames) {
-        Log::Error("GetFrameInput: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
-        return false;
+        return Fail("GetFrameInput: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
     }
 
     *outData = m_Frames[frame];
@@ -343,8 +336,7 @@ bool RecordPlayer::GetFrameInput(size_t frame, RecordFrameData *outData) const {
 
 bool RecordPlayer::SetFrameInput(size_t frame, const RecordFrameData &inputData) {
     if (frame >= m_TotalFrames) {
-        Log::Error("SetFrameInput: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
-        return false;
+        return Fail("SetFrameInput: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
     }
 
     PushUndoAction(EditActionType::ModifyFrame, "Set frame " + std::to_string(frame));
@@ -355,14 +347,12 @@ bool RecordPlayer::SetFrameInput(size_t frame, const RecordFrameData &inputData)
 
 bool RecordPlayer::SetFrameKey(size_t frame, const std::string &key, bool pressed) {
     if (frame >= m_TotalFrames) {
-        Log::Error("SetFrameKey: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
-        return false;
+        return Fail("SetFrameKey: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
     }
 
     RecordKeyState keyState = m_Frames[frame].keyState;
     if (!SetKeyStateBit(keyState, key, pressed)) {
-        Log::Error("SetFrameKey: invalid key name '%s'.", key.c_str());
-        return false;
+        return Fail("SetFrameKey: invalid key name '%s'.", key.c_str());
     }
 
     PushUndoAction(EditActionType::SetFrameKey, "Set " + key + " at frame " + std::to_string(frame));
@@ -381,14 +371,11 @@ float RecordPlayer::GetFrameDeltaTimeByFrame(size_t frame) const {
 
 bool RecordPlayer::SetFrameDeltaTime(size_t frame, float deltaTime) {
     if (frame >= m_TotalFrames) {
-        Log::Error("SetFrameDeltaTime: frame %zu is out of bounds (total: %zu).", frame,
-                                     m_TotalFrames);
-        return false;
+        return Fail("SetFrameDeltaTime: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
     }
 
     if (deltaTime <= 0.0f) {
-        Log::Error("SetFrameDeltaTime: deltaTime must be positive.");
-        return false;
+        return Fail("SetFrameDeltaTime: deltaTime must be positive.");
     }
 
     PushUndoAction(EditActionType::SetDeltaTime, "Set delta time at frame " + std::to_string(frame));
@@ -407,9 +394,7 @@ bool RecordPlayer::InsertFrames(size_t startFrame, size_t count) {
     }
 
     if (startFrame > m_TotalFrames) {
-        Log::Error("InsertFrames: startFrame %zu is out of bounds (total: %zu).", startFrame,
-                                     m_TotalFrames);
-        return false;
+        return Fail("InsertFrames: startFrame %zu is out of bounds (total: %zu).", startFrame, m_TotalFrames);
     }
 
     // Create blank frames with default delta time
@@ -435,9 +420,7 @@ bool RecordPlayer::DeleteFrames(size_t startFrame, size_t count) {
     }
 
     if (startFrame >= m_TotalFrames) {
-        Log::Error("DeleteFrames: startFrame %zu is out of bounds (total: %zu).", startFrame,
-                                     m_TotalFrames);
-        return false;
+        return Fail("DeleteFrames: startFrame %zu is out of bounds (total: %zu).", startFrame, m_TotalFrames);
     }
 
     size_t actualCount = (std::min)(count, m_TotalFrames - startFrame);
@@ -458,15 +441,11 @@ bool RecordPlayer::CopyFrames(size_t srcStart, size_t destStart, size_t count) {
     }
 
     if (srcStart >= m_TotalFrames) {
-        Log::Error("CopyFrames: srcStart %zu is out of bounds (total: %zu).", srcStart,
-                                     m_TotalFrames);
-        return false;
+        return Fail("CopyFrames: srcStart %zu is out of bounds (total: %zu).", srcStart, m_TotalFrames);
     }
 
     if (destStart > m_TotalFrames) {
-        Log::Error("CopyFrames: destStart %zu is out of bounds (total: %zu).", destStart,
-                                     m_TotalFrames);
-        return false;
+        return Fail("CopyFrames: destStart %zu is out of bounds (total: %zu).", destStart, m_TotalFrames);
     }
 
     size_t actualCount = (std::min)(count, m_TotalFrames - srcStart);
@@ -493,8 +472,7 @@ bool RecordPlayer::CopyFrames(size_t srcStart, size_t destStart, size_t count) {
 
 bool RecordPlayer::DuplicateFrame(size_t frame, size_t count) {
     if (frame >= m_TotalFrames) {
-        Log::Error("DuplicateFrame: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
-        return false;
+        return Fail("DuplicateFrame: frame %zu is out of bounds (total: %zu).", frame, m_TotalFrames);
     }
 
     if (count == 0) {
@@ -519,15 +497,12 @@ bool RecordPlayer::DuplicateFrame(size_t frame, size_t count) {
 
 bool RecordPlayer::SeekRelative(int offset) {
     if (!m_IsPlaying) {
-        Log::Error("SeekRelative: no record is playing.");
-        return false;
+        return Fail("SeekRelative: no record is playing.");
     }
 
     int newFrame = static_cast<int>(m_CurrentFrame) + offset;
     if (newFrame < 0 || newFrame >= static_cast<int>(m_TotalFrames)) {
-        Log::Error("SeekRelative: offset %d would result in frame %d (out of bounds).", offset,
-                                     newFrame);
-        return false;
+        return Fail("SeekRelative: offset %d would result in frame %d (out of bounds).", offset, newFrame);
     }
 
     m_CurrentFrame = static_cast<size_t>(newFrame);
@@ -635,8 +610,7 @@ bool RecordPlayer::Validate() const {
     // Check for valid delta times
     for (size_t i = 0; i < m_TotalFrames; i++) {
         if (m_Frames[i].deltaTime <= 0.0f) {
-            Log::Error("Validate: frame %zu has invalid delta time %.3f.", i, m_Frames[i].deltaTime);
-            return false;
+            return Fail("Validate: frame %zu has invalid delta time %.3f.", i, m_Frames[i].deltaTime);
         }
     }
 
@@ -669,8 +643,7 @@ bool RecordPlayer::SaveFrames(const std::string &path) {
         if (m_TotalFrames == 0) {
             std::ofstream file(path, std::ios::binary);
             if (!file) {
-                Log::Error("Failed to open file for writing: %s", path.c_str());
-                return false;
+                return Fail("Failed to open file for writing: %s", path.c_str());
             }
 
             const uint32_t header = 0;
@@ -685,8 +658,7 @@ bool RecordPlayer::SaveFrames(const std::string &path) {
         // Prepare uncompressed data
         size_t uncompressedSize = m_TotalFrames * sizeof(RecordFrameData);
         if (!CanUseLegacyPackSize(uncompressedSize)) {
-            Log::Error("Record is too large to save in legacy format: %zu bytes.", uncompressedSize);
-            return false;
+            return Fail("Record is too large to save in legacy format: %zu bytes.", uncompressedSize);
         }
 
         EnsureFrameSentinel(m_Frames, m_TotalFrames);
@@ -698,16 +670,14 @@ bool RecordPlayer::SaveFrames(const std::string &path) {
                                           compressedSize, 9);
 
         if (!compressedData || compressedSize <= 0) {
-            Log::Error("Failed to compress record data.");
-            return false;
+            return Fail("Failed to compress record data.");
         }
 
         // Write to file
         std::ofstream file(path, std::ios::binary);
         if (!file) {
-            Log::Error("Failed to open file for writing: %s", path.c_str());
             CKDeletePointer(compressedData);
-            return false;
+            return Fail("Failed to open file for writing: %s", path.c_str());
         }
 
         // Write uncompressed size header
@@ -725,8 +695,7 @@ bool RecordPlayer::SaveFrames(const std::string &path) {
         Log::Info("Record saved successfully: %zu frames.", m_TotalFrames);
         return true;
     } catch (const std::exception &e) {
-        Log::Error("Exception saving record: %s", e.what());
-        return false;
+        return Fail("Exception saving record: %s", e.what());
     }
 }
 
@@ -736,8 +705,7 @@ bool RecordPlayer::ExportInputs(const std::string &path, const std::string &form
 
         std::ofstream file(path);
         if (!file) {
-            Log::Error("Failed to open file for writing: %s", path.c_str());
-            return false;
+            return Fail("Failed to open file for writing: %s", path.c_str());
         }
 
         if (format == "txt") {
@@ -771,16 +739,14 @@ bool RecordPlayer::ExportInputs(const std::string &path, const std::string &form
             file << "  ]\n";
             file << "}\n";
         } else {
-            Log::Error("ExportInputs: unsupported format '%s'.", format.c_str());
-            return false;
+            return Fail("ExportInputs: unsupported format '%s'.", format.c_str());
         }
 
         file.close();
         Log::Info("Inputs exported successfully.");
         return true;
     } catch (const std::exception &e) {
-        Log::Error("Exception exporting inputs: %s", e.what());
-        return false;
+        return Fail("Exception exporting inputs: %s", e.what());
     }
 }
 
@@ -850,13 +816,11 @@ bool RecordPlayer::SetKeyStateBit(RecordKeyState &keyState, const std::string &k
 bool RecordPlayer::AddSection(size_t startFrame, size_t endFrame, const std::string &name,
                               const std::string &description, const std::string &color) {
     if (startFrame > endFrame || endFrame >= m_TotalFrames) {
-        Log::Error("Invalid section range: %zu-%zu", startFrame, endFrame);
-        return false;
+        return Fail("Invalid section range: %zu-%zu", startFrame, endFrame);
     }
 
     if (m_Sections.find(name) != m_Sections.end()) {
-        Log::Error("Section '%s' already exists.", name.c_str());
-        return false;
+        return Fail("Section '%s' already exists.", name.c_str());
     }
 
     RecordSection section(name, startFrame, endFrame);
@@ -873,7 +837,7 @@ bool RecordPlayer::AddSection(size_t startFrame, size_t endFrame, const std::str
 bool RecordPlayer::RemoveSection(const std::string &name) {
     auto it = m_Sections.find(name);
     if (it == m_Sections.end()) {
-        return false;
+        return Fail("no section named '%s'", name.c_str());
     }
 
     PushUndoAction(EditActionType::RemoveSection, "Remove section: " + name);
@@ -910,12 +874,11 @@ const RecordSection *RecordPlayer::GetSectionAtFrame(size_t frame) const {
 bool RecordPlayer::RenameSection(const std::string &oldName, const std::string &newName) {
     auto it = m_Sections.find(oldName);
     if (it == m_Sections.end()) {
-        return false;
+        return Fail("no section named '%s'", oldName.c_str());
     }
 
     if (m_Sections.find(newName) != m_Sections.end()) {
-        Log::Error("Section '%s' already exists.", newName.c_str());
-        return false;
+        return Fail("Section '%s' already exists.", newName.c_str());
     }
 
     PushUndoAction(EditActionType::AddSection, "Rename section: " + oldName);
@@ -930,14 +893,14 @@ bool RecordPlayer::RenameSection(const std::string &oldName, const std::string &
 bool RecordPlayer::MoveSection(const std::string &name, size_t newStartFrame) {
     auto it = m_Sections.find(name);
     if (it == m_Sections.end()) {
-        return false;
+        return Fail("no section named '%s'", name.c_str());
     }
 
     size_t length = it->second.endFrame - it->second.startFrame;
     size_t newEndFrame = newStartFrame + length;
 
     if (newEndFrame >= m_TotalFrames) {
-        return false;
+        return Fail("the moved section would end past the last frame");
     }
 
     PushUndoAction(EditActionType::AddSection, "Move section: " + name);
@@ -950,11 +913,11 @@ bool RecordPlayer::MoveSection(const std::string &name, size_t newStartFrame) {
 bool RecordPlayer::ResizeSection(const std::string &name, size_t newStartFrame, size_t newEndFrame) {
     auto it = m_Sections.find(name);
     if (it == m_Sections.end()) {
-        return false;
+        return Fail("no section named '%s'", name.c_str());
     }
 
     if (newStartFrame > newEndFrame || newEndFrame >= m_TotalFrames) {
-        return false;
+        return Fail("invalid section range %zu-%zu", newStartFrame, newEndFrame);
     }
 
     PushUndoAction(EditActionType::AddSection, "Resize section: " + name);
@@ -969,12 +932,11 @@ bool RecordPlayer::ResizeSection(const std::string &name, size_t newStartFrame, 
 bool RecordPlayer::AddMarker(size_t frame, const std::string &name, MarkerType type,
                              const std::string &description, const std::string &color) {
     if (frame >= m_TotalFrames) {
-        return false;
+        return Fail("frame %zu is out of range (%zu frames)", frame, m_TotalFrames);
     }
 
     if (m_Markers.find(name) != m_Markers.end()) {
-        Log::Error("Marker '%s' already exists.", name.c_str());
-        return false;
+        return Fail("Marker '%s' already exists.", name.c_str());
     }
 
     RecordMarker marker(name, frame, type);
@@ -991,7 +953,7 @@ bool RecordPlayer::AddMarker(size_t frame, const std::string &name, MarkerType t
 bool RecordPlayer::RemoveMarker(const std::string &name) {
     auto it = m_Markers.find(name);
     if (it == m_Markers.end()) {
-        return false;
+        return Fail("no marker named '%s'", name.c_str());
     }
 
     PushUndoAction(EditActionType::RemoveMarker, "Remove marker: " + name);
@@ -1038,12 +1000,11 @@ std::vector<RecordMarker> RecordPlayer::GetMarkersInRange(size_t startFrame, siz
 bool RecordPlayer::RenameMarker(const std::string &oldName, const std::string &newName) {
     auto it = m_Markers.find(oldName);
     if (it == m_Markers.end()) {
-        return false;
+        return Fail("no marker named '%s'", oldName.c_str());
     }
 
     if (m_Markers.find(newName) != m_Markers.end()) {
-        Log::Error("Marker '%s' already exists.", newName.c_str());
-        return false;
+        return Fail("Marker '%s' already exists.", newName.c_str());
     }
 
     PushUndoAction(EditActionType::AddMarker, "Rename marker: " + oldName);
@@ -1058,7 +1019,7 @@ bool RecordPlayer::RenameMarker(const std::string &oldName, const std::string &n
 bool RecordPlayer::MoveMarker(const std::string &name, size_t newFrame) {
     auto it = m_Markers.find(name);
     if (it == m_Markers.end() || newFrame >= m_TotalFrames) {
-        return false;
+        return Fail("no marker named '%s' or frame %zu is out of range", name.c_str(), newFrame);
     }
 
     PushUndoAction(EditActionType::AddMarker, "Move marker: " + name);
@@ -1069,7 +1030,7 @@ bool RecordPlayer::MoveMarker(const std::string &name, size_t newFrame) {
 bool RecordPlayer::SeekToMarker(const std::string &name) {
     auto it = m_Markers.find(name);
     if (it == m_Markers.end()) {
-        return false;
+        return Fail("no marker named '%s'", name.c_str());
     }
 
     return Seek(it->second.frame);
@@ -1137,7 +1098,7 @@ static auto FindComment(std::vector<RecordComment> &comments, size_t id) {
 bool RecordPlayer::RemoveComment(size_t id) {
     auto it = FindComment(m_Comments, id);
     if (it == m_Comments.end()) {
-        return false;
+        return Fail("no comment with id %zu", id);
     }
 
     PushUndoAction(EditActionType::RemoveComment, "Remove comment");
@@ -1170,7 +1131,7 @@ std::vector<RecordComment> RecordPlayer::GetAllComments() const {
 
 bool RecordPlayer::EditComment(size_t id, const std::string &newText) {
     if (FindComment(m_Comments, id) == m_Comments.end()) {
-        return false;
+        return Fail("no comment with id %zu", id);
     }
 
     PushUndoAction(EditActionType::AddComment, "Edit comment");
@@ -1186,12 +1147,11 @@ bool RecordPlayer::EditComment(size_t id, const std::string &newText) {
 bool RecordPlayer::SaveMacro(const std::string &name, size_t startFrame, size_t endFrame,
                              const std::string &description) {
     if (startFrame > endFrame || endFrame >= m_TotalFrames) {
-        return false;
+        return Fail("invalid macro range %zu-%zu", startFrame, endFrame);
     }
 
     if (m_Macros.find(name) != m_Macros.end()) {
-        Log::Error("Macro '%s' already exists.", name.c_str());
-        return false;
+        return Fail("Macro '%s' already exists.", name.c_str());
     }
 
     RecordMacro macro(name, description);
@@ -1207,7 +1167,7 @@ bool RecordPlayer::SaveMacro(const std::string &name, size_t startFrame, size_t 
 bool RecordPlayer::DeleteMacro(const std::string &name) {
     auto it = m_Macros.find(name);
     if (it == m_Macros.end()) {
-        return false;
+        return Fail("no macro named '%s'", name.c_str());
     }
 
     PushUndoAction(EditActionType::ModifyFrame, "Delete macro: " + name);
@@ -1233,12 +1193,11 @@ std::vector<RecordMacro> RecordPlayer::GetAllMacros() const {
 bool RecordPlayer::InsertMacro(const std::string &name, size_t atFrame, size_t repeatCount) {
     auto it = m_Macros.find(name);
     if (it == m_Macros.end()) {
-        return false;
+        return Fail("no macro named '%s'", name.c_str());
     }
 
     if (atFrame > m_TotalFrames) {
-        Log::Error("InsertMacro: frame %zu is out of bounds (total: %zu).", atFrame, m_TotalFrames);
-        return false;
+        return Fail("InsertMacro: frame %zu is out of bounds (total: %zu).", atFrame, m_TotalFrames);
     }
 
     if (repeatCount == 0 || it->second.frames.empty()) {
@@ -1313,7 +1272,7 @@ void RecordPlayer::RemoveTag(const std::string &tag) {
 
 bool RecordPlayer::Undo() {
     if (m_UndoStack.empty()) {
-        return false;
+        return Fail("nothing to undo");
     }
 
     EditAction action = std::move(m_UndoStack.back());
@@ -1329,7 +1288,7 @@ bool RecordPlayer::Undo() {
 
 bool RecordPlayer::Redo() {
     if (m_RedoStack.empty()) {
-        return false;
+        return Fail("nothing to redo");
     }
 
     EditAction action = std::move(m_RedoStack.back());
@@ -1482,12 +1441,11 @@ std::unordered_map<std::string, float> RecordPlayer::GetStatistics(size_t startF
 bool RecordPlayer::CreateBranch(const std::string &name, size_t divergenceFrame,
                                 const std::string &description) {
     if (name.empty() || divergenceFrame >= m_TotalFrames) {
-        return false;
+        return Fail("a branch needs a name and a frame within the record");
     }
 
     if (m_Branches.find(name) != m_Branches.end()) {
-        Log::Error("Branch '%s' already exists.", name.c_str());
-        return false;
+        return Fail("Branch '%s' already exists.", name.c_str());
     }
 
     RecordBranch branch;
@@ -1507,7 +1465,7 @@ bool RecordPlayer::CreateBranch(const std::string &name, size_t divergenceFrame,
 bool RecordPlayer::DeleteBranch(const std::string &name) {
     auto it = m_Branches.find(name);
     if (it == m_Branches.end() || name == m_CurrentBranch) {
-        return false;
+        return Fail("no branch named '%s', or it is the active branch", name.c_str());
     }
 
     m_Branches.erase(it);
@@ -1522,7 +1480,7 @@ bool RecordPlayer::SwitchBranch(const std::string &name) {
 
     auto target = m_Branches.find(name);
     if (!name.empty() && target == m_Branches.end()) {
-        return false;
+        return Fail("no branch named '%s'", name.c_str());
     }
 
     // Park the active frames in the branch they belong to, then bring in the target's.
@@ -1558,7 +1516,7 @@ std::vector<RecordBranch> RecordPlayer::GetAllBranches() const {
 bool RecordPlayer::LinkSavestate(size_t frame, const std::string &savestatePath,
                                  const std::string &description) {
     if (frame >= m_TotalFrames) {
-        return false;
+        return Fail("frame %zu is out of range (%zu frames)", frame, m_TotalFrames);
     }
 
     SavestateLink link(frame, savestatePath);
@@ -1574,7 +1532,7 @@ bool RecordPlayer::LinkSavestate(size_t frame, const std::string &savestatePath,
 bool RecordPlayer::UnlinkSavestate(size_t frame) {
     auto it = m_SavestateLinks.find(frame);
     if (it == m_SavestateLinks.end()) {
-        return false;
+        return Fail("no savestate is linked to frame %zu", frame);
     }
 
     PushUndoAction(EditActionType::ModifyFrame, "Unlink savestate at frame " + std::to_string(frame));

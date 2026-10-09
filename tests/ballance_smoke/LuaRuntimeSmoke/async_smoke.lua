@@ -146,4 +146,16 @@ return function()
   if anyOk or type(anyErr) ~= "table" or anyErr.kind ~= "all_failed" or type(anyErr.errors) ~= "table" or #anyErr.errors ~= 2 then
     error("tas.async.any all-failed did not raise aggregate typed error")
   end
+
+  -- Async error tables print their message, and get_error is nil until a task fails.
+  local okTask = tas.async.spawn(function() return 1 end)
+  tas.await(okTask)
+  if okTask:get_error() ~= nil then
+    error("AsyncTask:get_error should be nil for a completed task")
+  end
+  local failed = tas.async.spawn(function() error("printable failure", 0) end)
+  local awaited, failure = pcall(tas.await, failed)
+  if awaited or not tostring(failure):find("printable failure", 1, true) then
+    error("tostring(async error) should include the message, got " .. tostring(failure))
+  end
 end

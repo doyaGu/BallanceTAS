@@ -178,7 +178,6 @@ add_library(tas_lua_bindings STATIC
         LuaApi/LuaApi_Project.cpp
         LuaApi/LuaApi_Record.cpp
         LuaApi/LuaApi_Level.cpp
-        LuaApi/LuaApi_Global.cpp
         LuaApi/LuaApi_Menu.cpp
         LuaApi/LuaApi_Harness.cpp
         LuaApi/LuaApi_SharedBuffer.cpp
@@ -194,6 +193,9 @@ add_library(tas_lua_bindings STATIC
         LuaApi/LuaApi_Async.cpp
         LuaApi/LuaApi_Context.cpp
         LuaApi/LuaApi_Prelude.cpp
+        LuaApi/LuaApiCommon.h       LuaApi/LuaApiCommon.cpp
+        LuaApi/LuaApiValues.h       LuaApi/LuaApiValues.cpp
+        LuaApi/LuaApiScheduler.cpp
 )
 target_link_libraries(tas_lua_bindings
         PRIVATE tas_core tas_game tas_scripting tas_features fmt::fmt

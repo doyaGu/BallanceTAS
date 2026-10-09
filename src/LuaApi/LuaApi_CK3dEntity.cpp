@@ -1,7 +1,9 @@
 #include "LuaApi.h"
 
-#include "../LuaRuntime/LuaStackGuard.h"
-#include "../LuaRuntime/LuaUserdata.h"
+#include "LuaApiCommon.h"
+#include "LuaApiValues.h"
+#include "LuaRuntime/LuaStackGuard.h"
+#include "LuaRuntime/LuaUserdata.h"
 
 #include "GameInterface.h"
 #include "ScriptContext.h"
@@ -11,124 +13,52 @@
 #include <cstdio>
 #include <VxMath.h>
 
-constexpr const char *kCK3dEntityMt = "BallanceTAS.CK3dEntity";
-constexpr const char *kVxVectorMt = "BallanceTAS.VxVector";
-constexpr const char *kVxQuaternionMt = "BallanceTAS.VxQuaternion";
-constexpr const char *kVxMatrixMt = "BallanceTAS.VxMatrix";
-constexpr const char *kVxBboxMt = "BallanceTAS.VxBbox";
-constexpr const char *kVxIntersectionDescMt = "BallanceTAS.VxIntersectionDesc";
-
-static CK3dEntity *CheckCK3dEntity(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<CK3dEntity>(L, index, kCK3dEntityMt);
-}
-
-static void PushCK3dEntity(lua_State *L, CK3dEntity *entity) {
-    if (!entity) {
-        lua_pushnil(L);
-        return;
-    }
-    tas::lua::PushBorrowedUserdata<CK3dEntity>(L, kCK3dEntityMt, entity);
-}
-
-static void PushVxVectorValue(lua_State *L, const VxVector &value) {
-    lua_getglobal(L, "VxVector");
-    lua_pushnumber(L, value.x);
-    lua_pushnumber(L, value.y);
-    lua_pushnumber(L, value.z);
-    lua_call(L, 3, 1);
-}
-
-static int CK3dEntityName(lua_State *L) {
-    auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushstring(L, entity && entity->GetName() ? entity->GetName() : "");
-    return 1;
-}
-
-static int CK3dEntitySetName(lua_State *L) {
-    auto *entity = CheckCK3dEntity(L, 1);
-    const char *name = luaL_checkstring(L, 2);
-    entity->SetName(const_cast<char *>(name));
-    return 0;
-}
-
-static int CK3dEntityId(lua_State *L) {
-    auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushinteger(L, entity ? entity->GetID() : 0);
-    return 1;
-}
-
-static int CK3dEntityClassId(lua_State *L) {
-    auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushinteger(L, entity ? entity->GetClassID() : 0);
-    return 1;
-}
-
-static int CK3dEntityObjectFlags(lua_State *L) {
-    auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushinteger(L, entity ? entity->GetObjectFlags() : 0);
-    return 1;
-}
-
-static int CK3dEntityIsVisible(lua_State *L) {
-    auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushboolean(L, entity && entity->IsVisible());
-    return 1;
-}
+using namespace LuaApiCommon;
 
 static int CK3dEntityChildrenCount(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushinteger(L, entity ? entity->GetChildrenCount() : 0);
+    lua_pushinteger(L, entity->GetChildrenCount());
     return 1;
 }
 
 static int CK3dEntityFlags(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushinteger(L, entity ? entity->GetFlags() : 0);
+    lua_pushinteger(L, entity->GetFlags());
     return 1;
 }
 
 static int CK3dEntityRadius(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushnumber(L, entity ? entity->GetRadius() : 0.0f);
+    lua_pushnumber(L, entity->GetRadius());
     return 1;
 }
 
 static int CK3dEntityParent(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    PushCK3dEntity(L, entity ? entity->GetParent() : nullptr);
+    PushCK3dEntity(L, entity->GetParent());
     return 1;
 }
 
 static int CK3dEntityGetChild(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     const int index = static_cast<int>(luaL_checkinteger(L, 2));
-    PushCK3dEntity(L, entity && index >= 0 ? entity->GetChild(index) : nullptr);
+    PushCK3dEntity(L, index >= 0 && index < entity->GetChildrenCount() ? entity->GetChild(index) : nullptr);
     return 1;
 }
 
 static int CK3dEntityGetScale(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     VxVector scale;
-    if (entity) {
-        entity->GetScale(&scale);
-    } else {
-        scale.x = scale.y = scale.z = 0.0f;
-    }
-    PushVxVectorValue(L, scale);
+    entity->GetScale(&scale);
+    PushVxVector(L, scale);
     return 1;
-}
-
-static VxVector *CheckVxVector(lua_State *L, int index) {
-    return tas::lua::CheckUserdata<VxVector>(L, index, kVxVectorMt);
 }
 
 // Moving the render entity of a physicalized object does nothing: physics overwrites it
 // on the next frame. The shipped physics_RT.dll has no teleport, so refuse instead.
 static CK3dEntity *CheckMovableEntity(lua_State *L, int index, const char *method) {
     CK3dEntity *entity = CheckCK3dEntity(L, index);
-    lua_getfield(L, LUA_REGISTRYINDEX, "LuaApi.World.Context");
-    auto *context = static_cast<ScriptContext *>(lua_touserdata(L, -1));
-    lua_pop(L, 1);
+    ScriptContext *context = GetRegistryContext(L);
     const auto *game = context ? context->GetGameInterface() : nullptr;
     if (game && game->GetPhysicsObject(entity)) {
         luaL_error(L, "CK3dEntity:%s: '%s' is physicalized; use its PhysicsObject (tas.get_physics_object) instead",
@@ -137,30 +67,22 @@ static CK3dEntity *CheckMovableEntity(lua_State *L, int index, const char *metho
     return entity;
 }
 
-static CK3dEntity *OptCK3dEntity(lua_State *L, int index) {
-    return lua_isnoneornil(L, index) ? nullptr : CheckCK3dEntity(L, index);
-}
-
-static CKBOOL OptBool(lua_State *L, int index, bool fallback) {
-    return (lua_isnoneornil(L, index) ? fallback : lua_toboolean(L, index) != 0) ? TRUE : FALSE;
-}
-
 static int CK3dEntityGetPositionIn(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
     VxVector position;
     entity->GetPosition(&position, OptCK3dEntity(L, 2));
-    PushVxVectorValue(L, position);
+    PushVxVector(L, position);
     return 1;
 }
 
 // entity:set_position(pos[, ref[, keep_children]])
 static int CK3dEntitySetPosition(lua_State *L) {
-    CheckMovableEntity(L, 1, "set_position")->SetPosition(CheckVxVector(L, 2), OptCK3dEntity(L, 3), OptBool(L, 4, false));
+    CheckMovableEntity(L, 1, "set_position")->SetPosition(CheckVxVector(L, 2), OptCK3dEntity(L, 3), (OptBool(L, 4, false) ? TRUE : FALSE));
     return 0;
 }
 
 static int CK3dEntityTranslate(lua_State *L) {
-    CheckMovableEntity(L, 1, "translate")->Translate(CheckVxVector(L, 2), OptCK3dEntity(L, 3), OptBool(L, 4, false));
+    CheckMovableEntity(L, 1, "translate")->Translate(CheckVxVector(L, 2), OptCK3dEntity(L, 3), (OptBool(L, 4, false) ? TRUE : FALSE));
     return 0;
 }
 
@@ -169,12 +91,12 @@ static int CK3dEntityRotate(lua_State *L) {
     auto *entity = CheckMovableEntity(L, 1, "rotate");
     const VxVector *axis = CheckVxVector(L, 2);
     const auto angle = static_cast<float>(luaL_checknumber(L, 3));
-    entity->Rotate(axis, angle, OptCK3dEntity(L, 4), OptBool(L, 5, false));
+    entity->Rotate(axis, angle, OptCK3dEntity(L, 4), (OptBool(L, 5, false) ? TRUE : FALSE));
     return 0;
 }
 
 static int CK3dEntityLookAt(lua_State *L) {
-    CheckMovableEntity(L, 1, "look_at")->LookAt(CheckVxVector(L, 2), OptCK3dEntity(L, 3), OptBool(L, 4, false));
+    CheckMovableEntity(L, 1, "look_at")->LookAt(CheckVxVector(L, 2), OptCK3dEntity(L, 3), (OptBool(L, 4, false) ? TRUE : FALSE));
     return 0;
 }
 
@@ -182,9 +104,9 @@ static int CK3dEntityLookAt(lua_State *L) {
 static int CK3dEntityGetOrientation(lua_State *L) {
     VxVector dir, up, right;
     CheckCK3dEntity(L, 1)->GetOrientation(&dir, &up, &right, OptCK3dEntity(L, 2));
-    PushVxVectorValue(L, dir);
-    PushVxVectorValue(L, up);
-    PushVxVectorValue(L, right);
+    PushVxVector(L, dir);
+    PushVxVector(L, up);
+    PushVxVector(L, right);
     return 3;
 }
 
@@ -194,60 +116,60 @@ static int CK3dEntitySetOrientation(lua_State *L) {
     const VxVector *dir = CheckVxVector(L, 2);
     const VxVector *up = CheckVxVector(L, 3);
     const VxVector *right = lua_isnoneornil(L, 4) ? nullptr : CheckVxVector(L, 4);
-    entity->SetOrientation(dir, up, right, OptCK3dEntity(L, 5), OptBool(L, 6, false));
+    entity->SetOrientation(dir, up, right, OptCK3dEntity(L, 5), (OptBool(L, 6, false) ? TRUE : FALSE));
     return 0;
 }
 
 static int CK3dEntityGetQuaternion(lua_State *L) {
     VxQuaternion quat;
     CheckCK3dEntity(L, 1)->GetQuaternion(&quat, OptCK3dEntity(L, 2));
-    tas::lua::PushOwnedUserdata<VxQuaternion>(L, kVxQuaternionMt, quat);
+    PushVxQuaternion(L, quat);
     return 1;
 }
 
 // entity:set_quaternion(quat[, ref[, keep_children[, keep_scale]]])
 static int CK3dEntitySetQuaternion(lua_State *L) {
     auto *entity = CheckMovableEntity(L, 1, "set_quaternion");
-    const auto *quat = tas::lua::CheckUserdata<VxQuaternion>(L, 2, kVxQuaternionMt);
-    entity->SetQuaternion(quat, OptCK3dEntity(L, 3), OptBool(L, 4, false), OptBool(L, 5, false));
+    const auto *quat = CheckVxQuaternion(L, 2);
+    entity->SetQuaternion(quat, OptCK3dEntity(L, 3), (OptBool(L, 4, false) ? TRUE : FALSE), (OptBool(L, 5, false) ? TRUE : FALSE));
     return 0;
 }
 
 // entity:set_scale(scale[, keep_children[, local]])
 static int CK3dEntitySetScale(lua_State *L) {
-    CheckMovableEntity(L, 1, "set_scale")->SetScale(CheckVxVector(L, 2), OptBool(L, 3, false), OptBool(L, 4, true));
+    CheckMovableEntity(L, 1, "set_scale")->SetScale(CheckVxVector(L, 2), (OptBool(L, 3, false) ? TRUE : FALSE), (OptBool(L, 4, true) ? TRUE : FALSE));
     return 0;
 }
 
 static int CK3dEntityAddScale(lua_State *L) {
-    CheckMovableEntity(L, 1, "add_scale")->AddScale(CheckVxVector(L, 2), OptBool(L, 3, false), OptBool(L, 4, true));
+    CheckMovableEntity(L, 1, "add_scale")->AddScale(CheckVxVector(L, 2), (OptBool(L, 3, false) ? TRUE : FALSE), (OptBool(L, 4, true) ? TRUE : FALSE));
     return 0;
 }
 
 static int CK3dEntityGetWorldMatrix(lua_State *L) {
-    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, CheckCK3dEntity(L, 1)->GetWorldMatrix());
+    PushVxMatrix(L, CheckCK3dEntity(L, 1)->GetWorldMatrix());
     return 1;
 }
 
 static int CK3dEntityGetLocalMatrix(lua_State *L) {
-    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, CheckCK3dEntity(L, 1)->GetLocalMatrix());
+    PushVxMatrix(L, CheckCK3dEntity(L, 1)->GetLocalMatrix());
     return 1;
 }
 
 static int CK3dEntityGetInverseWorldMatrix(lua_State *L) {
-    tas::lua::PushOwnedUserdata<VxMatrix>(L, kVxMatrixMt, CheckCK3dEntity(L, 1)->GetInverseWorldMatrix());
+    PushVxMatrix(L, CheckCK3dEntity(L, 1)->GetInverseWorldMatrix());
     return 1;
 }
 
 static int CK3dEntitySetWorldMatrix(lua_State *L) {
     auto *entity = CheckMovableEntity(L, 1, "set_world_matrix");
-    entity->SetWorldMatrix(*tas::lua::CheckUserdata<VxMatrix>(L, 2, kVxMatrixMt), OptBool(L, 3, false));
+    entity->SetWorldMatrix(*CheckVxMatrix(L, 2), (OptBool(L, 3, false) ? TRUE : FALSE));
     return 0;
 }
 
 static int CK3dEntitySetLocalMatrix(lua_State *L) {
     auto *entity = CheckMovableEntity(L, 1, "set_local_matrix");
-    entity->SetLocalMatrix(*tas::lua::CheckUserdata<VxMatrix>(L, 2, kVxMatrixMt), OptBool(L, 3, false));
+    entity->SetLocalMatrix(*CheckVxMatrix(L, 2), (OptBool(L, 3, false) ? TRUE : FALSE));
     return 0;
 }
 
@@ -255,26 +177,26 @@ static int CK3dEntitySetLocalMatrix(lua_State *L) {
 static int CK3dEntityTransform(lua_State *L) {
     VxVector result;
     CheckCK3dEntity(L, 1)->Transform(&result, CheckVxVector(L, 2), OptCK3dEntity(L, 3));
-    PushVxVectorValue(L, result);
+    PushVxVector(L, result);
     return 1;
 }
 
 static int CK3dEntityInverseTransform(lua_State *L) {
     VxVector result;
     CheckCK3dEntity(L, 1)->InverseTransform(&result, CheckVxVector(L, 2), OptCK3dEntity(L, 3));
-    PushVxVectorValue(L, result);
+    PushVxVector(L, result);
     return 1;
 }
 
 static int CK3dEntityGetBoundingBox(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    tas::lua::PushOwnedUserdata<VxBbox>(L, kVxBboxMt, entity->GetBoundingBox(OptBool(L, 2, false)));
+    PushVxBbox(L, entity->GetBoundingBox((OptBool(L, 2, false) ? TRUE : FALSE)));
     return 1;
 }
 
 static int CK3dEntityGetHierarchicalBox(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    tas::lua::PushOwnedUserdata<VxBbox>(L, kVxBboxMt, entity->GetHierarchicalBox(OptBool(L, 2, false)));
+    PushVxBbox(L, entity->GetHierarchicalBox((OptBool(L, 2, false) ? TRUE : FALSE)));
     return 1;
 }
 
@@ -284,7 +206,7 @@ static int CK3dEntityGetBarycenter(lua_State *L) {
         lua_pushnil(L);
         return 1;
     }
-    PushVxVectorValue(L, center);
+    PushVxVector(L, center);
     return 1;
 }
 
@@ -306,13 +228,13 @@ static int CK3dEntityRayIntersection(lua_State *L) {
 // entity:set_parent(parent_or_nil[, keep_world_pos])
 static int CK3dEntitySetParent(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushboolean(L, entity->SetParent(OptCK3dEntity(L, 2), OptBool(L, 3, true)));
+    lua_pushboolean(L, entity->SetParent(OptCK3dEntity(L, 2), (OptBool(L, 3, true) ? TRUE : FALSE)));
     return 1;
 }
 
 static int CK3dEntityAddChild(lua_State *L) {
     auto *entity = CheckCK3dEntity(L, 1);
-    lua_pushboolean(L, entity->AddChild(CheckCK3dEntity(L, 2), OptBool(L, 3, true)));
+    lua_pushboolean(L, entity->AddChild(CheckCK3dEntity(L, 2), (OptBool(L, 3, true) ? TRUE : FALSE)));
     return 1;
 }
 
@@ -348,12 +270,7 @@ void LuaApi::RegisterCK3dEntity(lua_State *state) {
     tas::lua::LuaStackGuard guard(state);
 
     tas::lua::LuaUserdataRegistry<CK3dEntity>(state, kCK3dEntityMt)
-        .Base<CKRenderObject>("BallanceTAS.CKRenderObject")
-        .Property("name", CK3dEntityName, CK3dEntitySetName)
-        .ReadonlyProperty("id", CK3dEntityId)
-        .ReadonlyProperty("class_id", CK3dEntityClassId)
-        .ReadonlyProperty("object_flags", CK3dEntityObjectFlags)
-        .ReadonlyProperty("is_visible", CK3dEntityIsVisible)
+        .Base<CKRenderObject>(kCKRenderObjectMt)
         .ReadonlyProperty("children_count", CK3dEntityChildrenCount)
         .ReadonlyProperty("flags", CK3dEntityFlags)
         .ReadonlyProperty("radius", CK3dEntityRadius)

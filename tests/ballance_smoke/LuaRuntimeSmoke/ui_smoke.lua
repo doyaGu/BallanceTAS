@@ -6,8 +6,8 @@ return function()
   if type(tas.menu.is_in_menu()) ~= "boolean" then
     error("tas.menu.is_in_menu did not return boolean")
   end
-  if type(tas.menu.is_in_game()) ~= "boolean" then
-    error("tas.menu.is_in_game did not return boolean")
+  if tas.menu.is_in_game ~= tas.level.is_loaded then
+    error("tas.menu.is_in_game should be the same function as tas.level.is_loaded")
   end
 
   local projects = tas.project.list()

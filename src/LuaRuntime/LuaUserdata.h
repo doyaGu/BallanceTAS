@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstring>
+
 #include <new>
 #include <string>
 #include <type_traits>
@@ -142,7 +144,26 @@ T *CheckUserdata(lua_State *state, int index, const char *metatableName) {
         }
     }
 
-    luaL_typeerror(state, index, metatableName);
+    // "VxVector expected, got nil" rather than the internal metatable name.
+    const char *shortName = std::strncmp(metatableName, "BallanceTAS.", 12) == 0 ? metatableName + 12 : metatableName;
+    luaL_typeerror(state, index, shortName);
+    return nullptr;
+}
+
+// Like CheckUserdata, but returns nullptr instead of raising when the value is not a T.
+template <typename T>
+T *TestUserdata(lua_State *state, int index, const char *metatableName) {
+    auto *target = GetOrCreateTypeDescriptor<T>(metatableName);
+    if (auto *box = static_cast<UserdataBox<T> *>(luaL_testudata(state, index, metatableName))) {
+        return box->ptr;
+    }
+    auto *header = static_cast<UserdataHeader *>(lua_touserdata(state, index));
+    if (header && header->ptr && lua_getmetatable(state, index)) {
+        lua_getfield(state, -1, "__tas_type_descriptor");
+        auto *actual = static_cast<UserdataTypeDescriptor *>(lua_touserdata(state, -1));
+        lua_pop(state, 2);
+        return static_cast<T *>(CastUserdataPointer(header->ptr, actual ? actual : header->type, target));
+    }
     return nullptr;
 }
 

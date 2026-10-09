@@ -361,7 +361,8 @@ bool EngineBootstrap::InitializeHighLevelSubsystems(TASEngine &engine) {
                 *engine.m_EventBus,
                 *c.Resolve<RuntimeSession>(),
                 *c.Resolve<ContextLifecycleCoordinator>(),
-                engine.m_Requests));
+                engine.m_Requests,
+                [&engine]() { return engine.LevelLoadRunsTAS(); }));
 
         auto *bridge = c.Resolve<LuaTypedEventBridge>();
         if (bridge) {

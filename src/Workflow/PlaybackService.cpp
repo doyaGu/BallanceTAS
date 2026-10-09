@@ -334,6 +334,10 @@ void PlaybackService::InstallScriptCallbacks() {
 #endif
 
             m_ScriptManager->TickAll();
+            // A script stopped the playback during this tick: that is not a completion.
+            if (!m_IsPlaying) {
+                return;
+            }
 
             ApplyMergedContextInputs(im);
 

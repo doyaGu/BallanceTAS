@@ -85,7 +85,12 @@ public:
     void StopTranslation(bool clearProject = false);
     bool StartValidationRecording(const std::string &outputPath);
     bool StopValidationRecording();
+    /// Arms the current project again, to play when the level it just played loads again.
     bool RestartCurrentProject();
+
+    /// Whether the level now loading runs the armed or active TAS. False while idle, and
+    /// for a re-armed project when another level loads.
+    bool LevelLoadRunsTAS() const;
 
     // Settings
     bool IsValidationEnabled() const;

@@ -136,8 +136,7 @@ void TASEngine::Start() {
     }
 
     const float deterministicDeltaTime = ResolveLevelLoadPhysicsDeltaTime();
-    const auto *session = Session();
-    const bool tasActive = session && !session->IsIdle() && !session->IsShuttingDown();
+    const bool tasActive = LevelLoadRunsTAS();
     AddTimer(1ul, [this, deterministicDeltaTime, tasActive]() {
         if (m_GameInterface) {
             if (deterministicDeltaTime > 0.0f) {
@@ -167,6 +166,10 @@ void TASEngine::Start() {
 void TASEngine::Stop() {
     auto *session = Session();
     if (m_ShuttingDown || !session || session->IsIdle() || session->IsShuttingDown()) {
+        return;
+    }
+    // An armed TAS is not running in this level; it keeps waiting for its next load.
+    if (session->IsPending()) {
         return;
     }
 
@@ -426,8 +429,30 @@ bool TASEngine::RestartCurrentProject() {
         return false;
     }
 
-    Log::Info("Restarting TAS project: %s", project->GetName().c_str());
-    return StartReplay();
+    const int level = m_GameInterface ? m_GameInterface->GetCurrentLevel() : 0;
+    if (!StartReplay()) {
+        return false;
+    }
+    m_Requests.restartLevel = level > 0 ? level : 0;
+    if (m_Requests.restartLevel > 0) {
+        Log::Info("Restarting TAS project: %s (plays when Level %d loads again).",
+                  project->GetName().c_str(), m_Requests.restartLevel);
+    } else {
+        Log::Info("Restarting TAS project: %s", project->GetName().c_str());
+    }
+    return true;
+}
+
+bool TASEngine::LevelLoadRunsTAS() const {
+    const auto *session = Session();
+    if (m_ShuttingDown || !session || session->IsIdle() || session->IsShuttingDown()) {
+        return false;
+    }
+    if (session->IsPending() && m_Requests.restartLevel > 0 && m_GameInterface &&
+        m_GameInterface->GetCurrentLevel() != m_Requests.restartLevel) {
+        return false;
+    }
+    return true;
 }
 
 bool TASEngine::IsPlaying() const {
@@ -545,7 +570,7 @@ void TASEngine::HandlePlaybackCompleted() {
 
 float TASEngine::ResolveLevelLoadPhysicsDeltaTime() const {
     const auto *session = Session();
-    if (!session || session->IsIdle() || session->IsShuttingDown()) {
+    if (!session || !LevelLoadRunsTAS()) {
         return 0.0f;
     }
 

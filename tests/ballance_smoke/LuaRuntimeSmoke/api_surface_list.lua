@@ -384,6 +384,7 @@ return {
   "tas.profile",
   "tas.project.find",
   "tas.project.get_current",
+  "tas.project.get_playback_state",
   "tas.project.is_loaded",
   "tas.project.list",
   "tas.project.load",

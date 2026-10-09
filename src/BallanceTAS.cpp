@@ -603,7 +603,7 @@ void BallanceTAS::OnExitGame() {
 void BallanceTAS::OnPreLoadLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->GetGameInterface()->SetLevelCompleted(false);
-        if (!m_Engine->IsIdle()) {
+        if (m_Engine->LevelLoadRunsTAS()) {
             // Before the level's own loading scripts start, so a TAS level load takes the
             // same number of frames every time.
             m_Engine->GetGameInterface()->NormalizeBehaviorOrder();

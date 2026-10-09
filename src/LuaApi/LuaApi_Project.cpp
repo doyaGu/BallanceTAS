@@ -245,6 +245,22 @@ static int StopPlayback(lua_State *L) {
     return 0;
 }
 
+// tas.project.get_playback_state() -> "idle" | "armed" | "playing"
+// "armed": a project waits for its level to load; "playing" includes a paused playback.
+static int GetPlaybackState(lua_State *L) {
+    ScriptContext *context = GetContext(L);
+    TASEngine *engine = context ? context->GetEngine() : nullptr;
+    const char *state = "idle";
+    if (engine && engine->IsPendingPlay()) {
+        state = "armed";
+    } else if (engine && (engine->IsPlaying() ||
+                          (engine->IsPaused() && engine->GetPlaybackType() != PlaybackType::None))) {
+        state = "playing";
+    }
+    lua_pushstring(L, state);
+    return 1;
+}
+
 void LuaApi::RegisterProjectApi(lua_State *state, ScriptContext *context) {
     tas::lua::LuaStackGuard guard(state);
     lua_getglobal(state, "tas");
@@ -258,6 +274,7 @@ void LuaApi::RegisterProjectApi(lua_State *state, ScriptContext *context) {
     SetClosure(state, "is_loaded", IsLoaded, context);
     SetClosure(state, "play", Play, context);
     SetClosure(state, "stop_playback", StopPlayback, context);
+    SetClosure(state, "get_playback_state", GetPlaybackState, context);
     lua_setfield(state, -2, "project");
     lua_pop(state, 1);
 }

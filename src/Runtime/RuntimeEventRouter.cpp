@@ -11,11 +11,13 @@ RuntimeEventRouter::RuntimeEventRouter(
     EventBus &eventBus,
     RuntimeSession &runtimeSession,
     ContextLifecycleCoordinator &contextLifecycleCoordinator,
-    OperationRequestStore &requests)
+    OperationRequestStore &requests,
+    std::function<bool()> levelLoadRunsTas)
     : m_EventBus(eventBus),
       m_RuntimeSession(runtimeSession),
       m_ContextLifecycleCoordinator(contextLifecycleCoordinator),
-      m_Requests(requests) {
+      m_Requests(requests),
+      m_LevelLoadRunsTas(std::move(levelLoadRunsTas)) {
 }
 
 void RuntimeEventRouter::Initialize() {
@@ -60,6 +62,9 @@ void RuntimeEventRouter::HandlePreLoadLevel() {
     if (!m_RuntimeSession.IsPending()) {
         return;
     }
+    if (ArmedTasWaitsForAnotherLevel()) {
+        return;
+    }
 
     auto result = m_RuntimeSession.OnLevelLoadStart();
     if (!result.IsOk() && result.GetError().severity != ErrorSeverity::Warning) {
@@ -68,7 +73,20 @@ void RuntimeEventRouter::HandlePreLoadLevel() {
     }
 }
 
+// A re-armed project keeps waiting for its own level. "Next level" starts a level without a
+// PreLoadLevel, so both load paths ask.
+bool RuntimeEventRouter::ArmedTasWaitsForAnotherLevel() const {
+    if (!m_RuntimeSession.IsPending() || !m_LevelLoadRunsTas || m_LevelLoadRunsTas()) {
+        return false;
+    }
+    Log::Info("Armed TAS waits for Level %d; this level runs without it.", m_Requests.restartLevel);
+    return true;
+}
+
 void RuntimeEventRouter::HandleStartLevel() {
+    if (ArmedTasWaitsForAnotherLevel()) {
+        return;
+    }
     auto result = m_RuntimeSession.OnLevelStart();
     if (!result.IsOk() && result.GetError().severity != ErrorSeverity::Warning) {
         Log::Error("State transition failed for level start: %s",

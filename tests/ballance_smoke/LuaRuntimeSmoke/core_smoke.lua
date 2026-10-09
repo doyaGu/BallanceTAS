@@ -19,6 +19,7 @@ return function()
   check(type(found_project) == "table" and found_project.scope == "global", "tas.project.find")
   check(tas.project.find("no such project") == nil, "tas.project.find of a missing project is nil")
   check(type(tas.project.is_loaded()) == "boolean", "tas.project.is_loaded")
+  check(tas.project.get_playback_state() == "idle", "tas.project.get_playback_state at the menu")
   local loaded, why = tas.project.load("no such project")
   check(loaded == false and type(why) == "string", "tas.project.load reports a missing project")
 

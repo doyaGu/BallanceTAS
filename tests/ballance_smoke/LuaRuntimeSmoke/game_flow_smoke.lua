@@ -121,10 +121,11 @@ local function end_menu()
   end, 150)
   check(tas.level.is_completed(), "the level should be completed")
   tas.log("Game Flow finished Level 1 with %s", record)
-  -- With TAS.AutoRestart the run is armed again a frame after it ends; it must not
-  -- replay in Level 2.
+  -- With TAS.AutoRestart the run is armed again a frame after it ends, for Level 1 only.
   tas.wait_ticks(2)
-  tas.project.stop_playback()
+  local state = tas.project.get_playback_state()
+  check(state == "armed" or state == "idle", "playback state after the run: " .. state)
+  local rearmed = state == "armed"
 
   -- Score, optional highscore entry and table, then the end screen.
   local deadline = os.time() + 60
@@ -152,12 +153,36 @@ local function end_menu()
   click("next")
   wait_for("Level 2 to start", function() return started.fired end, 60)
   check(tas.level.get_number() == 2, "next should load Level 2")
+  if rearmed then
+    check(tas.project.get_playback_state() == "armed", "the re-armed run must not play in Level 2")
+  end
   tas.log("Game Flow end screen: options, next level")
 
   local exited = listen("post_exit_level")
   expect_ok("exit Level 2", tas.level.exit_to_menu())
   wait_for("the exit from Level 2", function() return exited.fired end)
   wait_screen("main", 30)
+
+  if rearmed then
+    -- Back in Level 1 the re-armed run plays again.
+    check(tas.project.get_playback_state() == "armed", "the run should stay armed after Level 2")
+    local again = listen("start_level")
+    expect_ok("tas.level.load(1) for the re-armed run", tas.level.load(1))
+    wait_for("Level 1 to start again", function() return again.fired end, 60)
+    check(tas.project.get_playback_state() == "playing", "the re-armed run should play in Level 1")
+    tas.project.stop_playback()
+    -- Stopping is not finishing: AutoRestart must not arm it again.
+    tas.wait_ticks(2)
+    check(tas.project.get_playback_state() == "idle",
+      "stop_playback should leave nothing armed: " .. tas.project.get_playback_state())
+    tas.log("Game Flow re-armed run: waited out Level 2, played in Level 1")
+
+    local left = listen("post_exit_level")
+    expect_ok("exit Level 1", tas.level.exit_to_menu())
+    wait_for("the exit from Level 1", function() return left.fired end)
+    wait_screen("main", 30)
+  end
+  tas.project.stop_playback()
 end
 
 return function()

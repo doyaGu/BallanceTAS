@@ -2,6 +2,7 @@
 
 #include <BML/ScriptHelper.h>
 
+#include <algorithm>
 #include <cctype>
 #include <stdexcept>
 
@@ -148,6 +149,23 @@ PhysicsDeterminism::PhysicsLevelBaseline GameInterface::CapturePhysicsLevelBasel
     }
     baseline.randomSeed = ivp_srand_read();
     return baseline;
+}
+
+void GameInterface::NormalizeBehaviorOrder() {
+    CKBehaviorManager *behaviors = m_CKContext ? m_CKContext->GetBehaviorManager() : nullptr;
+    if (!behaviors) {
+        return;
+    }
+    XObjectPointerArray &objects = behaviors->m_BeObjects;
+    std::vector<CKObject *> ordered(objects.Begin(), objects.End());
+    std::stable_sort(ordered.begin(), ordered.end(), [](CKObject *a, CKObject *b) {
+        const int pa = static_cast<CKBeObject *>(a)->GetPriority();
+        const int pb = static_cast<CKBeObject *>(b)->GetPriority();
+        return pa != pb ? pa > pb : a->GetID() < b->GetID();
+    });
+    for (size_t i = 0; i < ordered.size(); ++i) {
+        objects[static_cast<int>(i)] = ordered[i];
+    }
 }
 
 void GameInterface::RestorePhysicsLevelBaseline(const PhysicsDeterminism::PhysicsLevelBaseline &baseline) {

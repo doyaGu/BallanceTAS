@@ -264,8 +264,9 @@ bool BallanceTAS::InitializeGameHooks() {
 }
 
 void BallanceTAS::ApplyIdleScriptInput(CKInputManager *inputManager) {
-    // During playback PlaybackService owns the keyboard buffer.
-    if (!inputManager || !m_Engine || m_Engine->IsPlaying() || m_Engine->IsPaused()) {
+    // Only when no TAS is armed or running: PlaybackService owns the keyboard (and the played
+    // script's key timing) from the moment a playback is armed, and recordings must stay pure.
+    if (!inputManager || !m_Engine || !m_Engine->IsIdle()) {
         return;
     }
     auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>();
@@ -556,6 +557,11 @@ void BallanceTAS::OnExitGame() {
 void BallanceTAS::OnPreLoadLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->GetGameInterface()->SetLevelCompleted(false);
+        if (!m_Engine->IsIdle()) {
+            // Before the level's own loading scripts start, so a TAS level load takes the
+            // same number of frames every time.
+            m_Engine->GetGameInterface()->NormalizeBehaviorOrder();
+        }
         m_Engine->Start();
     }
     PublishEngineEvent(this, PreLoadLevelEvent{});

@@ -78,6 +78,16 @@ public:
     void ResetPhysicsTime(float deltaTimeMs);
     /// Physics state a level load inherits from earlier levels (see PhysicsLevelBaseline).
     PhysicsDeterminism::PhysicsLevelBaseline CapturePhysicsLevelBaseline() const;
+    /**
+     * @brief Puts objects of equal priority in a fixed execution order (by object ID).
+     *
+     * The behavior manager runs objects by priority, and equal-priority objects in the order
+     * they happen to sit in its list. That order changes with whatever the previous level
+     * left behind, which makes Levelinit_build pick up its "Loaded" messages one frame
+     * earlier or later, so a level load alternates between e.g. 101 and 102 frames.
+     */
+    void NormalizeBehaviorOrder();
+
     void RestorePhysicsLevelBaseline(const PhysicsDeterminism::PhysicsLevelBaseline &baseline);
     void SetPhysicsTimeFactor(float factor = 1.0f) override;
 

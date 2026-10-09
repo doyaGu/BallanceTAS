@@ -12,6 +12,8 @@
 #include "ServiceContainer.h"
 #include "ScriptContextManager.h"
 #include "StartupProjectManager.h"
+#include "ProjectManager.h"
+#include "TASProject.h"
 #include "UIManager.h"
 #include "Logger.h"
 #include "BMLLogSink.h"
@@ -331,6 +333,15 @@ bool BallanceTAS::Initialize() {
         }
 
         m_ConfigService.SetEventBus(m_Engine->GetEventBus());
+        if (auto *projects = m_Engine->GetServiceProvider().Resolve<ProjectManager>()) {
+            std::vector<std::string> names;
+            for (const auto &project : projects->GetProjects()) {
+                if (project && project->IsValid()) {
+                    names.push_back(project->GetName());
+                }
+            }
+            m_ConfigService.SetStartupProjectChoices(names);
+        }
         m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
         m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
         const bool hostRequested = PlayerHostBridge::IsRequested();
@@ -343,6 +354,7 @@ bool BallanceTAS::Initialize() {
                 if (!startupConfig.project.empty()) {
                     startup->SetStartupProject(startupConfig.project);
                 }
+                startup->SetStartupLevel(startupConfig.level);
                 if (startupConfig.enabled && startupConfig.autoLoad) {
                     startup->LoadAndExecuteStartupScript();
                 }
@@ -486,6 +498,9 @@ void BallanceTAS::OnProcess() {
             if (auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>()) {
                 contexts->TickAll();
             }
+        }
+        if (auto *startup = m_Engine->GetServiceProvider().Resolve<StartupProjectManager>()) {
+            startup->Tick();
         }
         if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
             harness->Tick();

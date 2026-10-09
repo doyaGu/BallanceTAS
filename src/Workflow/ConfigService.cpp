@@ -1,6 +1,39 @@
 #include "ConfigService.h"
+
+#include <Windows.h>
+
+#include <algorithm>
+
 #include "EventBus.h"
 #include "GameEvents.h"
+#include "LevelNames.h"
+
+// Shows a string property as radio buttons in the BML+ mod menu. The exports are looked
+// up at run time: loaders older than the choice editor keep showing a text field.
+static void SetChoiceEditor(IProperty *property, const std::vector<std::string> &choices) {
+    using SetChoicesFn = int(__cdecl *)(IProperty *, const char *const[], size_t);
+    using SetEditorFn = int(__cdecl *)(IProperty *, int);
+    constexpr int kChoiceEditor = 2; // BML_CONFIG_EDITOR_CHOICE
+
+    HMODULE loader = ::GetModuleHandleA("BMLPlus.dll");
+    if (!property || !loader) {
+        return;
+    }
+    auto setChoices = reinterpret_cast<SetChoicesFn>(::GetProcAddress(loader, "BML_SetConfigPropertyChoices"));
+    auto setEditor = reinterpret_cast<SetEditorFn>(::GetProcAddress(loader, "BML_SetConfigPropertyEditor"));
+    if (!setChoices || !setEditor) {
+        return;
+    }
+
+    std::vector<const char *> values;
+    values.reserve(choices.size());
+    for (const std::string &choice : choices) {
+        values.push_back(choice.c_str());
+    }
+    if (setChoices(property, values.data(), values.size())) {
+        setEditor(property, kChoiceEditor);
+    }
+}
 
 void ConfigService::RegisterProperties(IConfig *config) {
     // --- TAS ---
@@ -34,15 +67,27 @@ void ConfigService::RegisterProperties(IConfig *config) {
 
     // --- Startup Script ---
     m_StartupScriptEnabled = config->GetProperty("Startup", "Enabled");
-    m_StartupScriptEnabled->SetComment("Enable global TAS projects with trigger = startup/menu/level");
+    m_StartupScriptEnabled->SetComment("Run a TAS project when the game starts");
     m_StartupScriptEnabled->SetDefaultBoolean(true);
 
     m_StartupScriptProject = config->GetProperty("Startup", "Project");
-    m_StartupScriptProject->SetComment("Optional TAS project name to run for startup triggers; leave empty to auto-select manifest trigger projects");
+    m_StartupScriptProject->SetComment("Project to run at startup: a record or level script is armed and plays in its level; "
+                                       "a global script runs when its trigger is startup. None picks a global script "
+                                       "with trigger = startup");
     m_StartupScriptProject->SetDefaultString("");
 
+    m_StartupLevel = config->GetProperty("Startup", "Level");
+    m_StartupLevel->SetComment("Level to enter after the startup project starts; None waits for you "
+                               "(level scripts default to their manifest level)");
+    m_StartupLevel->SetDefaultString("");
+    std::vector<std::string> levels{""};
+    for (int level = LevelNames::kFirstLevel; level <= LevelNames::kLastLevel; ++level) {
+        levels.push_back(LevelNames::ToKey(level));
+    }
+    SetChoiceEditor(m_StartupLevel, levels);
+
     m_AutoLoadStartupScript = config->GetProperty("Startup", "AutoLoad");
-    m_AutoLoadStartupScript->SetComment("Automatically run global TAS projects with trigger = startup when the game launches");
+    m_AutoLoadStartupScript->SetComment("Start the startup project automatically when the game launches");
     m_AutoLoadStartupScript->SetDefaultBoolean(true);
 
     // --- OSD ---
@@ -92,7 +137,7 @@ void ConfigService::OnPropertyChanged(const char *category, const char *key, IPr
 
     if (prop == m_Enabled || prop == m_Validation || prop == m_AutoRestart ||
         prop == m_StopOnFinish || prop == m_StopKey || prop == m_RecordingMaxFrames ||
-        prop == m_StartupScriptEnabled || prop == m_StartupScriptProject ||
+        prop == m_StartupScriptEnabled || prop == m_StartupScriptProject || prop == m_StartupLevel ||
         prop == m_AutoLoadStartupScript || prop == m_ShowOSD ||
         prop == m_ShowOSDStatus || prop == m_ShowOSDVelocity ||
         prop == m_ShowOSDPosition || prop == m_ShowOSDPhysics ||
@@ -106,8 +151,19 @@ StartupConfig ConfigService::GetStartupConfig() const {
     StartupConfig cfg;
     if (m_StartupScriptEnabled) cfg.enabled = m_StartupScriptEnabled->GetBoolean();
     if (m_StartupScriptProject) cfg.project = m_StartupScriptProject->GetString();
+    if (m_StartupLevel) cfg.level = m_StartupLevel->GetString();
     if (m_AutoLoadStartupScript) cfg.autoLoad = m_AutoLoadStartupScript->GetBoolean();
     return cfg;
+}
+
+void ConfigService::SetStartupProjectChoices(const std::vector<std::string> &projectNames) {
+    std::vector<std::string> choices{""};
+    for (const std::string &name : projectNames) {
+        if (!name.empty() && std::find(choices.begin(), choices.end(), name) == choices.end()) {
+            choices.push_back(name);
+        }
+    }
+    SetChoiceEditor(m_StartupScriptProject, choices);
 }
 
 OSDConfig ConfigService::GetOSDConfig() const {

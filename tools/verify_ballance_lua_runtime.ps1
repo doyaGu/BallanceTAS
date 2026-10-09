@@ -186,6 +186,10 @@ if (Test-Path -LiteralPath $config) {
         $startupProject.Groups[1].Value -ne 'LuaRuntimeSmoke') {
         throw "BallanceTAS Startup.Project is '$($startupProject.Groups[1].Value)'; it must be empty or LuaRuntimeSmoke for the smoke project to start."
     }
+    $startupLevel = [regex]::Match($startupSection.Groups[1].Value, '(?m)^\s*S\s+Level[ \t]*(\S*)[ \t]*$')
+    if ($startupLevel.Success -and $startupLevel.Groups[1].Value) {
+        throw "BallanceTAS Startup.Level is '$($startupLevel.Groups[1].Value)'; it must be empty for the smoke project."
+    }
 }
 
 Invoke-BallanceTASBuild -Path $buildPath

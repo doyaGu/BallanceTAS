@@ -1,5 +1,7 @@
 #include "StartupProjectManager.h"
 
+#include "GameInterface.h"
+#include "LevelNames.h"
 #include "Logger.h"
 #include "TASEngine.h"
 #include "TASProject.h"
@@ -35,6 +37,7 @@ void StartupProjectManager::Shutdown() {
     m_StartupProject.reset();
     m_StartupProjectName.clear();
     m_HasExecutedStartup = false;
+    m_PendingStep = PendingStep::None;
     m_Initialized = false;
 }
 
@@ -58,7 +61,137 @@ bool StartupProjectManager::LoadAndExecuteStartupScript() {
         return false;
     }
 
-    return LoadStartupProject() && ExecuteStartupProjectIfAppropriate("startup");
+    m_PendingStep = PendingStep::None;
+    if (TASProject *replay = FindReplayProject()) {
+        // Records and level scripts play through the engine, armed before the level loads.
+        m_ReplayProjectName = replay->GetName();
+        m_PendingStep = PendingStep::Arm;
+        m_PendingFrames = 0;
+        const auto projectLevel = LevelNames::Parse(replay->GetTargetLevel());
+        ScheduleLevel(projectLevel ? *projectLevel : 0);
+        return true;
+    }
+
+    const bool started = LoadStartupProject() && ExecuteStartupProjectIfAppropriate("startup");
+    ScheduleLevel(0);
+    return started;
+}
+
+TASProject *StartupProjectManager::FindReplayProject() const {
+    if (m_StartupProjectName.empty()) {
+        return nullptr;
+    }
+    auto *projectManager = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
+    if (!projectManager) {
+        return nullptr;
+    }
+    for (const auto &project : projectManager->GetProjects()) {
+        // Records are also accepted by file name ("SR_01.tas").
+        if (project && (project->GetName() == m_StartupProjectName ||
+                        project->GetName() + ".tas" == m_StartupProjectName)) {
+            const bool replayable = project->IsRecordProject() ||
+                                    (project->IsScriptProject() && !project->IsGlobalProject());
+            return replayable && project->IsValid() ? project.get() : nullptr;
+        }
+    }
+    return nullptr;
+}
+
+// Startup.Level wins; otherwise the project's own level, if it has one.
+void StartupProjectManager::ScheduleLevel(int projectLevel) {
+    m_LevelToLoad = projectLevel;
+    if (!m_StartupLevelName.empty()) {
+        if (const auto level = LevelNames::Parse(m_StartupLevelName)) {
+            m_LevelToLoad = *level;
+        } else {
+            Log::Warn("Startup.Level '%s' is not a level; expected Level_01 ... Level_13.",
+                      m_StartupLevelName.c_str());
+        }
+    }
+    if (m_LevelToLoad != 0 && m_PendingStep == PendingStep::None) {
+        m_PendingStep = PendingStep::LoadLevel;
+        m_PendingFrames = 0;
+    }
+}
+
+void StartupProjectManager::Tick() {
+    switch (m_PendingStep) {
+    case PendingStep::Arm:
+    case PendingStep::WaitArmed:
+        TickArm();
+        break;
+    case PendingStep::LoadLevel:
+        TickLoadLevel();
+        break;
+    case PendingStep::None:
+        break;
+    }
+}
+
+void StartupProjectManager::TickArm() {
+    if (m_PendingStep == PendingStep::Arm) {
+        auto *projectManager = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
+        TASProject *project = nullptr;
+        if (projectManager) {
+            for (const auto &candidate : projectManager->GetProjects()) {
+                if (candidate && candidate->GetName() == m_ReplayProjectName) {
+                    project = candidate.get();
+                }
+            }
+        }
+        if (!project) {
+            Log::Error("Startup project '%s' disappeared before it could be armed.", m_ReplayProjectName.c_str());
+            m_PendingStep = PendingStep::None;
+            return;
+        }
+        projectManager->SetCurrentProject(project);
+        if (!m_Engine->StartReplay()) {
+            Log::Error("Could not arm startup project '%s' for playback.", m_ReplayProjectName.c_str());
+            m_PendingStep = PendingStep::None;
+            return;
+        }
+        m_PendingStep = PendingStep::WaitArmed;
+        m_PendingFrames = 0;
+        return;
+    }
+
+    // Arming completes on the engine's own tick.
+    if (m_Engine->IsPendingPlay() || m_Engine->IsPlaying()) {
+        m_HasExecutedStartup = true;
+        if (m_LevelToLoad != 0) {
+            Log::Info("Startup project '%s' armed; entering %s.", m_ReplayProjectName.c_str(),
+                      LevelNames::ToKey(m_LevelToLoad).c_str());
+            m_PendingStep = PendingStep::LoadLevel;
+            m_PendingFrames = 0;
+        } else {
+            Log::Info("Startup project '%s' armed; it plays when you start a level.", m_ReplayProjectName.c_str());
+            m_PendingStep = PendingStep::None;
+        }
+    } else if (m_Engine->IsIdle() && ++m_PendingFrames > 10) {
+        Log::Error("Startup project '%s' was not armed for playback.", m_ReplayProjectName.c_str());
+        m_PendingStep = PendingStep::None;
+    }
+}
+
+// The menu becomes usable a few frames after the game reaches it, so keep trying.
+void StartupProjectManager::TickLoadLevel() {
+    constexpr int kMaxFrames = 20 * 60;
+    GameInterface *game = m_Engine->GetGameInterface();
+    if (!game || game->IsIngame()) {
+        // No game, or the player got there first.
+        m_PendingStep = PendingStep::None;
+        return;
+    }
+    std::string reason;
+    if (game->LoadLevel(m_LevelToLoad, reason)) {
+        Log::Info("Startup: loading %s.", LevelNames::ToKey(m_LevelToLoad).c_str());
+        m_PendingStep = PendingStep::None;
+        return;
+    }
+    if (++m_PendingFrames >= kMaxFrames) {
+        Log::Warn("Startup: could not enter %s: %s", LevelNames::ToKey(m_LevelToLoad).c_str(), reason.c_str());
+        m_PendingStep = PendingStep::None;
+    }
 }
 
 void StartupProjectManager::OnGameStart() {
@@ -158,9 +291,11 @@ void StartupProjectManager::WarnUnusableStartupProject(const std::vector<std::un
         if (!project || project->GetName() != m_StartupProjectName) {
             continue;
         }
-        if (!project->IsScriptProject() || !project->IsGlobalProject()) {
-            Log::Warn("Startup project '%s' is not a global script project; startup only runs projects "
-                      "whose manifest has scope = \"global\".", m_StartupProjectName.c_str());
+        if (!project->IsValid()) {
+            Log::Warn("Startup project '%s' is not valid.", m_StartupProjectName.c_str());
+        } else if (project->IsScriptProject() && project->IsGlobalProject()) {
+            Log::Warn("Startup project '%s' is a global script with trigger = \"%s\"; only trigger = \"startup\" "
+                      "runs at startup.", m_StartupProjectName.c_str(), project->GetExecutionTrigger().c_str());
         }
         return;
     }

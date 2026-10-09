@@ -13,9 +13,9 @@ class TASEngine;
  * @class StartupProjectManager
  * @brief Manages startup script loading and execution for whole-process gameplay.
  *
- * This component handles the selection, loading, and execution of global TAS projects
- * that can run across menus and multiple levels. It integrates with the TASEngine
- * to provide seamless startup script functionality.
+ * Global script projects run in the global context when their trigger is "startup".
+ * A configured record or level-script project is armed for playback instead, and the
+ * configured level (or the project's own level) is then entered from the menu.
  */
 class StartupProjectManager {
 public:
@@ -85,6 +85,18 @@ public:
      * @param enabled True to enable auto-loading, false to disable.
      */
     void SetAutoLoadEnabled(bool enabled) { m_AutoLoadEnabled = enabled; }
+
+    /**
+     * @brief Sets the level to enter once the startup project is running or armed.
+     * @param level "" for none, or a level name LevelNames::Parse accepts.
+     */
+    void SetStartupLevel(const std::string &level) { m_StartupLevelName = level; }
+
+    /**
+     * @brief Drives the deferred startup steps (arming a replay, entering the level).
+     * Call once per frame.
+     */
+    void Tick();
 
     /**
      * @brief Attempts to load and execute the startup script.
@@ -157,6 +169,19 @@ private:
     bool ExecuteStartupProjectIfAppropriate(const std::string &context, const std::string &levelName = "");
 
     void WarnUnusableStartupProject(const std::vector<std::unique_ptr<TASProject>> &projects) const;
+
+    /// The configured project when it should be replayed (a record or a level script).
+    TASProject *FindReplayProject() const;
+    void ScheduleLevel(int projectLevel);
+    void TickArm();
+    void TickLoadLevel();
+
+    enum class PendingStep { None, Arm, WaitArmed, LoadLevel };
+    PendingStep m_PendingStep = PendingStep::None;
+    std::string m_StartupLevelName;
+    std::string m_ReplayProjectName;
+    int m_LevelToLoad = 0;
+    int m_PendingFrames = 0;
 
     TASEngine *m_Engine;
     std::unique_ptr<TASProject> m_StartupProject;

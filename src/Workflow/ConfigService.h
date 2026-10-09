@@ -2,6 +2,9 @@
 
 #include <BML/BMLAll.h>
 
+#include <string>
+#include <vector>
+
 class EventBus;
 
 /// OSD panel configuration snapshot, read by UIManager/InGameOSD.
@@ -21,6 +24,7 @@ struct OSDConfig {
 struct StartupConfig {
     bool enabled = true;
     std::string project;
+    std::string level; // "" or "Level_01" ... "Level_13"
     bool autoLoad = true;
 };
 
@@ -53,6 +57,10 @@ public:
     // --- Startup Script ---
     StartupConfig GetStartupConfig() const;
 
+    /// Offers these project names (plus "" for automatic selection) as the choices of
+    /// Startup.Project. Call once the projects have been scanned.
+    void SetStartupProjectChoices(const std::vector<std::string> &projectNames);
+
     // --- OSD ---
     bool IsOSDVisible() const { return m_ShowOSD && m_ShowOSD->GetBoolean(); }
     OSDConfig GetOSDConfig() const;
@@ -73,6 +81,7 @@ private:
     // Startup Script
     IProperty *m_StartupScriptEnabled = nullptr;
     IProperty *m_StartupScriptProject = nullptr;
+    IProperty *m_StartupLevel = nullptr;
     IProperty *m_AutoLoadStartupScript = nullptr;
 
     // OSD

@@ -477,6 +477,8 @@ void PhysicsObject::SetVelocity(const VxVector *velocity, const VxVector *angula
         return;
     }
 
+    // Like IVP's async_add_speed_*: a resting core ignores speed_change until it is simulated again.
+    m_RealObject->ensure_in_simulation();
     IVP_Core *core = m_RealObject->get_core();
 
     if (velocity) {

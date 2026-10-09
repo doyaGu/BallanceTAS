@@ -27,6 +27,15 @@ public:
     void RefreshProjects();
 
     /**
+     * @brief Rescans only when the TAS directory changed since the last scan.
+     * @return True if a rescan ran.
+     */
+    bool RefreshIfChanged();
+
+    /// Increases with every rescan, so observers can tell that the list may have changed.
+    size_t GetGeneration() const { return m_Generation; }
+
+    /**
      * @brief Extracts a zip file to a temporary directory for execution.
      * @param zipPath Path to the zip file to extract.
      * @param tempDir Directory to extract to (will be created).
@@ -154,6 +163,10 @@ private:
      */
     bool ValidateProjectStructure(const std::string &projectPath);
 
+    /// Names and versions of the TAS directory's entries; changes when projects are added,
+    /// removed or edited.
+    std::string ScanSignature() const;
+
     TASEngine *m_Engine;
     std::string m_TASRootPath;
     std::string m_TempDir; // Base directory for temporary extractions
@@ -161,6 +174,12 @@ private:
     tas::lua::LuaState m_ManifestState; // Dedicated Lua state for manifest parsing
 
     std::vector<std::unique_ptr<TASProject>> m_Projects;
+    // Replaced or removed by a rescan, kept until shutdown because raw pointers may remain.
+    std::vector<std::unique_ptr<TASProject>> m_RetiredProjects;
+    std::unordered_map<const TASProject *, std::string> m_ProjectStamps;
+    std::string m_ScanSignature;
+    size_t m_Generation = 0;
+    bool m_HasScanned = false;
     TASProject *m_CurrentProject = nullptr; // Current project being worked on, if any.
 
     // Track temporary directories for cleanup - maps project pointer to temp directory path

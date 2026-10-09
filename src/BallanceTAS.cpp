@@ -333,15 +333,8 @@ bool BallanceTAS::Initialize() {
         }
 
         m_ConfigService.SetEventBus(m_Engine->GetEventBus());
-        if (auto *projects = m_Engine->GetServiceProvider().Resolve<ProjectManager>()) {
-            std::vector<std::string> names;
-            for (const auto &project : projects->GetProjects()) {
-                if (project && project->IsValid()) {
-                    names.push_back(project->GetName());
-                }
-            }
-            m_ConfigService.SetStartupProjectChoices(names);
-        }
+        m_ProjectChoicesGeneration = 0;
+        PollProjects();
         m_Engine->SetValidationEnabled(m_ConfigService.IsValidation());
         m_Engine->SetAutoRestartEnabled(m_ConfigService.IsAutoRestart());
         const bool hostRequested = PlayerHostBridge::IsRequested();
@@ -502,6 +495,7 @@ void BallanceTAS::OnProcess() {
         if (auto *startup = m_Engine->GetServiceProvider().Resolve<StartupProjectManager>()) {
             startup->Tick();
         }
+        PollProjects();
         if (auto *harness = m_Engine->GetServiceProvider().Resolve<HarnessRuntime>()) {
             harness->Tick();
         }
@@ -517,6 +511,30 @@ void BallanceTAS::OnProcess() {
     if (m_SkipRenderingCount != 0) {
         m_BML->SkipRenderForNextTick();
         --m_SkipRenderingCount;
+    }
+}
+
+void BallanceTAS::PollProjects() {
+    constexpr size_t kPollIntervalFrames = 120;
+    auto *projects = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
+    if (!projects) {
+        return;
+    }
+    // Only between runs: a rescan reads new project files, which must not stall playback.
+    if (++m_ProjectPollFrames >= kPollIntervalFrames && m_Engine->IsIdle()) {
+        m_ProjectPollFrames = 0;
+        projects->RefreshIfChanged();
+    }
+    // Any rescan counts, including the TAS menu's own refreshes.
+    if (projects->GetGeneration() != m_ProjectChoicesGeneration) {
+        m_ProjectChoicesGeneration = projects->GetGeneration();
+        std::vector<std::string> names;
+        for (const auto &project : projects->GetProjects()) {
+            if (project && project->IsValid()) {
+                names.push_back(project->GetName());
+            }
+        }
+        m_ConfigService.SetStartupProjectChoices(names);
     }
 }
 

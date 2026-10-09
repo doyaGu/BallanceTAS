@@ -43,50 +43,87 @@ ProjectManager::~ProjectManager() {
     CleanupTempDirectories();
 }
 
-void ProjectManager::RefreshProjects() {
-    // Keep the current project alive across the rescan: playback, script contexts,
-    // the runtime session and the Player host bridge all hold raw pointers to it.
-    std::unique_ptr<TASProject> retained;
-    std::string retainedTempDir;
-    if (m_CurrentProject) {
-        auto it = std::find_if(m_Projects.begin(), m_Projects.end(),
-                               [this](const auto &p) { return p.get() == m_CurrentProject; });
-        if (it != m_Projects.end()) {
-            retained = std::move(*it);
-            m_Projects.erase(it);
-        }
-        auto tempIt = m_ProjectTempDirectories.find(m_CurrentProject);
-        if (tempIt != m_ProjectTempDirectories.end()) {
-            retainedTempDir = tempIt->second;
-            m_ProjectTempDirectories.erase(tempIt);
-        }
+// Identifies one version of a project on disk: the manifest of a directory project,
+// otherwise the file itself.
+static std::string ProjectStamp(const fs::directory_entry &entry) {
+    std::error_code ec;
+    const fs::path path = entry.is_directory(ec) ? entry.path() / "manifest.lua" : entry.path();
+    const auto time = fs::last_write_time(path, ec);
+    if (ec) {
+        return {};
     }
+    const auto size = fs::is_regular_file(path, ec) ? fs::file_size(path, ec) : 0;
+    return std::to_string(time.time_since_epoch().count()) + ":" + std::to_string(ec ? 0 : size);
+}
 
-    // Clean up previous project temp directories
-    CleanupTempDirectories();
+std::string ProjectManager::ScanSignature() const {
+    std::string signature;
+    std::error_code ec;
+    for (fs::directory_iterator it(m_TASRootPath, ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->path().filename() == "temp") {
+            continue;
+        }
+        signature += it->path().filename().string();
+        signature += '|';
+        signature += ProjectStamp(*it);
+        signature += '\n';
+    }
+    return signature;
+}
 
+bool ProjectManager::RefreshIfChanged() {
+    if (ScanSignature() == m_ScanSignature) {
+        return false;
+    }
+    RefreshProjects();
+    return true;
+}
+
+void ProjectManager::RefreshProjects() {
+    // Leftovers from earlier runs. Later rescans keep extracted projects: they may be running.
+    if (!m_HasScanned) {
+        CleanupTempDirectories();
+        m_HasScanned = true;
+    }
+    m_ScanSignature = ScanSignature();
+
+    // Unchanged projects keep their objects, so pointers held by playback, script contexts,
+    // the runtime session or the Player host bridge stay valid and nothing is parsed twice.
+    std::vector<std::unique_ptr<TASProject>> previous = std::move(m_Projects);
     m_Projects.clear();
-    m_ProjectTempDirectories.clear();
-    m_CurrentProject = nullptr;
+    auto reuse = [&](const std::string &path, const std::string &stamp) -> bool {
+        auto it = std::find_if(previous.begin(), previous.end(),
+                               [&](const auto &p) { return p->GetPath() == path; });
+        if (it == previous.end()) {
+            return false;
+        }
+        // The current project is never swapped out from under its users.
+        if (it->get() != m_CurrentProject && m_ProjectStamps[it->get()] != stamp) {
+            return false;
+        }
+        m_Projects.push_back(std::move(*it));
+        previous.erase(it);
+        return true;
+    };
+    auto add = [&](std::unique_ptr<TASProject> project, const std::string &stamp) {
+        if (project && project->IsValid()) {
+            m_ProjectStamps[project.get()] = stamp;
+            m_Projects.push_back(std::move(project));
+        }
+    };
 
     Log::Info("Scanning for TAS projects in: %s", m_TASRootPath.c_str());
 
-    int directoryProjects = 0;
-    int zipProjects = 0;
-    int recordProjects = 0;
-
     try {
         for (const auto &entry : fs::directory_iterator(m_TASRootPath)) {
+            const std::string stamp = ProjectStamp(entry);
             if (entry.is_directory()) {
                 // Traditional directory-based script project
                 std::string projectPath = NormalizePath(entry.path().string());
                 std::string manifestPath = projectPath + "\\manifest.lua";
-                if (fs::exists(manifestPath) && ValidateProjectStructure(projectPath)) {
-                    auto project = LoadDirectoryProject(projectPath);
-                    if (project && project->IsValid()) {
-                        m_Projects.push_back(std::move(project));
-                        directoryProjects++;
-                    }
+                if (fs::exists(manifestPath) && ValidateProjectStructure(projectPath) &&
+                    !reuse(projectPath, stamp)) {
+                    add(LoadDirectoryProject(projectPath), stamp);
                 }
             } else if (entry.is_regular_file()) {
                 std::string filePath = NormalizePath(entry.path().string());
@@ -95,21 +132,18 @@ void ProjectManager::RefreshProjects() {
 
                 if (extension == ".zip") {
                     // Zip-based script project
+                    if (reuse(filePath, stamp)) {
+                        continue;
+                    }
                     if (ValidateZipProject(filePath)) {
-                        auto project = LoadZipProject(filePath);
-                        if (project && project->IsValid()) {
-                            m_Projects.push_back(std::move(project));
-                            zipProjects++;
-                        }
+                        add(LoadZipProject(filePath), stamp);
                     } else {
                         Log::Warn("Invalid zip project structure: %s", filePath.c_str());
                     }
                 } else if (extension == ".tas") {
                     // Binary record project
-                    auto project = LoadRecordProject(filePath);
-                    if (project && project->IsValid()) {
-                        m_Projects.push_back(std::move(project));
-                        recordProjects++;
+                    if (!reuse(filePath, stamp)) {
+                        add(LoadRecordProject(filePath), stamp);
                     }
                 }
             }
@@ -118,26 +152,34 @@ void ProjectManager::RefreshProjects() {
         Log::Error("Filesystem error while scanning for projects: %s", e.what());
     }
 
-    if (retained) {
-        // Swap the freshly scanned copy for the retained instance so existing pointers stay valid.
-        auto duplicate = std::find_if(m_Projects.begin(), m_Projects.end(),
-                                      [&](const auto &p) { return p->GetPath() == retained->GetPath(); });
-        if (duplicate != m_Projects.end()) {
-            CleanupProjectTempDirectory(duplicate->get());
-            m_Projects.erase(duplicate);
+    // Projects that changed or disappeared stay alive until shutdown: something may still
+    // point at them. The current project stays listed even when its files are gone.
+    for (auto &project : previous) {
+        if (project.get() == m_CurrentProject) {
+            m_Projects.push_back(std::move(project));
+        } else {
+            m_RetiredProjects.push_back(std::move(project));
         }
-        m_CurrentProject = retained.get();
-        if (!retainedTempDir.empty()) {
-            m_ProjectTempDirectories[m_CurrentProject] = retainedTempDir;
-        }
-        m_Projects.push_back(std::move(retained));
     }
 
     // Sort projects alphabetically by name for consistent UI display.
     std::sort(m_Projects.begin(), m_Projects.end(), [](const auto &a, const auto &b) {
         return a->GetName() < b->GetName();
     });
+    ++m_Generation;
 
+    int directoryProjects = 0;
+    int zipProjects = 0;
+    int recordProjects = 0;
+    for (const auto &project : m_Projects) {
+        if (project->IsRecordProject()) {
+            recordProjects++;
+        } else if (project->IsZipProject()) {
+            zipProjects++;
+        } else {
+            directoryProjects++;
+        }
+    }
     Log::Info("Found %d valid TAS projects (%d directories, %d zip files, %d record files).",
                                 static_cast<int>(m_Projects.size()), directoryProjects, zipProjects, recordProjects);
 }

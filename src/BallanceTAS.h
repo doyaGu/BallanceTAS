@@ -184,6 +184,9 @@ private:
 
     void OnMenuStart();
 
+    // Picks up projects added, removed or edited while the game runs.
+    void PollProjects();
+
     std::unique_ptr<GameInterface> m_GameInterface;
 
     // Event bus for decoupled communication between components.
@@ -207,6 +210,8 @@ private:
     // Applies script keys outside TAS playback, so global scripts can drive menus.
     ScopedCallback m_IdleScriptInputGuard;
     size_t m_SkipRenderingCount = 0;
+    size_t m_ProjectPollFrames = 0;
+    size_t m_ProjectChoicesGeneration = 0;
 
     ILogger *m_Logger = nullptr;
     InputHook *m_InputManager = nullptr;

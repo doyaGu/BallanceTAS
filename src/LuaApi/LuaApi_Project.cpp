@@ -8,6 +8,12 @@
 #include "RecordPlayer.h"
 #include "ScriptContext.h"
 #include "ScriptContextManager.h"
+#include "../LuaRuntime/LuaFunction.h"
+#ifdef Yield
+#undef Yield
+#endif
+#include "LuaScheduler.h"
+#include "TASEngine.h"
 #include "TASProject.h"
 
 #include <stdexcept>
@@ -170,6 +176,65 @@ static bool IsRunningInCaller(ScriptContext *context, TASProject *project) {
     return project && context->GetCurrentProject() == project;
 }
 
+static int PlaybackArmedPredicate(lua_State *L) {
+    auto *engine = static_cast<TASEngine *>(lua_touserdata(L, lua_upvalueindex(1)));
+    lua_pushboolean(L, !engine || engine->IsPendingPlay() || engine->IsPlaying());
+    return 1;
+}
+
+static int PlayContinuation(lua_State *L, int, lua_KContext) {
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+// tas.project.play(name) -> true | false, err
+// Arms a project the way the TAS menu's Play button does: playback starts when its level starts.
+static int Play(lua_State *L) {
+    auto *context = GetContext(L);
+    const std::string name = CheckProjectName(L, 1, "project.play");
+    auto *manager = context ? context->GetProjectManager() : nullptr;
+    auto *engine = context ? context->GetEngine() : nullptr;
+    if (!manager || !engine) {
+        return luaL_error(L, "project.play: ProjectManager not available");
+    }
+    TASProject *project = FindProject(*manager, name);
+    if (!project) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "project not found");
+        return 2;
+    }
+    if (IsRunningInCaller(context, project)) {
+        return luaL_error(L, "project.play: a script cannot replay its own project");
+    }
+    manager->SetCurrentProject(project);
+    if (!engine->StartReplay()) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, engine->IsIdle() ? "the project cannot be played" : "a TAS is already running or armed");
+        return 2;
+    }
+
+    // The playback must be armed before the level starts loading; loading in the same
+    // frame starts the level ahead of the TAS. Wait for the engine when we can.
+    LuaScheduler *scheduler = context->GetScheduler();
+    if (scheduler && lua_isyieldable(L) && scheduler->CanYieldCurrentThread()) {
+        lua_pushlightuserdata(L, engine);
+        lua_pushcclosure(L, PlaybackArmedPredicate, 1);
+        scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
+        return lua_yieldk(L, 0, 0, PlayContinuation);
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+// tas.project.stop_playback(): stops or disarms the playback started by play().
+static int StopPlayback(lua_State *L) {
+    auto *context = GetContext(L);
+    if (auto *engine = context ? context->GetEngine() : nullptr) {
+        engine->StopReplay();
+    }
+    return 0;
+}
+
 static int Unload(lua_State *L) {
     auto *context = GetContext(L);
     auto *manager = context ? context->GetProjectManager() : nullptr;
@@ -294,6 +359,8 @@ void LuaApi::RegisterProjectApi(lua_State *state, ScriptContext *context) {
     SetProjectFunction(state, "unload", Unload, context);
     SetProjectFunction(state, "reload", Reload, context);
     SetProjectFunction(state, "is_loaded", IsLoaded, context);
+    SetProjectFunction(state, "play", Play, context);
+    SetProjectFunction(state, "stop_playback", StopPlayback, context);
     lua_setfield(state, -2, "project");
 
     lua_pop(state, 1);

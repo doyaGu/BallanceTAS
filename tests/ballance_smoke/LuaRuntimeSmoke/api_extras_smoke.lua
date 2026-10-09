@@ -177,7 +177,24 @@ local function record_editing()
   check(r.switch_branch("") and not r.get_frame_input(first + 5).keys.space, "main branch untouched")
   check(r.delete_branch("smoke_alt"), "delete_branch")
 
-  check(r.delete_frames(first, 10) and r.get_total_frames() == base, "cleanup frames")
+  -- Annotations survive save + load through the sidecar file.
+  local path = "../ModLoader/TAS/LuaRuntimeSmoke/annotations_smoke.tas"
+  check(r.add_section(first, first + 3, "smoke_saved", "kept"), "add_section before save")
+  check(r.add_marker(first + 1, "smoke_mark", r.MarkerType.SYNC), "add_marker before save")
+  local savedComment = r.add_comment(first + 2, "saved note")
+  r.set_metadata("title", "annotation smoke")
+  check(r.save(path), "record.save")
+  check(r.load(path), "record.load")
+  r.stop()
+  local section = r.get_section("smoke_saved")
+  check(section and section.description == "kept", "section restored from the sidecar")
+  check(r.get_marker("smoke_mark") and r.get_marker("smoke_mark").type == r.MarkerType.SYNC, "marker restored")
+  check(r.get_comment(savedComment) and r.get_comment(savedComment).text == "saved note", "comment restored with its id")
+  check(r.get_metadata("title") == "annotation smoke", "metadata restored")
+  os.remove(path)
+  os.remove(path .. ".notes.json")
+
+  check(r.delete_frames(0, r.get_total_frames()) and r.get_total_frames() == 0, "cleanup frames")
   r.clear_history()
 end
 

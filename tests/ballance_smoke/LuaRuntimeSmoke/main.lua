@@ -21,7 +21,38 @@ local modules = {
   { name = "api_extras_smoke", label = "API Extras Smoke" },
   { name = "menu_smoke", label = "Menu Smoke" },
   { name = "level_smoke", label = "Level Smoke" },
+  { name = "game_flow_smoke", label = "Game Flow Smoke" },
 }
+
+-- Optional smoke_only.txt (one module name per line) runs just those modules, for quick iteration.
+local function read_only_list()
+  for _, path in ipairs({ "smoke_only.txt", "../ModLoader/TAS/LuaRuntimeSmoke/smoke_only.txt" }) do
+    local file = io.open(path, "r")
+    if file then
+      local only = {}
+      for line in file:lines() do
+        local name = line:match("^%s*(.-)%s*$")
+        if name ~= "" then
+          only[name] = true
+        end
+      end
+      file:close()
+      return only
+    end
+  end
+  return nil
+end
+
+local only = read_only_list()
+if only then
+  local selected = {}
+  for _, module in ipairs(modules) do
+    if only[module.name] then
+      selected[#selected + 1] = module
+    end
+  end
+  modules = selected
+end
 
 local function run_module(module)
   local ok, loaded = xpcall(require, debug.traceback, module.name)

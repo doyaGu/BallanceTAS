@@ -1,7 +1,7 @@
 param(
     [string]$GameDir = $env:BALLANCE_GAME_DIR,
     [string]$BuildDir = $env:BALLANCE_TAS_BUILD_DIR,
-    [int]$TimeoutSeconds = 120,
+    [int]$TimeoutSeconds = 600,
     [int]$StartupTimeoutSeconds = 20,
     [switch]$Visible,
     [switch]$ValidationRoundTrip,
@@ -308,7 +308,8 @@ try {
                 'Validation Smoke PASS',
                 'API Extras Smoke PASS',
                 'Menu Smoke PASS',
-                'Level Smoke PASS'
+                'Level Smoke PASS',
+                'Game Flow Smoke PASS'
             )
             foreach ($marker in $requiredMarkers) {
                 if ($text -notmatch [regex]::Escape($marker)) {

@@ -446,13 +446,9 @@ bool ScriptContextManager::IsSubscribedToGameEvent(const std::string &contextNam
 }
 
 void ScriptContextManager::DispatchGameEvent(const LuaGameEvent &event) {
-    auto it = m_GameEventSubscriptions.find(event.type);
-    if (it == m_GameEventSubscriptions.end()) {
-        return;
-    }
-
-    for (const auto &contextName : it->second) {
-        auto context = GetContext(contextName);
+    // Every executing context gets the event: tas.wait_event() waits without
+    // an events.on() subscription, and contexts filter typed listeners themselves.
+    for (const auto &context : GetContextsByPriority()) {
         if (context && context->IsExecuting()) {
             context->DispatchGameEvent(event);
         }

@@ -523,6 +523,11 @@ void ScriptContext::DispatchGameEvent(const LuaGameEvent &event) {
         return;
     }
 
+    // Wake tas.wait_event / tas.async.wait_for_event waits, which listen by name.
+    if (m_EventManager && event.name && *event.name) {
+        m_EventManager->FireEvent(event.name);
+    }
+
     auto it = m_GameEventListeners.find(event.type);
     if (it == m_GameEventListeners.end() || it->second.empty()) {
         return;

@@ -136,13 +136,29 @@ void TASEngine::Start() {
     }
 
     const float deterministicDeltaTime = ResolveLevelLoadPhysicsDeltaTime();
-    AddTimer(1ul, [this, deterministicDeltaTime]() {
+    const auto *session = Session();
+    const bool tasActive = session && !session->IsIdle() && !session->IsShuttingDown();
+    AddTimer(1ul, [this, deterministicDeltaTime, tasActive]() {
         if (m_GameInterface) {
             if (deterministicDeltaTime > 0.0f) {
                 Log::Info("Resetting physics time with TAS delta %.6f ms.", deterministicDeltaTime);
                 m_GameInterface->ResetPhysicsTime(deterministicDeltaTime);
             } else {
                 m_GameInterface->ResetPhysicsTime();
+            }
+            // The first level load after the game starts sees the physics state
+            // of a fresh process; later loads inherit it from earlier levels.
+            const auto current = m_GameInterface->CapturePhysicsLevelBaseline();
+            if (!m_PhysicsLevelBaseline) {
+                m_PhysicsLevelBaseline = current;
+                Log::Info("Physics level baseline: time factor %g, next_movement_check %d, seed %d.",
+                          current.timeFactor, current.nextMovementCheck, current.randomSeed);
+            }
+            if (tasActive) {
+                const auto &baseline = *m_PhysicsLevelBaseline;
+                Log::Info("Restoring physics level baseline (was time factor %g, next_movement_check %d, seed %d).",
+                          current.timeFactor, current.nextMovementCheck, current.randomSeed);
+                m_GameInterface->RestorePhysicsLevelBaseline(baseline);
             }
         }
     });

@@ -135,6 +135,24 @@ void GameInterface::ResetPhysicsTime(float deltaTimeMs) {
     m_IpionManager->SetDeltaTime(deltaTimeMs);
 }
 
+PhysicsDeterminism::PhysicsLevelBaseline GameInterface::CapturePhysicsLevelBaseline() const {
+    PhysicsDeterminism::PhysicsLevelBaseline baseline;
+    baseline.timeFactor = m_IpionManager->GetPhysicsTimeFactor();
+    if (auto *env = m_IpionManager->GetEnvironment()) {
+        baseline.nextMovementCheck = env->next_movement_check;
+    }
+    baseline.randomSeed = ivp_srand_read();
+    return baseline;
+}
+
+void GameInterface::RestorePhysicsLevelBaseline(const PhysicsDeterminism::PhysicsLevelBaseline &baseline) {
+    m_IpionManager->SetPhysicsTimeFactor(baseline.timeFactor);
+    if (auto *env = m_IpionManager->GetEnvironment()) {
+        env->next_movement_check = baseline.nextMovementCheck;
+    }
+    ivp_srand(baseline.randomSeed);
+}
+
 void GameInterface::SetPhysicsTimeFactor(float factor) {
     // Reset physics time factor in case it was changed
     m_IpionManager->SetPhysicsTimeFactor(factor * 0.001f);

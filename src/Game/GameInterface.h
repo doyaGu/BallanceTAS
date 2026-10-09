@@ -8,6 +8,7 @@
 #include <BML/InputHook.h>
 
 #include "physics_RT.h"
+#include "PhysicsDeterminism.h"
 #include "IGameControl.h"
 #include "IGameQuery.h"
 #include "IInputAccess.h"
@@ -74,6 +75,9 @@ public:
     // ========================================
     void ResetPhysicsTime() override;
     void ResetPhysicsTime(float deltaTimeMs);
+    /// Physics state a level load inherits from earlier levels (see PhysicsLevelBaseline).
+    PhysicsDeterminism::PhysicsLevelBaseline CapturePhysicsLevelBaseline() const;
+    void RestorePhysicsLevelBaseline(const PhysicsDeterminism::PhysicsLevelBaseline &baseline);
     void SetPhysicsTimeFactor(float factor = 1.0f) override;
 
     // ========================================

@@ -13,6 +13,7 @@
 #include "Runtime/RuntimeSession.h"
 #include "ServiceContainer.h"
 #include "TASConstants.h"
+#include "PhysicsDeterminism.h"
 
 extern "C" { struct lua_State; }
 
@@ -146,4 +147,5 @@ private:
     std::string m_LastCompletedPlaybackProjectName;
     bool m_AutoRestart = false;
     bool m_ValidationEnabled = false;
+    std::optional<PhysicsDeterminism::PhysicsLevelBaseline> m_PhysicsLevelBaseline;
 };

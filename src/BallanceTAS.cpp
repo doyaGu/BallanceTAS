@@ -4,6 +4,7 @@
 
 #include "physics_RT.h"
 #include "TASHook.h"
+#include "PhysicsDeterminism.h"
 #include "TASEngine.h"
 #include "InGameOSD.h"
 #include "Recorder.h"
@@ -234,6 +235,14 @@ bool BallanceTAS::InitializeGameHooks() {
         } else {
             Log::Info("InputManager hook enabled.");
         }
+
+        auto *ipionManager = context->GetManagerByGuid(CKGUID(0x6bed328b, 0x141f5148));
+        if (!ipionManager || !PhysicsDeterminism::EnableFpuMonitor(ipionManager)) {
+            // Not fatal: only diagnostics are lost.
+            Log::Warn("Failed to enable physics FPU monitor.");
+        } else {
+            Log::Info("Physics FPU monitor enabled.");
+        }
     } catch (const std::exception &e) {
         Log::Error("Exception enabling hooks: %s", e.what());
         success = false;
@@ -259,6 +268,7 @@ void BallanceTAS::DisableGameHooks() {
         if (m_HookManager) {
             m_HookManager->DisableAll();
         }
+        PhysicsDeterminism::DisableFpuMonitor();
 
         Log::Info("Game hooks disabled.");
     } catch (const std::exception &e) {
@@ -437,6 +447,10 @@ void BallanceTAS::OnProcess() {
         OnMenuStart();
 
         m_Engine->IncrementCurrentTick();
+        PhysicsDeterminism::SetFpuMonitoring(
+            m_Engine->IsPlaying() || m_Engine->IsPendingPlay() ||
+            m_Engine->IsRecording() || m_Engine->IsPendingRecord() ||
+            m_Engine->IsTranslating() || m_Engine->IsPendingTranslate());
         if (!m_Engine->IsPlayingScript()) {
             if (auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>()) {
                 contexts->TickAll();

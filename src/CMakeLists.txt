@@ -83,6 +83,7 @@ add_library(tas_game STATIC
         Game/IGameStateProvider.h
         Game/ITimeProvider.h
         Game/physics_RT.h           Game/physics_RT.cpp
+        Game/PhysicsDeterminism.h   Game/PhysicsDeterminism.cpp
         Game/InputSystem.h          Game/InputSystem.cpp
         Game/TASHook.h
         Game/Hook.h

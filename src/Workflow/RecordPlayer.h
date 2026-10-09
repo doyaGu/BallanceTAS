@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <optional>
 #include <string>
 #include <functional>
 #include <unordered_map>
@@ -121,6 +122,7 @@ struct RecordComment {
     std::string author;    // Comment author
     std::time_t timestamp; // When comment was added
     std::string category;  // Optional category/tag
+    size_t id = 0;         // Stable id handed to scripts (survives removals)
 
     RecordComment() : startFrame(0), endFrame(0), timestamp(0) {
     }
@@ -201,23 +203,6 @@ enum class EditActionType : uint8_t {
 };
 
 /**
- * @struct EditAction
- * @brief Represents a single undoable edit action.
- */
-struct EditAction {
-    EditActionType type;
-    std::vector<uint8_t> data; // Serialized action data
-    std::string description;   // Human-readable description
-
-    EditAction() : type(EditActionType::ModifyFrame) {
-    }
-
-    EditAction(EditActionType t, std::string desc)
-        : type(t), description(std::move(desc)) {
-    }
-};
-
-/**
  * @struct RecordBranch
  * @brief Represents an alternative path/branch in the recording.
  */
@@ -227,7 +212,7 @@ struct RecordBranch {
     size_t divergenceFrame;              // Where this branch diverges from parent
     size_t convergenceFrame;             // Where branches merge (or -1 if no merge)
     std::string parentBranch;            // Parent branch name (empty for main branch)
-    std::vector<RecordFrameData> frames; // Alternative frames
+    std::vector<RecordFrameData> frames; // Full frame list of this branch (without the end sentinel)
 
     RecordBranch() : divergenceFrame(0), convergenceFrame(static_cast<size_t>(-1)) {
     }
@@ -248,6 +233,38 @@ struct SavestateLink {
 
     SavestateLink(size_t f, std::string path)
         : frame(f), savestatePath(std::move(path)), createdAt(std::time(nullptr)) {
+    }
+};
+
+/**
+ * @struct RecordEditState
+ * @brief Everything an undoable edit can change, captured before the edit runs.
+ */
+struct RecordEditState {
+    std::vector<RecordFrameData> frames;
+    size_t totalFrames = 0;
+    std::unordered_map<std::string, RecordSection> sections;
+    std::unordered_map<std::string, RecordMarker> markers;
+    std::vector<RecordComment> comments;
+    std::unordered_map<std::string, RecordMacro> macros;
+    RecordMetadata metadata;
+    std::unordered_map<size_t, SavestateLink> savestateLinks;
+};
+
+/**
+ * @struct EditAction
+ * @brief Represents a single undoable edit action.
+ */
+struct EditAction {
+    EditActionType type;
+    std::string description; // Human-readable description
+    RecordEditState state;   // State on the other side of this action (before it for undo, after it for redo)
+
+    EditAction() : type(EditActionType::ModifyFrame) {
+    }
+
+    EditAction(EditActionType t, std::string desc)
+        : type(t), description(std::move(desc)) {
     }
 };
 
@@ -523,6 +540,12 @@ public:
      */
     bool Save(const std::string &path);
 
+    /// Sidecar file next to a record that keeps what the .tas format cannot hold.
+    static std::string GetAnnotationsPath(const std::string &recordPath);
+    bool SaveAnnotations(const std::string &path) const;
+    bool LoadAnnotations(const std::string &path);
+    bool HasAnnotations() const;
+
     /**
      * @brief Exports frame inputs to a human-readable format.
      * @param path Path to save the export file.
@@ -679,7 +702,7 @@ public:
      * @param type Optional marker type filter.
      * @return Pointer to next marker or nullptr if none found.
      */
-    const RecordMarker *GetNextMarker(size_t currentFrame, MarkerType type = MarkerType::Bookmark) const;
+    const RecordMarker *GetNextMarker(size_t currentFrame, std::optional<MarkerType> type = std::nullopt) const;
 
     /**
      * @brief Gets the previous marker before a frame (optionally filtered by type).
@@ -687,7 +710,7 @@ public:
      * @param type Optional marker type filter.
      * @return Pointer to previous marker or nullptr if none found.
      */
-    const RecordMarker *GetPreviousMarker(size_t currentFrame, MarkerType type = MarkerType::Bookmark) const;
+    const RecordMarker *GetPreviousMarker(size_t currentFrame, std::optional<MarkerType> type = std::nullopt) const;
 
     // ===================================================================
     // Comment Management
@@ -699,7 +722,7 @@ public:
      * @param text Comment text.
      * @param author Optional author.
      * @param category Optional category.
-     * @return Comment index.
+     * @return Stable comment id.
      */
     size_t AddComment(size_t frame, const std::string &text,
                       const std::string &author = "", const std::string &category = "");
@@ -711,24 +734,24 @@ public:
      * @param text Comment text.
      * @param author Optional author.
      * @param category Optional category.
-     * @return Comment index.
+     * @return Stable comment id.
      */
     size_t AddRangeComment(size_t startFrame, size_t endFrame, const std::string &text,
                            const std::string &author = "", const std::string &category = "");
 
     /**
      * @brief Removes a comment by index.
-     * @param index Comment index.
+     * @param id Comment id returned by AddComment/AddRangeComment.
      * @return True if successful.
      */
-    bool RemoveComment(size_t index);
+    bool RemoveComment(size_t id);
 
     /**
      * @brief Gets a comment by index.
-     * @param index Comment index.
-     * @return Pointer to comment or nullptr if invalid index.
+     * @param id Comment id returned by AddComment/AddRangeComment.
+     * @return Pointer to comment or nullptr if no comment has that id.
      */
-    const RecordComment *GetComment(size_t index) const;
+    const RecordComment *GetComment(size_t id) const;
 
     /**
      * @brief Gets all comments at a specific frame.
@@ -745,11 +768,11 @@ public:
 
     /**
      * @brief Edits a comment's text.
-     * @param index Comment index.
+     * @param id Comment id returned by AddComment/AddRangeComment.
      * @param newText New comment text.
      * @return True if successful.
      */
-    bool EditComment(size_t index, const std::string &newText);
+    bool EditComment(size_t id, const std::string &newText);
 
     // ===================================================================
     // Macro Management
@@ -1031,6 +1054,7 @@ private:
      * @return True if the file was loaded successfully.
      */
     bool LoadRecord(const std::string &recordPath);
+    bool SaveFrames(const std::string &path);
 
     /**
      * @brief Applies legacy keyboard state input for the current frame.
@@ -1094,6 +1118,7 @@ private:
 
     // Comment management
     std::vector<RecordComment> m_Comments;
+    size_t m_NextCommentId = 1;
 
     // Macro management
     std::unordered_map<std::string, RecordMacro> m_Macros;
@@ -1109,11 +1134,19 @@ private:
     // Branch management
     std::unordered_map<std::string, RecordBranch> m_Branches;
     std::string m_CurrentBranch; // Empty string = main branch
+    std::vector<RecordFrameData> m_MainBranchFrames; // Main branch frames while another branch is active
 
     // Savestate links
     std::unordered_map<size_t, SavestateLink> m_SavestateLinks;
 
     // Helper methods
+    /// Snapshots the edit state; call after validating an edit and before mutating anything.
     void PushUndoAction(EditActionType type, const std::string &description);
+    RecordEditState CaptureEditState() const;
+    void RestoreEditState(RecordEditState &&state);
+    std::vector<RecordFrameData> CopyActiveFrames() const;
+    void LoadActiveFrames(const std::vector<RecordFrameData> &frames);
+    /// Drops annotations, history and branches that belonged to the previous record.
+    void ResetEditState();
     void UpdateMetadataStats();
 };

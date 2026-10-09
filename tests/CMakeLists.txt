@@ -344,6 +344,33 @@ target_compile_definitions(LuaSchedulerTest PRIVATE
         )
     endif()
 
+    add_tas_test(RecordPlayerEditTest
+        SOURCES
+            RecordPlayerEditTest.cpp
+            ../src/Workflow/RecordPlayer.cpp
+            ../src/Workflow/RecordAnnotations.cpp
+            ../src/Workflow/TASProject.cpp
+        DEPENDENCIES
+            tas_core
+            tas_lua_runtime
+            yyjson
+            CK2
+    )
+    target_include_directories(RecordPlayerEditTest PRIVATE "${TAS_SOURCE_DIR}/Game" "${TAS_SOURCE_DIR}/Workflow")
+    target_link_libraries(RecordPlayerEditTest PRIVATE BML)
+    add_test(NAME RecordPlayerEditTest COMMAND RecordPlayerEditTest)
+    if(VIRTOOLS_SDK_RUNTIME_DIR)
+        set_tests_properties(RecordPlayerEditTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:${VIRTOOLS_SDK_RUNTIME_DIR};PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    else()
+        set_tests_properties(RecordPlayerEditTest PROPERTIES
+            ENVIRONMENT_MODIFICATION
+                "PATH=path_list_prepend:$<TARGET_FILE_DIR:CK2>;PATH=path_list_prepend:$<TARGET_FILE_DIR:VxMath>;PATH=path_list_prepend:$<TARGET_FILE_DIR:BML>"
+        )
+    endif()
+
     add_tas_test(ValidationServiceTest
         SOURCES
             ValidationServiceTest.cpp

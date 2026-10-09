@@ -130,6 +130,7 @@ add_library(tas_features STATIC
         Workflow/ProjectManager.h   Workflow/ProjectManager.cpp
         Workflow/Recorder.h         Workflow/Recorder.cpp
         Workflow/RecordPlayer.h     Workflow/RecordPlayer.cpp
+        Workflow/RecordAnnotations.cpp
         Workflow/RecordFileIO.h     Workflow/RecordFileIO.cpp
         Workflow/RecordingService.h Workflow/RecordingService.cpp
         Workflow/PlaybackService.h  Workflow/PlaybackService.cpp

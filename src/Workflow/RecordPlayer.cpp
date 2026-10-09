@@ -1,5 +1,6 @@
 #include "RecordPlayer.h"
 
+#include <cctype>
 #include <fstream>
 #include <stdexcept>
 #include <algorithm>
@@ -275,6 +276,8 @@ bool RecordPlayer::LoadRecord(const std::string &recordPath) {
         m_Frames[m_TotalFrames] = RecordFrameData();
         m_CurrentFrame = 0;
         m_IsModified = false;
+        ResetEditState();
+        LoadAnnotations(GetAnnotationsPath(recordPath));
 
         // Clean up the decompressed data
         CKDeletePointer(uncompressedData);
@@ -344,6 +347,7 @@ bool RecordPlayer::SetFrameInput(size_t frame, const RecordFrameData &inputData)
         return false;
     }
 
+    PushUndoAction(EditActionType::ModifyFrame, "Set frame " + std::to_string(frame));
     m_Frames[frame] = inputData;
     m_IsModified = true;
     return true;
@@ -355,10 +359,14 @@ bool RecordPlayer::SetFrameKey(size_t frame, const std::string &key, bool presse
         return false;
     }
 
-    if (!SetKeyStateBit(m_Frames[frame].keyState, key, pressed)) {
+    RecordKeyState keyState = m_Frames[frame].keyState;
+    if (!SetKeyStateBit(keyState, key, pressed)) {
         Log::Error("SetFrameKey: invalid key name '%s'.", key.c_str());
         return false;
     }
+
+    PushUndoAction(EditActionType::SetFrameKey, "Set " + key + " at frame " + std::to_string(frame));
+    m_Frames[frame].keyState = keyState;
 
     m_IsModified = true;
     return true;
@@ -383,6 +391,7 @@ bool RecordPlayer::SetFrameDeltaTime(size_t frame, float deltaTime) {
         return false;
     }
 
+    PushUndoAction(EditActionType::SetDeltaTime, "Set delta time at frame " + std::to_string(frame));
     m_Frames[frame].deltaTime = deltaTime;
     m_IsModified = true;
     return true;
@@ -408,6 +417,7 @@ bool RecordPlayer::InsertFrames(size_t startFrame, size_t count) {
     blankFrame.deltaTime = m_TotalFrames > 0 ? m_Frames[0].deltaTime : kDefaultFrameDeltaTimeMs;
     blankFrame.keyStates = 0;
 
+    PushUndoAction(EditActionType::InsertFrames, "Insert " + std::to_string(count) + " frames");
     // Insert blank frames at the specified position
     m_Frames.insert(m_Frames.begin() + startFrame, count, blankFrame);
     m_TotalFrames += count;
@@ -431,6 +441,7 @@ bool RecordPlayer::DeleteFrames(size_t startFrame, size_t count) {
     }
 
     size_t actualCount = (std::min)(count, m_TotalFrames - startFrame);
+    PushUndoAction(EditActionType::DeleteFrames, "Delete " + std::to_string(actualCount) + " frames");
     m_Frames.erase(m_Frames.begin() + startFrame, m_Frames.begin() + startFrame + actualCount);
     m_TotalFrames -= actualCount;
     EnsureFrameSentinel(m_Frames, m_TotalFrames);
@@ -463,6 +474,7 @@ bool RecordPlayer::CopyFrames(size_t srcStart, size_t destStart, size_t count) {
     // Copy the frame range
     std::vector<RecordFrameData> copiedFrames(m_Frames.begin() + srcStart, m_Frames.begin() + srcStart + actualCount);
 
+    PushUndoAction(EditActionType::CopyFrames, "Copy " + std::to_string(actualCount) + " frames");
     // Insert/overwrite at destination
     if (destStart + actualCount > m_TotalFrames) {
         // Extend the vector if necessary
@@ -489,6 +501,7 @@ bool RecordPlayer::DuplicateFrame(size_t frame, size_t count) {
         return true;
     }
 
+    PushUndoAction(EditActionType::DuplicateFrame, "Duplicate frame " + std::to_string(frame));
     RecordFrameData frameData = m_Frames[frame];
     m_Frames.insert(m_Frames.begin() + frame + 1, count, frameData);
     m_TotalFrames += count;
@@ -636,6 +649,20 @@ bool RecordPlayer::Validate() const {
 // ===================================================================
 
 bool RecordPlayer::Save(const std::string &path) {
+    if (!SaveFrames(path)) {
+        return false;
+    }
+
+    const std::string annotationsPath = GetAnnotationsPath(path);
+    if (HasAnnotations()) {
+        return SaveAnnotations(annotationsPath);
+    }
+    // Don't let an older sidecar resurrect annotations that were removed.
+    std::remove(annotationsPath.c_str());
+    return true;
+}
+
+bool RecordPlayer::SaveFrames(const std::string &path) {
     try {
         Log::Info("Saving record to: %s", path.c_str());
 
@@ -836,8 +863,8 @@ bool RecordPlayer::AddSection(size_t startFrame, size_t endFrame, const std::str
     section.description = description;
     section.color = color;
 
-    m_Sections[name] = section;
     PushUndoAction(EditActionType::AddSection, "Add section: " + name);
+    m_Sections[name] = section;
 
     Log::Info("Added section '%s' [%zu-%zu]", name.c_str(), startFrame, endFrame);
     return true;
@@ -849,8 +876,8 @@ bool RecordPlayer::RemoveSection(const std::string &name) {
         return false;
     }
 
-    m_Sections.erase(it);
     PushUndoAction(EditActionType::RemoveSection, "Remove section: " + name);
+    m_Sections.erase(it);
 
     Log::Info("Removed section '%s'", name.c_str());
     return true;
@@ -891,6 +918,7 @@ bool RecordPlayer::RenameSection(const std::string &oldName, const std::string &
         return false;
     }
 
+    PushUndoAction(EditActionType::AddSection, "Rename section: " + oldName);
     RecordSection section = it->second;
     section.name = newName;
     m_Sections.erase(it);
@@ -912,6 +940,7 @@ bool RecordPlayer::MoveSection(const std::string &name, size_t newStartFrame) {
         return false;
     }
 
+    PushUndoAction(EditActionType::AddSection, "Move section: " + name);
     it->second.startFrame = newStartFrame;
     it->second.endFrame = newEndFrame;
 
@@ -928,6 +957,7 @@ bool RecordPlayer::ResizeSection(const std::string &name, size_t newStartFrame, 
         return false;
     }
 
+    PushUndoAction(EditActionType::AddSection, "Resize section: " + name);
     it->second.startFrame = newStartFrame;
     it->second.endFrame = newEndFrame;
 
@@ -951,8 +981,8 @@ bool RecordPlayer::AddMarker(size_t frame, const std::string &name, MarkerType t
     marker.description = description;
     marker.color = color;
 
-    m_Markers[name] = marker;
     PushUndoAction(EditActionType::AddMarker, "Add marker: " + name);
+    m_Markers[name] = marker;
 
     Log::Info("Added marker '%s' at frame %zu", name.c_str(), frame);
     return true;
@@ -964,8 +994,8 @@ bool RecordPlayer::RemoveMarker(const std::string &name) {
         return false;
     }
 
-    m_Markers.erase(it);
     PushUndoAction(EditActionType::RemoveMarker, "Remove marker: " + name);
+    m_Markers.erase(it);
 
     Log::Info("Removed marker '%s'", name.c_str());
     return true;
@@ -1016,6 +1046,7 @@ bool RecordPlayer::RenameMarker(const std::string &oldName, const std::string &n
         return false;
     }
 
+    PushUndoAction(EditActionType::AddMarker, "Rename marker: " + oldName);
     RecordMarker marker = it->second;
     marker.name = newName;
     m_Markers.erase(it);
@@ -1030,6 +1061,7 @@ bool RecordPlayer::MoveMarker(const std::string &name, size_t newFrame) {
         return false;
     }
 
+    PushUndoAction(EditActionType::AddMarker, "Move marker: " + name);
     it->second.frame = newFrame;
     return true;
 }
@@ -1043,14 +1075,14 @@ bool RecordPlayer::SeekToMarker(const std::string &name) {
     return Seek(it->second.frame);
 }
 
-const RecordMarker *RecordPlayer::GetNextMarker(size_t currentFrame, MarkerType type) const {
+const RecordMarker *RecordPlayer::GetNextMarker(size_t currentFrame, std::optional<MarkerType> type) const {
     const RecordMarker *closest = nullptr;
     size_t closestFrame = static_cast<size_t>(-1);
 
     for (const auto &pair : m_Markers) {
         const auto &marker = pair.second;
         if (marker.frame > currentFrame && marker.frame < closestFrame) {
-            if (type == MarkerType::Bookmark || marker.type == type) {
+            if (!type || marker.type == *type) {
                 closest = &marker;
                 closestFrame = marker.frame;
             }
@@ -1060,14 +1092,14 @@ const RecordMarker *RecordPlayer::GetNextMarker(size_t currentFrame, MarkerType 
     return closest;
 }
 
-const RecordMarker *RecordPlayer::GetPreviousMarker(size_t currentFrame, MarkerType type) const {
+const RecordMarker *RecordPlayer::GetPreviousMarker(size_t currentFrame, std::optional<MarkerType> type) const {
     const RecordMarker *closest = nullptr;
     size_t closestFrame = 0;
 
     for (const auto &pair : m_Markers) {
         const auto &marker = pair.second;
         if (marker.frame < currentFrame && marker.frame >= closestFrame) {
-            if (type == MarkerType::Bookmark || marker.type == type) {
+            if (!type || marker.type == *type) {
                 closest = &marker;
                 closestFrame = marker.frame;
             }
@@ -1081,14 +1113,7 @@ const RecordMarker *RecordPlayer::GetPreviousMarker(size_t currentFrame, MarkerT
 
 size_t RecordPlayer::AddComment(size_t frame, const std::string &text,
                                 const std::string &author, const std::string &category) {
-    RecordComment comment(text, frame);
-    comment.author = author;
-    comment.category = category;
-
-    m_Comments.push_back(comment);
-    PushUndoAction(EditActionType::AddComment, "Add comment at frame " + std::to_string(frame));
-
-    return m_Comments.size() - 1;
+    return AddRangeComment(frame, frame, text, author, category);
 }
 
 size_t RecordPlayer::AddRangeComment(size_t startFrame, size_t endFrame, const std::string &text,
@@ -1097,29 +1122,36 @@ size_t RecordPlayer::AddRangeComment(size_t startFrame, size_t endFrame, const s
     comment.endFrame = endFrame;
     comment.author = author;
     comment.category = category;
+    comment.id = m_NextCommentId++;
 
+    PushUndoAction(EditActionType::AddComment, "Add comment at frame " + std::to_string(startFrame));
     m_Comments.push_back(comment);
-    PushUndoAction(EditActionType::AddComment, "Add range comment");
 
-    return m_Comments.size() - 1;
+    return comment.id;
 }
 
-bool RecordPlayer::RemoveComment(size_t index) {
-    if (index >= m_Comments.size()) {
+static auto FindComment(std::vector<RecordComment> &comments, size_t id) {
+    return std::find_if(comments.begin(), comments.end(), [id](const RecordComment &c) { return c.id == id; });
+}
+
+bool RecordPlayer::RemoveComment(size_t id) {
+    auto it = FindComment(m_Comments, id);
+    if (it == m_Comments.end()) {
         return false;
     }
 
-    m_Comments.erase(m_Comments.begin() + index);
     PushUndoAction(EditActionType::RemoveComment, "Remove comment");
-
+    m_Comments.erase(FindComment(m_Comments, id));
     return true;
 }
 
-const RecordComment *RecordPlayer::GetComment(size_t index) const {
-    if (index >= m_Comments.size()) {
-        return nullptr;
+const RecordComment *RecordPlayer::GetComment(size_t id) const {
+    for (const auto &comment : m_Comments) {
+        if (comment.id == id) {
+            return &comment;
+        }
     }
-    return &m_Comments[index];
+    return nullptr;
 }
 
 std::vector<const RecordComment *> RecordPlayer::GetCommentsAtFrame(size_t frame) const {
@@ -1136,13 +1168,15 @@ std::vector<RecordComment> RecordPlayer::GetAllComments() const {
     return m_Comments;
 }
 
-bool RecordPlayer::EditComment(size_t index, const std::string &newText) {
-    if (index >= m_Comments.size()) {
+bool RecordPlayer::EditComment(size_t id, const std::string &newText) {
+    if (FindComment(m_Comments, id) == m_Comments.end()) {
         return false;
     }
 
-    m_Comments[index].text = newText;
-    m_Comments[index].timestamp = std::time(nullptr);
+    PushUndoAction(EditActionType::AddComment, "Edit comment");
+    auto it = FindComment(m_Comments, id);
+    it->text = newText;
+    it->timestamp = std::time(nullptr);
 
     return true;
 }
@@ -1163,6 +1197,7 @@ bool RecordPlayer::SaveMacro(const std::string &name, size_t startFrame, size_t 
     RecordMacro macro(name, description);
     macro.frames.assign(m_Frames.begin() + startFrame, m_Frames.begin() + endFrame + 1);
 
+    PushUndoAction(EditActionType::ModifyFrame, "Save macro: " + name);
     m_Macros[name] = macro;
 
     Log::Info("Saved macro '%s' (%zu frames)", name.c_str(), macro.frames.size());
@@ -1175,6 +1210,7 @@ bool RecordPlayer::DeleteMacro(const std::string &name) {
         return false;
     }
 
+    PushUndoAction(EditActionType::ModifyFrame, "Delete macro: " + name);
     m_Macros.erase(it);
     Log::Info("Deleted macro '%s'", name.c_str());
     return true;
@@ -1212,6 +1248,7 @@ bool RecordPlayer::InsertMacro(const std::string &name, size_t atFrame, size_t r
     const auto &macro = it->second;
     size_t totalFrames = macro.frames.size() * repeatCount;
 
+    PushUndoAction(EditActionType::InsertFrames, "Insert macro: " + name);
     // Insert frames
     m_Frames.insert(m_Frames.begin() + atFrame, totalFrames, RecordFrameData());
 
@@ -1234,6 +1271,7 @@ bool RecordPlayer::InsertMacro(const std::string &name, size_t atFrame, size_t r
 // --- Metadata Management ---
 
 void RecordPlayer::SetMetadataField(const std::string &field, const std::string &value) {
+    PushUndoAction(EditActionType::ModifyFrame, "Set metadata: " + field);
     if (field == "title") m_Metadata.title = value;
     else if (field == "author") m_Metadata.author = value;
     else if (field == "description") m_Metadata.description = value;
@@ -1258,6 +1296,7 @@ std::string RecordPlayer::GetMetadataField(const std::string &field) const {
 void RecordPlayer::AddTag(const std::string &tag) {
     auto it = std::find(m_Metadata.tags.begin(), m_Metadata.tags.end(), tag);
     if (it == m_Metadata.tags.end()) {
+        PushUndoAction(EditActionType::ModifyFrame, "Add tag: " + tag);
         m_Metadata.tags.push_back(tag);
     }
 }
@@ -1265,6 +1304,7 @@ void RecordPlayer::AddTag(const std::string &tag) {
 void RecordPlayer::RemoveTag(const std::string &tag) {
     auto it = std::find(m_Metadata.tags.begin(), m_Metadata.tags.end(), tag);
     if (it != m_Metadata.tags.end()) {
+        PushUndoAction(EditActionType::ModifyFrame, "Remove tag: " + tag);
         m_Metadata.tags.erase(it);
     }
 }
@@ -1276,13 +1316,14 @@ bool RecordPlayer::Undo() {
         return false;
     }
 
-    // For now, basic implementation - just clear redo stack and notify
-    // Full implementation would need to serialize/deserialize state
-    EditAction action = m_UndoStack.back();
+    EditAction action = std::move(m_UndoStack.back());
     m_UndoStack.pop_back();
-    m_RedoStack.push_back(action);
+    RecordEditState after = CaptureEditState();
+    RestoreEditState(std::move(action.state));
+    action.state = std::move(after);
+    m_RedoStack.push_back(std::move(action));
 
-    Log::Info("Undo: %s", action.description.c_str());
+    Log::Info("Undo: %s", m_RedoStack.back().description.c_str());
     return true;
 }
 
@@ -1291,11 +1332,14 @@ bool RecordPlayer::Redo() {
         return false;
     }
 
-    EditAction action = m_RedoStack.back();
+    EditAction action = std::move(m_RedoStack.back());
     m_RedoStack.pop_back();
-    m_UndoStack.push_back(action);
+    RecordEditState before = CaptureEditState();
+    RestoreEditState(std::move(action.state));
+    action.state = std::move(before);
+    m_UndoStack.push_back(std::move(action));
 
-    Log::Info("Redo: %s", action.description.c_str());
+    Log::Info("Redo: %s", m_UndoStack.back().description.c_str());
     return true;
 }
 
@@ -1326,15 +1370,25 @@ std::vector<size_t> RecordPlayer::FindFramesWithKeys(const std::string &keyStrin
         return result;
     }
 
-    // Parse key string (simplified - assumes format like "up+space")
+    // Same separators as the input API ("up space", "up,space", "up;space"), plus "up+space".
     std::vector<std::string> keys;
-    size_t pos = 0;
-    std::string temp = keyString;
-    while ((pos = temp.find('+')) != std::string::npos) {
-        keys.push_back(temp.substr(0, pos));
-        temp.erase(0, pos + 1);
+    std::string current;
+    for (char c : keyString) {
+        if (c == '+' || c == ',' || c == ';' || std::isspace(static_cast<unsigned char>(c))) {
+            if (!current.empty()) {
+                keys.push_back(current);
+                current.clear();
+            }
+        } else {
+            current.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
     }
-    keys.push_back(temp);
+    if (!current.empty()) {
+        keys.push_back(current);
+    }
+    if (keys.empty()) {
+        return result;
+    }
 
     // Search frames
     for (size_t i = startFrame; i <= endFrame; ++i) {
@@ -1427,7 +1481,7 @@ std::unordered_map<std::string, float> RecordPlayer::GetStatistics(size_t startF
 
 bool RecordPlayer::CreateBranch(const std::string &name, size_t divergenceFrame,
                                 const std::string &description) {
-    if (divergenceFrame >= m_TotalFrames) {
+    if (name.empty() || divergenceFrame >= m_TotalFrames) {
         return false;
     }
 
@@ -1441,11 +1495,10 @@ bool RecordPlayer::CreateBranch(const std::string &name, size_t divergenceFrame,
     branch.description = description;
     branch.divergenceFrame = divergenceFrame;
     branch.parentBranch = m_CurrentBranch;
+    // A branch starts as a copy of its parent; edits made after switching to it diverge from there.
+    branch.frames = CopyActiveFrames();
 
-    // Copy frames from divergence point
-    branch.frames.assign(m_Frames.begin() + divergenceFrame, m_Frames.end());
-
-    m_Branches[name] = branch;
+    m_Branches[name] = std::move(branch);
 
     Log::Info("Created branch '%s' at frame %zu", name.c_str(), divergenceFrame);
     return true;
@@ -1453,7 +1506,7 @@ bool RecordPlayer::CreateBranch(const std::string &name, size_t divergenceFrame,
 
 bool RecordPlayer::DeleteBranch(const std::string &name) {
     auto it = m_Branches.find(name);
-    if (it == m_Branches.end()) {
+    if (it == m_Branches.end() || name == m_CurrentBranch) {
         return false;
     }
 
@@ -1463,22 +1516,31 @@ bool RecordPlayer::DeleteBranch(const std::string &name) {
 }
 
 bool RecordPlayer::SwitchBranch(const std::string &name) {
-    if (name.empty()) {
-        // Switch to main branch
-        m_CurrentBranch = "";
+    if (name == m_CurrentBranch) {
         return true;
     }
 
-    auto it = m_Branches.find(name);
-    if (it == m_Branches.end()) {
+    auto target = m_Branches.find(name);
+    if (!name.empty() && target == m_Branches.end()) {
         return false;
     }
 
-    // Switch to branch
+    // Park the active frames in the branch they belong to, then bring in the target's.
+    if (m_CurrentBranch.empty()) {
+        m_MainBranchFrames = CopyActiveFrames();
+    } else {
+        m_Branches[m_CurrentBranch].frames = CopyActiveFrames();
+    }
+    LoadActiveFrames(name.empty() ? m_MainBranchFrames : target->second.frames);
+    if (name.empty()) {
+        m_MainBranchFrames.clear();
+    }
     m_CurrentBranch = name;
-    // In a full implementation, would swap frames here
+    // Undo snapshots hold the previous branch's frames.
+    ClearHistory();
+    m_IsModified = true;
 
-    Log::Info("Switched to branch '%s'", name.c_str());
+    Log::Info("Switched to branch '%s'", name.empty() ? "main" : name.c_str());
     return true;
 }
 
@@ -1502,6 +1564,7 @@ bool RecordPlayer::LinkSavestate(size_t frame, const std::string &savestatePath,
     SavestateLink link(frame, savestatePath);
     link.description = description;
 
+    PushUndoAction(EditActionType::ModifyFrame, "Link savestate at frame " + std::to_string(frame));
     m_SavestateLinks[frame] = link;
 
     Log::Info("Linked savestate to frame %zu", frame);
@@ -1514,6 +1577,7 @@ bool RecordPlayer::UnlinkSavestate(size_t frame) {
         return false;
     }
 
+    PushUndoAction(EditActionType::ModifyFrame, "Unlink savestate at frame " + std::to_string(frame));
     m_SavestateLinks.erase(it);
     Log::Info("Unlinked savestate from frame %zu", frame);
     return true;
@@ -1537,15 +1601,64 @@ std::vector<SavestateLink> RecordPlayer::GetAllSavestateLinks() const {
 
 void RecordPlayer::PushUndoAction(EditActionType type, const std::string &description) {
     EditAction action(type, description);
-    m_UndoStack.push_back(action);
+    action.state = CaptureEditState();
+    m_UndoStack.push_back(std::move(action));
 
     // Clear redo stack when new action is performed
     m_RedoStack.clear();
 
     // Limit undo stack size
-    if (m_UndoStack.size() > m_MaxHistorySize) {
+    while (m_UndoStack.size() > m_MaxHistorySize) {
         m_UndoStack.erase(m_UndoStack.begin());
     }
+}
+
+RecordEditState RecordPlayer::CaptureEditState() const {
+    RecordEditState state;
+    state.frames = CopyActiveFrames();
+    state.totalFrames = m_TotalFrames;
+    state.sections = m_Sections;
+    state.markers = m_Markers;
+    state.comments = m_Comments;
+    state.macros = m_Macros;
+    state.metadata = m_Metadata;
+    state.savestateLinks = m_SavestateLinks;
+    return state;
+}
+
+void RecordPlayer::RestoreEditState(RecordEditState &&state) {
+    LoadActiveFrames(state.frames);
+    m_Sections = std::move(state.sections);
+    m_Markers = std::move(state.markers);
+    m_Comments = std::move(state.comments);
+    m_Macros = std::move(state.macros);
+    m_Metadata = std::move(state.metadata);
+    m_SavestateLinks = std::move(state.savestateLinks);
+    m_IsModified = true;
+}
+
+std::vector<RecordFrameData> RecordPlayer::CopyActiveFrames() const {
+    const size_t count = (std::min)(m_TotalFrames, m_Frames.size());
+    return std::vector<RecordFrameData>(m_Frames.begin(), m_Frames.begin() + count);
+}
+
+void RecordPlayer::LoadActiveFrames(const std::vector<RecordFrameData> &frames) {
+    m_Frames = frames;
+    m_TotalFrames = frames.size();
+    EnsureFrameSentinel(m_Frames, m_TotalFrames);
+    ClampPlaybackCursor(m_CurrentFrame, m_TotalFrames);
+}
+
+void RecordPlayer::ResetEditState() {
+    m_Sections.clear();
+    m_Markers.clear();
+    m_Comments.clear();
+    m_NextCommentId = 1;
+    m_Branches.clear();
+    m_CurrentBranch.clear();
+    m_MainBranchFrames.clear();
+    m_SavestateLinks.clear();
+    ClearHistory();
 }
 
 void RecordPlayer::UpdateMetadataStats() {

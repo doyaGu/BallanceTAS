@@ -51,8 +51,10 @@ add_compile_definitions(
         $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
 )
 
+# Sources are UTF-8; without /utf-8 MSVC reads them in the system code page (C4819).
 add_compile_options(
         $<$<CXX_COMPILER_ID:MSVC>:/Zc:char8_t->
+        $<$<CXX_COMPILER_ID:MSVC>:/utf-8>
 )
 
 set(TAS_INCLUDE_DIR "${PROJECT_SOURCE_DIR}/include" CACHE INTERNAL "")

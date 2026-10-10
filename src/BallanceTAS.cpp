@@ -485,6 +485,7 @@ void BallanceTAS::OnMenuStart() {
 void BallanceTAS::OnProcess() {
     if (m_Initialized && m_Engine && m_UIManager) {
         OnMenuStart();
+        m_Engine->TickLevelReload();
 
         m_Engine->IncrementCurrentTick();
         PhysicsDeterminism::SetFpuMonitoring(
@@ -622,13 +623,19 @@ void BallanceTAS::OnPreLoadLevel() {
     void BallanceTAS::BmlCallback() { PublishEngineEvent(this, EventType{}); }
 
 FORWARD_SIMPLE_EVENT(OnPostLoadLevel,   PostLoadLevelEvent)
-FORWARD_SIMPLE_EVENT(OnStartLevel,      StartLevelEvent)
+void BallanceTAS::OnStartLevel() {
+    PublishEngineEvent(this, StartLevelEvent{});
+    if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
+        m_Engine->OnLevelStartedForReload();
+    }
+}
 
 void BallanceTAS::OnPreResetLevel() {
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->GetGameInterface()->SetLevelCompleted(false);
         PublishEngineEvent(this, PreResetLevelEvent{});
         m_Engine->Stop();
+        m_Engine->ReloadInsteadOfRestart();
     }
 }
 

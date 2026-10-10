@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -103,6 +104,17 @@ public:
     /// for a re-armed project when another level loads.
     bool LevelLoadRunsTAS() const;
 
+    /// An in-level restart starts the level differently from a load, so a TAS armed for the
+    /// level never starts at one: the restart becomes a reload. Once the restarted level
+    /// starts it is left for the main menu and loaded again, and the TAS starts with that
+    /// load. Call at PreResetLevel, after Stop() re-armed a playback the restart ended.
+    void ReloadInsteadOfRestart();
+    /// Leaves the restarted level; call at StartLevel.
+    void OnLevelStartedForReload();
+    /// Loads the level again once the main menu is up; call every frame.
+    void TickLevelReload();
+    bool IsReloadingLevel() const { return m_LevelReload != LevelReload::None; }
+
     // Settings
     bool IsValidationEnabled() const;
     void SetValidationEnabled(bool enabled);
@@ -147,6 +159,7 @@ private:
     void HandlePlaybackCompleted();
     float ResolveLevelLoadPhysicsDeltaTime() const;
     std::string BuildValidationOutputPath(TASProject *project) const;
+    void CancelLevelReload(const char *reason);
 
     // Externally-owned (BallanceTAS lifetime)
     GameInterface *m_GameInterface = nullptr;
@@ -166,4 +179,11 @@ private:
     bool m_AutoRestart = false;
     bool m_ValidationEnabled = false;
     std::optional<PhysicsDeterminism::PhysicsLevelBaseline> m_PhysicsLevelBaseline;
+
+    // A restart being turned into a reload (see ReloadInsteadOfRestart).
+    enum class LevelReload { None, AwaitStart, AwaitMenu };
+    LevelReload m_LevelReload = LevelReload::None;
+    int m_ReloadLevel = 0;
+    int m_ReloadMenuFrames = 0;
+    std::chrono::steady_clock::time_point m_ReloadDeadline;
 };

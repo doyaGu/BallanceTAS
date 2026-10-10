@@ -455,11 +455,83 @@ bool TASEngine::LevelLoadRunsTAS() const {
     if (m_ShuttingDown || !session || session->IsIdle() || session->IsShuttingDown()) {
         return false;
     }
+    // The restarted level is only passed through on the way to the reload.
+    if (m_LevelReload != LevelReload::None) {
+        return false;
+    }
     if (session->IsPending() && m_Requests.restartLevel > 0 && m_GameInterface &&
         m_GameInterface->GetCurrentLevel() != m_Requests.restartLevel) {
         return false;
     }
     return true;
+}
+
+void TASEngine::ReloadInsteadOfRestart() {
+    const auto *session = Session();
+    if (!m_GameInterface || !session || !session->IsPending() || !LevelLoadRunsTAS()) {
+        return;
+    }
+    const int level = m_GameInterface->GetCurrentLevel();
+    if (level <= 0) {
+        return;
+    }
+    m_ReloadLevel = level;
+    m_LevelReload = LevelReload::AwaitStart;
+    m_ReloadDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    Log::Info("Level %d restarted with a TAS armed; loading it again, as the TAS starts with a level load.",
+              level);
+}
+
+void TASEngine::OnLevelStartedForReload() {
+    if (m_LevelReload != LevelReload::AwaitStart) {
+        return;
+    }
+    std::string error;
+    if (!m_GameInterface->SendGameFlowEvent(GameInterface::GameFlowEvent::ExitLevel, error)) {
+        CancelLevelReload(error.c_str());
+        return;
+    }
+    m_LevelReload = LevelReload::AwaitMenu;
+    m_ReloadMenuFrames = 0;
+}
+
+void TASEngine::TickLevelReload() {
+    if (m_LevelReload == LevelReload::None) {
+        return;
+    }
+    const auto *session = Session();
+    if (!session || !session->IsPending()) {
+        // Disarmed meanwhile: what is left is an ordinary restart or exit.
+        m_LevelReload = LevelReload::None;
+        Log::Info("TAS disarmed; Level %d is not loaded again.", m_ReloadLevel);
+        return;
+    }
+    if (std::chrono::steady_clock::now() > m_ReloadDeadline) {
+        CancelLevelReload("timed out");
+        return;
+    }
+    if (m_LevelReload != LevelReload::AwaitMenu) {
+        return;
+    }
+    // Menus take a couple of frames to switch their buttons on.
+    if (m_GameInterface->GetActiveMenu() != "main") {
+        m_ReloadMenuFrames = 0;
+        return;
+    }
+    if (++m_ReloadMenuFrames < 3) {
+        return;
+    }
+    m_LevelReload = LevelReload::None;
+    std::string error;
+    if (!m_GameInterface->LoadLevel(m_ReloadLevel, error)) {
+        Log::Warn("Could not load Level %d again after the restart: %s", m_ReloadLevel, error.c_str());
+    }
+}
+
+void TASEngine::CancelLevelReload(const char *reason) {
+    Log::Warn("Could not load Level %d again after the restart (%s); the TAS stays armed for its next load.",
+              m_ReloadLevel, reason);
+    m_LevelReload = LevelReload::None;
 }
 
 bool TASEngine::IsPlaying() const {

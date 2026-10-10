@@ -79,7 +79,11 @@ bool RuntimeEventRouter::ArmedTasWaitsForAnotherLevel() const {
     if (!m_RuntimeSession.IsPending() || !m_LevelLoadRunsTas || m_LevelLoadRunsTas()) {
         return false;
     }
-    Log::Info("Armed TAS waits for Level %d; this level runs without it.", m_Requests.restartLevel);
+    if (m_Requests.restartLevel > 0) {
+        Log::Info("Armed TAS waits for Level %d to load; this level runs without it.", m_Requests.restartLevel);
+    } else {
+        Log::Info("Armed TAS waits for the next level load; this level runs without it.");
+    }
     return true;
 }
 

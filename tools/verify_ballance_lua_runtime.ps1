@@ -318,6 +318,8 @@ try {
                 'API Extras Smoke PASS',
                 'Menu Smoke PASS',
                 'Level Smoke PASS',
+                'Loop Smoke PASS',
+                'Restart Smoke PASS',
                 'Game Flow Smoke PASS'
             )
             foreach ($marker in $requiredMarkers) {

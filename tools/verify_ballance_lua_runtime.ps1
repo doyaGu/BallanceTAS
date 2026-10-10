@@ -242,6 +242,9 @@ try {
     Copy-Item -Path (Join-Path $smokeSource '*') -Destination $smokeTarget -Recurse -Force
     Copy-Item -LiteralPath $artifact -Destination $target -Force
 
+    if (Test-Path -LiteralPath (Join-Path $smokeSource 'smoke_only.txt')) {
+        Write-Warning "smoke_only.txt is present: only the modules it lists run."
+    }
     $runCount = if ($ValidationRoundTrip) { 2 } else { 1 }
     $validationReference = $null
 
@@ -282,7 +285,7 @@ try {
                     $text -match 'LuaRuntimeSmoke.*failed|LuaRuntimeSmoke.*FAIL|Full Smoke FAIL|Validation Smoke failed') {
                     throw "BallanceTAS LuaRuntime smoke reported a failure."
                 }
-                if ($text -match 'BallanceTAS LuaRuntime Full Smoke PASS') {
+                if ($text -match 'BallanceTAS LuaRuntime (Full|Partial) Smoke PASS') {
                     $runPassed = $true
                     break
                 }
@@ -301,6 +304,8 @@ try {
             if (!$runPassed) {
                 throw "Timed out waiting for BallanceTAS LuaRuntime Full Smoke PASS"
             }
+            # smoke_only.txt runs only the modules it lists; the others log SKIPPED.
+            $partial = $text -match 'BallanceTAS LuaRuntime Partial Smoke PASS'
 
             $requiredMarkers = @(
                 'API Surface Smoke PASS',
@@ -322,13 +327,32 @@ try {
                 'Restart Smoke PASS',
                 'Game Flow Smoke PASS'
             )
+            $skippedModules = @()
             foreach ($marker in $requiredMarkers) {
-                if ($text -notmatch [regex]::Escape($marker)) {
-                    throw "Full smoke marker appeared without required module marker: $marker"
+                if ($text -match [regex]::Escape($marker)) {
+                    continue
                 }
+                $label = $marker -replace ' PASS$', ''
+                if ($partial -and $text -match [regex]::Escape("$label SKIPPED")) {
+                    $skippedModules += $label
+                    continue
+                }
+                throw "Smoke finished without required module marker: $marker"
+            }
+            $validationRan = $skippedModules -notcontains 'Validation Smoke'
+            if ($ValidationRoundTrip -and !$validationRan) {
+                throw "-ValidationRoundTrip needs Validation Smoke, which smoke_only.txt skips."
             }
             if ($run -eq 2 -and $text -notmatch 'Validation Smoke MATCH') {
                 throw "Validation round-trip run did not report MATCH."
+            }
+
+            if ($partial) {
+                Write-Warning "Partial smoke run; skipped by smoke_only.txt: $($skippedModules -join ', ')"
+            }
+            if (!$validationRan) {
+                Write-Host "BallanceTAS LuaRuntime Partial Smoke PASS (run $run/$runCount)"
+                continue
             }
 
             $dumpMatch = [regex]::Matches($text, '(?m)Validation Smoke DUMP=(.+)$') |
@@ -352,7 +376,11 @@ try {
                 $validationReference = $validationDump
             }
 
-            Write-Host "BallanceTAS LuaRuntime Full Smoke PASS (run $run/$runCount)"
+            if ($partial) {
+                Write-Host "BallanceTAS LuaRuntime Partial Smoke PASS (run $run/$runCount)"
+            } else {
+                Write-Host "BallanceTAS LuaRuntime Full Smoke PASS (run $run/$runCount)"
+            }
         } finally {
             if (Test-Path -LiteralPath $log) {
                 Copy-Item -LiteralPath $log -Destination (Join-Path $artifactRoot "run-$run.log") -Force

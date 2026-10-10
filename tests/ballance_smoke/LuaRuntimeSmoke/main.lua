@@ -27,6 +27,8 @@ local modules = {
 }
 
 -- Optional smoke_only.txt (one module name per line) runs just those modules, for quick iteration.
+-- The others are logged as SKIPPED and the run ends with "Partial Smoke PASS" instead of
+-- "Full Smoke PASS", which the verify script accepts as a partial run.
 local function read_only_list()
   for _, path in ipairs({ "smoke_only.txt", "../ModLoader/TAS/LuaRuntimeSmoke/smoke_only.txt" }) do
     local file = io.open(path, "r")
@@ -39,21 +41,24 @@ local function read_only_list()
         end
       end
       file:close()
-      return only
+      return next(only) and only or nil
     end
   end
   return nil
 end
 
 local only = read_only_list()
-if only then
-  local selected = {}
+
+local function check_only_list()
+  local known = {}
   for _, module in ipairs(modules) do
-    if only[module.name] then
-      selected[#selected + 1] = module
+    known[module.name] = true
+  end
+  for name in pairs(only) do
+    if not known[name] then
+      error("smoke_only.txt names an unknown module: " .. name)
     end
   end
-  modules = selected
 end
 
 local function run_module(module)
@@ -80,11 +85,25 @@ end
 
 local function run_all()
   tas.log("BallanceTAS LuaRuntime Smoke START tick=" .. tostring(tas.get_tick()))
+  if only then
+    check_only_list()
+  end
+  local skipped = 0
   for _, module in ipairs(modules) do
-    run_module(module)
+    if only and not only[module.name] then
+      tas.log(module.label .. " SKIPPED (smoke_only.txt)")
+      skipped = skipped + 1
+    else
+      run_module(module)
+    end
   end
   tas.log("BallanceTAS LuaRuntime Smoke PASS")
-  tas.log("BallanceTAS LuaRuntime Full Smoke PASS")
+  if skipped > 0 then
+    tas.log(string.format("BallanceTAS LuaRuntime Partial Smoke PASS (%d of %d modules skipped by smoke_only.txt)",
+      skipped, #modules))
+  else
+    tas.log("BallanceTAS LuaRuntime Full Smoke PASS")
+  end
 end
 
 function main()

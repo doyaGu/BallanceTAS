@@ -183,6 +183,7 @@ private:
     void Shutdown();
 
     void OnMenuStart();
+    void StopLeftoverBallNavigation();
 
     // Picks up projects added, removed or edited while the game runs.
     void PollProjects();
@@ -208,6 +209,9 @@ private:
 
     bool m_Initialized = false;
     bool m_GameHooksEnabled = false;
+    // Whether the game's ball and camera control are on (BallNav / CamNav messages).
+    bool m_BallNavActive = false;
+    bool m_CamNavActive = false;
 
     // Applies script keys outside TAS playback, so global scripts can drive menus.
     ScopedCallback m_IdleScriptInputGuard;

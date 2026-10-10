@@ -1,6 +1,9 @@
 #include "BallanceTAS.h"
 
+#include <cstring>
+
 #include <BML/Bui.h>
+#include <BML/ScriptHelper.h>
 
 #include "physics_RT.h"
 #include "TASHook.h"
@@ -601,6 +604,7 @@ void BallanceTAS::OnExitGame() {
 }
 
 void BallanceTAS::OnPreLoadLevel() {
+    StopLeftoverBallNavigation();
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         m_Engine->GetGameInterface()->SetLevelCompleted(false);
         if (m_Engine->LevelLoadRunsTAS()) {
@@ -632,7 +636,67 @@ FORWARD_SIMPLE_EVENT(OnPostResetLevel,  PostResetLevelEvent)
 FORWARD_SIMPLE_EVENT(OnPauseLevel,      PauseLevelEvent)
 FORWARD_SIMPLE_EVENT(OnUnpauseLevel,    UnpauseLevelEvent)
 
+static void DeactivateGraph(CKBehavior *behavior) {
+    for (int i = 0; i < behavior->GetSubBehaviorCount(); ++i) {
+        DeactivateGraph(behavior->GetSubBehavior(i));
+    }
+    if (behavior->IsActive()) {
+        behavior->Activate(FALSE);
+    }
+}
+
+// Gameplay_Ingame is already stopped when the BallNav deactivate message sent at an early
+// exit arrives. Its "BallNav On/Off" graph then still remembers "on" (Binary Memory) and turns
+// "Ball Navigation" back on when the next level runs, so the ball takes keys before the level
+// hands it over. Do what the message would: forget "on" and switch the keys off (their forces
+// went away with the old ball). A clean level load finds both off already.
+void BallanceTAS::StopLeftoverBallNavigation() {
+    CKBehavior *ingame = m_BML ? m_BML->GetScriptByName("Gameplay_Ingame") : nullptr;
+    if (!ingame) {
+        return;
+    }
+    bool stopped = false;
+    if (CKBehavior *onOff = ScriptHelper::FindFirstBB(ingame, "BallNav On/Off")) {
+        for (int i = 0; i < onOff->GetSubBehaviorCount(); ++i) {
+            CKBehavior *memory = onOff->GetSubBehavior(i);
+            if (std::strcmp(memory->GetName(), "Binary Memory") != 0 || memory->GetOutputParameterCount() < 1) {
+                continue;
+            }
+            CKBOOL on = FALSE;
+            memory->GetOutputParameterValue(0, &on);
+            if (on) {
+                const CKBOOL off = FALSE;
+                memory->SetOutputParameterValue(0, &off);
+                stopped = true;
+            }
+        }
+    }
+    if (CKBehavior *navigation = ScriptHelper::FindFirstBB(ingame, "Ball Navigation")) {
+        if (navigation->IsActive()) {
+            DeactivateGraph(navigation);
+            stopped = true;
+        }
+    }
+    if (stopped) {
+        Log::Info("Turned off the ball navigation an early level exit left on.");
+    }
+}
+
 void BallanceTAS::OnPreExitLevel() {
+    // The game turns ball and camera control off when the ball falls or the level ends, but
+    // not when the level is left early. Left on, they carry over into the next level:
+    // Sound_Manager's hit-sound collision listeners (which flip impact normals) are set before
+    // the ball is handed over, and so are Gameplay_Ingame's ball keys. The messages reach the
+    // sound manager in time; StopLeftoverBallNavigation() handles the keys at the next load.
+    if (m_BML) {
+        CKMessageManager *messages = m_BML->GetCKContext()->GetMessageManager();
+        if (m_BallNavActive) {
+            messages->SendMessageBroadcast(messages->AddMessageType((CKSTRING) "BallNav deactivate"), CKCID_BEOBJECT);
+        }
+        if (m_CamNavActive) {
+            messages->SendMessageBroadcast(messages->AddMessageType((CKSTRING) "CamNav deactivate"), CKCID_BEOBJECT);
+        }
+    }
     if (m_Initialized && m_Engine && !m_Engine->IsShuttingDown()) {
         PublishEngineEvent(this, PreExitLevelEvent{});
         m_Engine->Stop();
@@ -647,10 +711,26 @@ FORWARD_SIMPLE_EVENT(OnPreEndLevel,     PreEndLevelEvent)
 FORWARD_SIMPLE_EVENT(OnPostEndLevel,    PostEndLevelEvent)
 FORWARD_SIMPLE_EVENT(OnCounterActive,   CounterActiveEvent)
 FORWARD_SIMPLE_EVENT(OnCounterInactive, CounterInactiveEvent)
-FORWARD_SIMPLE_EVENT(OnBallNavActive,   BallNavActiveEvent)
-FORWARD_SIMPLE_EVENT(OnBallNavInactive, BallNavInactiveEvent)
-FORWARD_SIMPLE_EVENT(OnCamNavActive,    CamNavActiveEvent)
-FORWARD_SIMPLE_EVENT(OnCamNavInactive,  CamNavInactiveEvent)
+void BallanceTAS::OnBallNavActive() {
+    m_BallNavActive = true;
+    PublishEngineEvent(this, BallNavActiveEvent{});
+}
+
+void BallanceTAS::OnBallNavInactive() {
+    m_BallNavActive = false;
+    PublishEngineEvent(this, BallNavInactiveEvent{});
+}
+
+void BallanceTAS::OnCamNavActive() {
+    m_CamNavActive = true;
+    PublishEngineEvent(this, CamNavActiveEvent{});
+}
+
+void BallanceTAS::OnCamNavInactive() {
+    m_CamNavActive = false;
+    PublishEngineEvent(this, CamNavInactiveEvent{});
+}
+
 FORWARD_SIMPLE_EVENT(OnBallOff,         BallOffEvent)
 FORWARD_SIMPLE_EVENT(OnGameOver,        GameOverEvent)
 

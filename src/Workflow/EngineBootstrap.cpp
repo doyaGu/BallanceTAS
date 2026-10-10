@@ -30,6 +30,7 @@
 #include "UIManager.h"
 #include "ValidationService.h"
 #include "ScriptFrameTime.h"
+#include "HudWatches.h"
 
 #ifdef ENABLE_REPL
 #include "LuaREPLServer.h"
@@ -271,6 +272,7 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
         // Core subsystems — container takes ownership
         c.RegisterSingletonInstance<InputSystem>(std::make_unique<InputSystem>());
         c.RegisterSingletonInstance<ScriptFrameTime>(std::make_unique<ScriptFrameTime>());
+        c.RegisterSingletonInstance<HudWatches>(std::make_unique<HudWatches>());
         c.RegisterSingletonInstance<EventManager>(std::make_unique<EventManager>());
         c.RegisterSingletonInstance<Recorder>(std::make_unique<Recorder>(&engine));
         c.RegisterSingletonInstance<ScriptGenerator>(std::make_unique<ScriptGenerator>(&engine));

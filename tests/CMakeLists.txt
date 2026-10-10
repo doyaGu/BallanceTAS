@@ -67,6 +67,14 @@ add_tas_test(LevelNamesTest
         tas_core
 )
 
+# HudWatchesTest – values scripts show on the HUD (header-only)
+add_tas_test(HudWatchesTest
+    SOURCES
+        HudWatchesTest.cpp
+    DEPENDENCIES
+        tas_core
+)
+
 add_tas_test(RuntimeSessionStateTest
     SOURCES
         RuntimeSessionStateTest.cpp
@@ -153,6 +161,7 @@ add_tas_test(LuaRuntimeTest
 # Register standalone tests with CTest
 add_test(NAME ResultTest          COMMAND ResultTest)
 add_test(NAME LevelNamesTest      COMMAND LevelNamesTest)
+add_test(NAME HudWatchesTest      COMMAND HudWatchesTest)
 add_test(NAME RuntimeSessionStateTest COMMAND RuntimeSessionStateTest)
 add_test(NAME RuntimeSessionLifecycleTest COMMAND RuntimeSessionLifecycleTest)
 add_test(NAME LoggerTest          COMMAND LoggerTest)

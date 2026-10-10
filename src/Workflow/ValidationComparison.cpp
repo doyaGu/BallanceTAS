@@ -9,6 +9,34 @@
 #include <cmath>
 #include <limits>
 
+bool ValidationService::PhysicsDiverges(const PhysicsData &live, const PhysicsData &reference,
+                                        const ValidationConfig &config,
+                                        float &positionError, float &velocityError) {
+    positionError = (live.position - reference.position).Magnitude();
+    velocityError = (live.velocity - reference.velocity).Magnitude();
+    if (!std::isfinite(positionError)) {
+        positionError = std::numeric_limits<float>::infinity();
+    }
+    if (!std::isfinite(velocityError)) {
+        velocityError = std::numeric_limits<float>::infinity();
+    }
+    if (config.exact) {
+        return live.position.x != reference.position.x ||
+               live.position.y != reference.position.y ||
+               live.position.z != reference.position.z ||
+               live.velocity.x != reference.velocity.x ||
+               live.velocity.y != reference.velocity.y ||
+               live.velocity.z != reference.velocity.z;
+    }
+    const float positionEpsilon = std::isfinite(config.positionEpsilon)
+                                      ? std::max(0.0f, config.positionEpsilon)
+                                      : 0.0f;
+    const float velocityEpsilon = std::isfinite(config.velocityEpsilon)
+                                      ? std::max(0.0f, config.velocityEpsilon)
+                                      : 0.0f;
+    return positionError > positionEpsilon || velocityError > velocityEpsilon;
+}
+
 ValidationReport ValidationService::CompareFrameData(const std::vector<FrameData> &live,
                                                      const std::vector<FrameData> &reference,
                                                      const ValidationConfig &config) {
@@ -18,27 +46,11 @@ ValidationReport ValidationService::CompareFrameData(const std::vector<FrameData
     report.liveFrames = live.size();
     report.comparedFrames = std::min(live.size(), reference.size());
 
-    const float positionEpsilon = std::isfinite(config.positionEpsilon)
-                                      ? std::max(0.0f, config.positionEpsilon)
-                                      : 0.0f;
-    const float velocityEpsilon = std::isfinite(config.velocityEpsilon)
-                                      ? std::max(0.0f, config.velocityEpsilon)
-                                      : 0.0f;
-
     for (size_t index = 0; index < report.comparedFrames; ++index) {
-        const auto &livePhysics = live[index].physics;
-        const auto &referencePhysics = reference[index].physics;
-
-        float positionError =
-            (livePhysics.position - referencePhysics.position).Magnitude();
-        float velocityError =
-            (livePhysics.velocity - referencePhysics.velocity).Magnitude();
-        if (!std::isfinite(positionError)) {
-            positionError = std::numeric_limits<float>::infinity();
-        }
-        if (!std::isfinite(velocityError)) {
-            velocityError = std::numeric_limits<float>::infinity();
-        }
+        float positionError = 0.0f;
+        float velocityError = 0.0f;
+        const bool diverged = PhysicsDiverges(live[index].physics, reference[index].physics,
+                                              config, positionError, velocityError);
         const size_t frame = live[index].frameIndex;
 
         if (positionError > report.maxPositionError) {
@@ -50,14 +62,6 @@ ValidationReport ValidationService::CompareFrameData(const std::vector<FrameData
             report.maxVelocityFrame = frame;
         }
 
-        const bool diverged = config.exact
-            ? livePhysics.position.x != referencePhysics.position.x ||
-              livePhysics.position.y != referencePhysics.position.y ||
-              livePhysics.position.z != referencePhysics.position.z ||
-              livePhysics.velocity.x != referencePhysics.velocity.x ||
-              livePhysics.velocity.y != referencePhysics.velocity.y ||
-              livePhysics.velocity.z != referencePhysics.velocity.z
-            : positionError > positionEpsilon || velocityError > velocityEpsilon;
         if (live[index].frameIndex != reference[index].frameIndex || diverged) {
             if (report.divergentFrames == 0) {
                 report.firstDivergenceFrame = frame;

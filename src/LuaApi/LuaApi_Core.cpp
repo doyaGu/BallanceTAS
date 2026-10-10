@@ -1,6 +1,7 @@
 #include "LuaApi.h"
 
 #include "LuaApiCommon.h"
+#include "HudWatches.h"
 #include "Logger.h"
 #include "ScriptContext.h"
 #include "ScriptFrameTime.h"
@@ -104,6 +105,50 @@ static int TasGetFrameTime(lua_State *L) {
     return 1;
 }
 
+static HudWatches *GetHudWatches(lua_State *L) {
+    ScriptContext *context = GetContext(L);
+    TASEngine *engine = context ? context->GetEngine() : nullptr;
+    return engine ? engine->GetServiceProvider().Resolve<HudWatches>() : nullptr;
+}
+
+// tas.hud.set(name, value) -> true | false, reason
+// Shows "name: value" on the HUD (tostring of the value) until cleared or the context ends.
+// A nil value clears it.
+static int HudSet(lua_State *L) {
+    const char *name = luaL_checkstring(L, 1);
+    luaL_checkany(L, 2);
+    ScriptContext *context = GetContext(L);
+    HudWatches *watches = GetHudWatches(L);
+    if (!context || !watches) {
+        return PushFail(L, "the HUD is not available");
+    }
+    if (lua_isnil(L, 2)) {
+        watches->Clear(context->GetName(), name);
+        return PushOk(L);
+    }
+    size_t length = 0;
+    const char *text = luaL_tolstring(L, 2, &length);
+    watches->Set(context->GetName(), name, std::string(text, length));
+    return PushOk(L);
+}
+
+// tas.hud.clear([name]) -> true | false, reason
+// Clears one value this context shows, or all of them.
+static int HudClear(lua_State *L) {
+    const char *name = luaL_optstring(L, 1, nullptr);
+    ScriptContext *context = GetContext(L);
+    HudWatches *watches = GetHudWatches(L);
+    if (!context || !watches) {
+        return PushFail(L, "the HUD is not available");
+    }
+    if (name) {
+        watches->Clear(context->GetName(), name);
+    } else {
+        watches->ClearOwner(context->GetName());
+    }
+    return PushOk(L);
+}
+
 void LuaApi::RegisterCoreApi(lua_State *state, ScriptContext *context) {
     lua_getglobal(state, "tas");
     SetClosure(state, "log", TasLog, context);
@@ -113,5 +158,10 @@ void LuaApi::RegisterCoreApi(lua_State *state, ScriptContext *context) {
     SetClosure(state, "get_manifest", TasGetManifest, context);
     SetClosure(state, "set_frame_time", TasSetFrameTime, context);
     SetClosure(state, "get_frame_time", TasGetFrameTime, context);
+
+    lua_newtable(state);
+    SetClosure(state, "set", HudSet, context);
+    SetClosure(state, "clear", HudClear, context);
+    lua_setfield(state, -2, "hud");
     lua_pop(state, 1);
 }

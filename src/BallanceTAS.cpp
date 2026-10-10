@@ -570,10 +570,10 @@ void BallanceTAS::UpdateOSDPanelConfig() {
     OSDConfig cfg = m_ConfigService.GetOSDConfig();
 
     osd->SetPanelVisible(OSDPanel::Status, cfg.showStatus);
-    osd->SetPanelVisible(OSDPanel::Velocity, cfg.showVelocity);
-    osd->SetPanelVisible(OSDPanel::Position, cfg.showPosition);
-    osd->SetPanelVisible(OSDPanel::Physics, cfg.showPhysics);
-    osd->SetPanelVisible(OSDPanel::Keys, cfg.showKeys);
+    osd->SetPanelVisible(OSDPanel::Ball, cfg.showBall);
+    osd->SetPanelVisible(OSDPanel::Input, cfg.showInput);
+    osd->SetPanelVisible(OSDPanel::Validation, cfg.showValidation);
+    osd->SetPanelVisible(OSDPanel::Watches, cfg.showWatches);
 
     osd->SetPosition(cfg.positionX, cfg.positionY);
 

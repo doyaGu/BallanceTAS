@@ -102,24 +102,24 @@ void ConfigService::RegisterProperties(IConfig *config) {
     m_ShowOSD->SetDefaultBoolean(true);
 
     m_ShowOSDStatus = config->GetProperty("OSD", "ShowStatusPanel");
-    m_ShowOSDStatus->SetComment("Show the status panel (TAS mode, frame count, ground contact)");
+    m_ShowOSDStatus->SetComment("Show the status panel (TAS mode, playback frame, frame time, SR time, level)");
     m_ShowOSDStatus->SetDefaultBoolean(true);
 
-    m_ShowOSDVelocity = config->GetProperty("OSD", "ShowVelocityPanel");
-    m_ShowOSDVelocity->SetComment("Show the velocity panel (speed, velocity components, graphs)");
-    m_ShowOSDVelocity->SetDefaultBoolean(true);
+    m_ShowOSDBall = config->GetProperty("OSD", "ShowBallPanel");
+    m_ShowOSDBall->SetComment("Show the ball panel (position, velocity, per-frame velocity change)");
+    m_ShowOSDBall->SetDefaultBoolean(true);
 
-    m_ShowOSDPosition = config->GetProperty("OSD", "ShowPositionPanel");
-    m_ShowOSDPosition->SetComment("Show the position panel (coordinates, trajectory graph)");
-    m_ShowOSDPosition->SetDefaultBoolean(true);
+    m_ShowOSDInput = config->GetProperty("OSD", "ShowInputPanel");
+    m_ShowOSDInput->SetComment("Show the input timeline (keys of the last and, during record playback, next frames)");
+    m_ShowOSDInput->SetDefaultBoolean(true);
 
-    m_ShowOSDPhysics = config->GetProperty("OSD", "ShowPhysicsPanel");
-    m_ShowOSDPhysics->SetComment("Show the physics panel (angular velocity, mass, physics state)");
-    m_ShowOSDPhysics->SetDefaultBoolean(false);
+    m_ShowOSDValidation = config->GetProperty("OSD", "ShowValidationPanel");
+    m_ShowOSDValidation->SetComment("Show the live comparison against the reference run while a playback validates");
+    m_ShowOSDValidation->SetDefaultBoolean(true);
 
-    m_ShowOSDKeys = config->GetProperty("OSD", "ShowKeysPanel");
-    m_ShowOSDKeys->SetComment("Show the input keys panel (real-time key state display)");
-    m_ShowOSDKeys->SetDefaultBoolean(true);
+    m_ShowOSDWatches = config->GetProperty("OSD", "ShowWatchPanel");
+    m_ShowOSDWatches->SetComment("Show the values scripts set with tas.hud.set");
+    m_ShowOSDWatches->SetDefaultBoolean(true);
 
     m_OSDPositionX = config->GetProperty("OSD", "PositionX");
     m_OSDPositionX->SetComment("OSD horizontal position (0.0 = left, 1.0 = right)");
@@ -145,9 +145,9 @@ void ConfigService::OnPropertyChanged(const char *category, const char *key, IPr
         prop == m_StopOnFinish || prop == m_StopKey || prop == m_RecordingMaxFrames ||
         prop == m_StartupScriptEnabled || prop == m_StartupScriptProject || prop == m_StartupLevel ||
         prop == m_AutoLoadStartupScript || prop == m_ShowOSD ||
-        prop == m_ShowOSDStatus || prop == m_ShowOSDVelocity ||
-        prop == m_ShowOSDPosition || prop == m_ShowOSDPhysics ||
-        prop == m_ShowOSDKeys || prop == m_OSDPositionX || prop == m_OSDPositionY ||
+        prop == m_ShowOSDStatus || prop == m_ShowOSDBall ||
+        prop == m_ShowOSDInput || prop == m_ShowOSDValidation ||
+        prop == m_ShowOSDWatches || prop == m_OSDPositionX || prop == m_OSDPositionY ||
         prop == m_OSDOpacity || prop == m_OSDScale) {
         m_EventBus->Publish(ConfigChangedEvent{category, key});
     }
@@ -175,10 +175,10 @@ void ConfigService::SetStartupProjectChoices(const std::vector<std::string> &pro
 OSDConfig ConfigService::GetOSDConfig() const {
     OSDConfig cfg;
     if (m_ShowOSDStatus)   cfg.showStatus   = m_ShowOSDStatus->GetBoolean();
-    if (m_ShowOSDVelocity) cfg.showVelocity = m_ShowOSDVelocity->GetBoolean();
-    if (m_ShowOSDPosition) cfg.showPosition = m_ShowOSDPosition->GetBoolean();
-    if (m_ShowOSDPhysics)  cfg.showPhysics  = m_ShowOSDPhysics->GetBoolean();
-    if (m_ShowOSDKeys)     cfg.showKeys     = m_ShowOSDKeys->GetBoolean();
+    if (m_ShowOSDBall)       cfg.showBall       = m_ShowOSDBall->GetBoolean();
+    if (m_ShowOSDInput)      cfg.showInput      = m_ShowOSDInput->GetBoolean();
+    if (m_ShowOSDValidation) cfg.showValidation = m_ShowOSDValidation->GetBoolean();
+    if (m_ShowOSDWatches)    cfg.showWatches    = m_ShowOSDWatches->GetBoolean();
     if (m_OSDPositionX)    cfg.positionX    = m_OSDPositionX->GetFloat();
     if (m_OSDPositionY)    cfg.positionY    = m_OSDPositionY->GetFloat();
     if (m_OSDOpacity)      cfg.opacity      = m_OSDOpacity->GetFloat();

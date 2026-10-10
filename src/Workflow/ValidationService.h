@@ -48,6 +48,22 @@ struct ValidationReport {
 };
 
 /**
+ * @struct ValidationLiveStatus
+ * @brief Frame-by-frame comparison of a running validation against its reference (for the HUD).
+ */
+struct ValidationLiveStatus {
+    bool hasReference = false;
+    bool exact = false;
+    size_t capturedFrames = 0;        ///< Frames captured so far.
+    size_t referenceFrames = 0;
+    bool diverged = false;            ///< Some captured frame differed from the reference.
+    size_t firstDivergenceFrame = 0;  ///< Valid when diverged.
+    bool pastReferenceEnd = false;    ///< The run has more frames than the reference.
+    float positionError = 0.0f;       ///< Of the latest compared frame.
+    float velocityError = 0.0f;
+};
+
+/**
  * @class ValidationService
  * @brief Captures a validation recording during playback and verifies reproducibility.
  *
@@ -92,6 +108,9 @@ public:
     /** Result of the most recent Stop() comparison (empty/no-reference if none). */
     const ValidationReport &GetLastReport() const { return m_LastReport; }
 
+    /** Comparison of the running validation so far; reset by Start(). */
+    const ValidationLiveStatus &GetLiveStatus() const { return m_LiveStatus; }
+
     // --- Configuration ---
     void SetConfig(const ValidationConfig &config) { m_Config = config; }
     const ValidationConfig &GetConfig() const { return m_Config; }
@@ -100,6 +119,11 @@ public:
     static ValidationReport CompareFrameData(const std::vector<FrameData> &live,
                                              const std::vector<FrameData> &reference,
                                              const ValidationConfig &config = {});
+
+    /** Whether one live frame's physics differs from its reference frame under config. */
+    static bool PhysicsDiverges(const PhysicsData &live, const PhysicsData &reference,
+                                const ValidationConfig &config,
+                                float &positionError, float &velocityError);
 
 private:
     Recorder &m_Recorder;
@@ -115,6 +139,9 @@ private:
     ValidationConfig m_Config;
     std::vector<FrameData> m_ReferenceFrames;  ///< Loaded reference trace (empty if none).
     ValidationReport m_LastReport;
+    ValidationLiveStatus m_LiveStatus;
+
+    void UpdateLiveStatus();
 
     void LogReport() const;
     bool WriteReportFile(const std::string &path) const;

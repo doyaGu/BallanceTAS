@@ -10,10 +10,10 @@ class EventBus;
 /// OSD panel configuration snapshot, read by UIManager/InGameOSD.
 struct OSDConfig {
     bool showStatus = true;
-    bool showVelocity = true;
-    bool showPosition = true;
-    bool showPhysics = false;
-    bool showKeys = true;
+    bool showBall = true;
+    bool showInput = true;
+    bool showValidation = true;
+    bool showWatches = true;
     float positionX = 0.02f;
     float positionY = 0.02f;
     float opacity = 0.9f;
@@ -93,10 +93,10 @@ private:
     // OSD
     IProperty *m_ShowOSD = nullptr;
     IProperty *m_ShowOSDStatus = nullptr;
-    IProperty *m_ShowOSDVelocity = nullptr;
-    IProperty *m_ShowOSDPosition = nullptr;
-    IProperty *m_ShowOSDPhysics = nullptr;
-    IProperty *m_ShowOSDKeys = nullptr;
+    IProperty *m_ShowOSDBall = nullptr;
+    IProperty *m_ShowOSDInput = nullptr;
+    IProperty *m_ShowOSDValidation = nullptr;
+    IProperty *m_ShowOSDWatches = nullptr;
     IProperty *m_OSDPositionX = nullptr;
     IProperty *m_OSDPositionY = nullptr;
     IProperty *m_OSDOpacity = nullptr;

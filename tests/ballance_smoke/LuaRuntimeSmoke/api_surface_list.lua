@@ -324,6 +324,8 @@ return {
   "tas.harness.pass",
   "tas.has_listeners",
   "tas.hold",
+  "tas.hud.clear",
+  "tas.hud.set",
   "tas.is_paused",
   "tas.is_playing",
   "tas.key_down",

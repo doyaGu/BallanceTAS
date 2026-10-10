@@ -67,8 +67,13 @@ Result<void> ValidationService::Start(const std::string &outputPath,
                 return;
             }
             m_Recorder.Tick(m_CaptureFrame++, inputManager->GetKeyboardState());
+            UpdateLiveStatus();
         });
     m_LastReport = ValidationReport{};
+    m_LiveStatus = ValidationLiveStatus{};
+    m_LiveStatus.hasReference = !m_ReferenceFrames.empty();
+    m_LiveStatus.exact = m_Config.exact;
+    m_LiveStatus.referenceFrames = m_ReferenceFrames.size();
     if (m_ReferenceFrames.empty()) {
         Log::Info("ValidationService: Started validation recording - output: %s",
                   outputPath.c_str());
@@ -79,6 +84,26 @@ Result<void> ValidationService::Start(const std::string &outputPath,
     }
     m_EventBus.Publish(ValidationStartedEvent{outputPath});
     return Result<void>::Ok();
+}
+
+void ValidationService::UpdateLiveStatus() {
+    const auto &frames = m_Recorder.GetFrames();
+    m_LiveStatus.capturedFrames = frames.size();
+    if (!m_LiveStatus.hasReference || frames.empty()) {
+        return;
+    }
+    const size_t index = frames.size() - 1;
+    if (index >= m_ReferenceFrames.size()) {
+        m_LiveStatus.pastReferenceEnd = true;
+        return;
+    }
+    const bool diverged = PhysicsDiverges(frames[index].physics, m_ReferenceFrames[index].physics,
+                                          m_Config, m_LiveStatus.positionError,
+                                          m_LiveStatus.velocityError);
+    if (diverged && !m_LiveStatus.diverged) {
+        m_LiveStatus.diverged = true;
+        m_LiveStatus.firstDivergenceFrame = frames[index].frameIndex;
+    }
 }
 
 Result<void> ValidationService::Stop() {

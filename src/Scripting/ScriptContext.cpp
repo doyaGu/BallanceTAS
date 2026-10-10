@@ -12,6 +12,7 @@
 #include "LuaRuntime/LuaStackGuard.h"
 #include "LuaRuntime/LuaValue.h"
 #include "EventManager.h"
+#include "HudWatches.h"
 #include "InputSystem.h"
 #include "ProjectManager.h"
 #include "RecordPlayer.h"
@@ -164,6 +165,9 @@ void ScriptContext::Shutdown() {
             if (sharedData) {
                 sharedData->UnwatchAll(m_Name);
             }
+        }
+        if (auto *hud = m_Engine->GetServiceProvider().Resolve<HudWatches>()) {
+            hud->ClearOwner(m_Name);
         }
 
         // Stop any running script

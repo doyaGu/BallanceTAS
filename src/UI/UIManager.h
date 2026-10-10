@@ -185,10 +185,6 @@ public:
      */
     void ToggleOSDPanel(OSDPanel panel);
 
-    /**
-     * @brief Cycles the trajectory view plane (XZ -> XY -> YZ).
-     */
-    void CycleTrajectoryPlane();
 
     // --- State Management ---
 
@@ -240,28 +236,12 @@ public:
     void SetStatusPanelHotkey(CKKEYBOARD key) { m_StatusPanelHotkey = Bui::CKKeyToImGuiKey(key); }
 
     /**
-     * @brief Sets the hotkey for toggling the velocity panel.
-     * @param key The key code (default: CKKEY_F6).
+     * @brief Sets the hotkeys toggling the ball, input, validation and watch panels.
      */
-    void SetVelocityPanelHotkey(CKKEYBOARD key) { m_VelocityPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-
-    /**
-     * @brief Sets the hotkey for toggling the position panel.
-     * @param key The key code (default: CKKEY_F7).
-     */
-    void SetPositionPanelHotkey(CKKEYBOARD key) { m_PositionPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-
-    /**
-     * @brief Sets the hotkey for toggling the physics panel.
-     * @param key The key code (default: CKKEY_F8).
-     */
-    void SetPhysicsPanelHotkey(CKKEYBOARD key) { m_PhysicsPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-
-    /**
-     * @brief Sets the hotkey for cycling trajectory plane.
-     * @param key The key code (default: CKKEY_F9).
-     */
-    void SetTrajectoryPlaneHotkey(CKKEYBOARD key) { m_TrajectoryPlaneHotkey = Bui::CKKeyToImGuiKey(key); }
+    void SetBallPanelHotkey(CKKEYBOARD key) { m_BallPanelHotkey = Bui::CKKeyToImGuiKey(key); }
+    void SetInputPanelHotkey(CKKEYBOARD key) { m_InputPanelHotkey = Bui::CKKeyToImGuiKey(key); }
+    void SetValidationPanelHotkey(CKKEYBOARD key) { m_ValidationPanelHotkey = Bui::CKKeyToImGuiKey(key); }
+    void SetWatchesPanelHotkey(CKKEYBOARD key) { m_WatchesPanelHotkey = Bui::CKKeyToImGuiKey(key); }
 
 private:
     // --- Internal Methods ---
@@ -283,9 +263,8 @@ private:
     ImGuiKey m_StopHotkey = ImGuiKey_F3;
     ImGuiKey m_OSDHotkey = ImGuiKey_F11;
     ImGuiKey m_StatusPanelHotkey = ImGuiKey_F5;
-    ImGuiKey m_VelocityPanelHotkey = ImGuiKey_F6;
-    ImGuiKey m_PositionPanelHotkey = ImGuiKey_F7;
-    ImGuiKey m_PhysicsPanelHotkey = ImGuiKey_F8;
-    ImGuiKey m_KeysPanelHotkey = ImGuiKey_F4;
-    ImGuiKey m_TrajectoryPlaneHotkey = ImGuiKey_F9;
+    ImGuiKey m_BallPanelHotkey = ImGuiKey_F6;
+    ImGuiKey m_ValidationPanelHotkey = ImGuiKey_F7;
+    ImGuiKey m_WatchesPanelHotkey = ImGuiKey_F8;
+    ImGuiKey m_InputPanelHotkey = ImGuiKey_F4;
 };

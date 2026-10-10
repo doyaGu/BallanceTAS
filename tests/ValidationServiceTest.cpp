@@ -110,4 +110,25 @@ TEST(ValidationServiceTest, ExactModeCatchesTheSmallestDifference) {
     EXPECT_EQ(report.firstDivergenceFrame, 10u);
 }
 
+TEST(ValidationServiceTest, PhysicsDivergesReportsErrorsAndHonoursTheMode) {
+    PhysicsData reference;
+    reference.position = VxVector(1.0f, 2.0f, 3.0f);
+    PhysicsData live = reference;
+    live.position.x += 0.5f;
+
+    float positionError = -1.0f;
+    float velocityError = -1.0f;
+    EXPECT_FALSE(ValidationService::PhysicsDiverges(live, reference, {}, positionError, velocityError));
+    EXPECT_FLOAT_EQ(positionError, 0.5f);
+    EXPECT_FLOAT_EQ(velocityError, 0.0f);
+
+    ValidationConfig exact;
+    exact.exact = true;
+    EXPECT_TRUE(ValidationService::PhysicsDiverges(live, reference, exact, positionError, velocityError));
+    EXPECT_FALSE(ValidationService::PhysicsDiverges(reference, reference, exact, positionError, velocityError));
+
+    live.position.x += 1.0f;
+    EXPECT_TRUE(ValidationService::PhysicsDiverges(live, reference, {}, positionError, velocityError));
+}
+
 } // namespace

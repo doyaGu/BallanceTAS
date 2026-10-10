@@ -279,17 +279,17 @@ void UIManager::ToggleOSDPanel(OSDPanel panel) {
     case OSDPanel::Status:
         panelName = "Status";
         break;
-    case OSDPanel::Velocity:
-        panelName = "Velocity";
+    case OSDPanel::Ball:
+        panelName = "Ball";
         break;
-    case OSDPanel::Position:
-        panelName = "Position";
+    case OSDPanel::Input:
+        panelName = "Input";
         break;
-    case OSDPanel::Physics:
-        panelName = "Physics";
+    case OSDPanel::Validation:
+        panelName = "Validation";
         break;
-    case OSDPanel::Keys:
-        panelName = "Keys";
+    case OSDPanel::Watches:
+        panelName = "Watches";
         break;
     }
 
@@ -297,11 +297,6 @@ void UIManager::ToggleOSDPanel(OSDPanel panel) {
     if (m_Engine) {
         Log::Info("OSD %s panel %s", panelName, isVisible ? "shown" : "hidden");
     }
-}
-
-void UIManager::CycleTrajectoryPlane() {
-    if (m_InGameOSD)
-        m_InGameOSD->CycleTrajectoryPlane();
 }
 
 void UIManager::SetMode(UIMode mode) {
@@ -351,24 +346,20 @@ void UIManager::UpdateHotkeys() {
             ToggleOSDPanel(OSDPanel::Status);
         }
 
-        if (ImGui::IsKeyPressed(m_VelocityPanelHotkey, false)) {
-            ToggleOSDPanel(OSDPanel::Velocity);
+        if (ImGui::IsKeyPressed(m_BallPanelHotkey, false)) {
+            ToggleOSDPanel(OSDPanel::Ball);
         }
 
-        if (ImGui::IsKeyPressed(m_PositionPanelHotkey, false)) {
-            ToggleOSDPanel(OSDPanel::Position);
+        if (ImGui::IsKeyPressed(m_InputPanelHotkey, false)) {
+            ToggleOSDPanel(OSDPanel::Input);
         }
 
-        if (ImGui::IsKeyPressed(m_PhysicsPanelHotkey, false)) {
-            ToggleOSDPanel(OSDPanel::Physics);
+        if (ImGui::IsKeyPressed(m_ValidationPanelHotkey, false)) {
+            ToggleOSDPanel(OSDPanel::Validation);
         }
 
-        if (ImGui::IsKeyPressed(m_KeysPanelHotkey, false)) {
-            ToggleOSDPanel(OSDPanel::Keys);
-        }
-
-        if (ImGui::IsKeyPressed(m_TrajectoryPlaneHotkey, false)) {
-            CycleTrajectoryPlane();
+        if (ImGui::IsKeyPressed(m_WatchesPanelHotkey, false)) {
+            ToggleOSDPanel(OSDPanel::Watches);
         }
     }
 }

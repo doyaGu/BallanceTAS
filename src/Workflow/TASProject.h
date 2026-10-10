@@ -64,6 +64,9 @@ public:
     const std::string &GetEntryScript() const { return m_EntryScript; }
     float GetUpdateRate() const { return m_UpdateRate; }
     float GetDeltaTime() const { return m_UpdateRate > 0.0f ? 1000.0f / m_UpdateRate : 1000.0f / kDefaultUpdateRate; }
+    /// Time of the first played frame: a record's first frame, or a script's manifest
+    /// frame_time (exact, unlike 1000 / update_rate). The level load keeps GetDeltaTime.
+    float GetInitialFrameTime() const { return m_InitialFrameTime > 0.0f ? m_InitialFrameTime : GetDeltaTime(); }
 
     // --- Execution Trigger Information ---
     const std::string &GetExecutionTrigger() const { return m_ExecutionTrigger; }
@@ -135,12 +138,12 @@ public:
     // --- Translation Compatibility ---
 
     /**
-     * @brief Checks if the record project can be accurately translated to script format.
-     * Only records with constant delta time can be translated accurately.
-     * @return True if the record has constant delta time and can be translated.
+     * @brief Checks if the record project can be translated to script format.
+     * Variable frame times are kept: the script asks for them with tas.set_frame_time.
+     * @return True if the record is valid and has frames.
      */
     bool CanBeTranslated() const {
-        return IsRecordProject() && IsValid() && m_HasConstantDeltaTime;
+        return IsRecordProject() && IsValid() && m_RecordFrameCount > 0;
     }
 
     /**
@@ -182,6 +185,7 @@ private:
     std::string m_EntryScript = "main.lua";
     std::string m_TargetLevel;
     float m_UpdateRate = kDefaultUpdateRate; // Default to 132 = 66 * 2 (game's physics update rate)
+    float m_InitialFrameTime = 0.0f;         // 0: GetDeltaTime()
 
     // Project scope and execution
     ProjectScope m_ProjectScope = ProjectScope::Level;

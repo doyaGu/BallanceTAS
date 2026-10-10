@@ -50,8 +50,15 @@ ValidationReport ValidationService::CompareFrameData(const std::vector<FrameData
             report.maxVelocityFrame = frame;
         }
 
-        if (live[index].frameIndex != reference[index].frameIndex ||
-            positionError > positionEpsilon || velocityError > velocityEpsilon) {
+        const bool diverged = config.exact
+            ? livePhysics.position.x != referencePhysics.position.x ||
+              livePhysics.position.y != referencePhysics.position.y ||
+              livePhysics.position.z != referencePhysics.position.z ||
+              livePhysics.velocity.x != referencePhysics.velocity.x ||
+              livePhysics.velocity.y != referencePhysics.velocity.y ||
+              livePhysics.velocity.z != referencePhysics.velocity.z
+            : positionError > positionEpsilon || velocityError > velocityEpsilon;
+        if (live[index].frameIndex != reference[index].frameIndex || diverged) {
             if (report.divergentFrames == 0) {
                 report.firstDivergenceFrame = frame;
             }

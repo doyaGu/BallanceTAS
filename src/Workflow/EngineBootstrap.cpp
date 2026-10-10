@@ -29,6 +29,7 @@
 #include "TranslationService.h"
 #include "UIManager.h"
 #include "ValidationService.h"
+#include "ScriptFrameTime.h"
 
 #ifdef ENABLE_REPL
 #include "LuaREPLServer.h"
@@ -148,7 +149,7 @@ RuntimeSession::Hooks BuildRuntimeSessionHooks(TASEngine &engine) {
         return service && service->IsTranslating();
     };
 
-    hooks.startValidationForPlayback = [services](TASProject *project) {
+    hooks.startValidationForPlayback = [services, &engine](TASProject *project) {
         auto *validation = services->Resolve<ValidationService>();
         auto *playback = services->Resolve<PlaybackService>();
         if (!validation || !playback || validation->IsActive()) {
@@ -165,7 +166,13 @@ RuntimeSession::Hooks BuildRuntimeSessionHooks(TASEngine &engine) {
                 outputPath.push_back('\\');
             }
         }
-        return outputPath.empty() ? Result<void>::Ok() : validation->Start(outputPath);
+        if (outputPath.empty()) {
+            return Result<void>::Ok();
+        }
+        ValidationConfig config;
+        config.exact = engine.IsRequestedValidationExact();
+        validation->SetConfig(config);
+        return validation->Start(outputPath, engine.GetRequestedValidationReference());
     };
     hooks.stopValidationGraceful = [services]() {
         auto *validation = services->Resolve<ValidationService>();
@@ -263,6 +270,7 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
 
         // Core subsystems — container takes ownership
         c.RegisterSingletonInstance<InputSystem>(std::make_unique<InputSystem>());
+        c.RegisterSingletonInstance<ScriptFrameTime>(std::make_unique<ScriptFrameTime>());
         c.RegisterSingletonInstance<EventManager>(std::make_unique<EventManager>());
         c.RegisterSingletonInstance<Recorder>(std::make_unique<Recorder>(&engine));
         c.RegisterSingletonInstance<ScriptGenerator>(std::make_unique<ScriptGenerator>(&engine));
@@ -286,6 +294,7 @@ bool EngineBootstrap::InitializeCoreSubsystems(TASEngine &engine) {
                 *c.Resolve<InputSystem>(),
                 *engine.m_HookManager,
                 *engine.m_EventBus,
+                *c.Resolve<ScriptFrameTime>(),
                 engine.GetPath()));
         c.RegisterSingletonInstance<ValidationService>(
             std::make_unique<ValidationService>(

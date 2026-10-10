@@ -3,6 +3,8 @@
 #include "LuaApiCommon.h"
 #include "Logger.h"
 #include "ScriptContext.h"
+#include "ScriptFrameTime.h"
+#include "TASEngine.h"
 #include "TASProject.h"
 
 using namespace LuaApiCommon;
@@ -71,6 +73,37 @@ static int TasGetManifest(lua_State *L) {
     return 1;
 }
 
+static ScriptFrameTime *GetFrameTime(lua_State *L) {
+    ScriptContext *context = GetContext(L);
+    TASEngine *engine = context ? context->GetEngine() : nullptr;
+    return engine ? engine->GetServiceProvider().Resolve<ScriptFrameTime>() : nullptr;
+}
+
+// tas.set_frame_time(ms) -> true | false, reason
+// The game time each frame of a script playback lasts, from the next frame on.
+static int TasSetFrameTime(lua_State *L) {
+    const lua_Number ms = luaL_checknumber(L, 1);
+    if (!(ms > 0.0) || ms > 1000.0) {
+        return RaiseArg(L, "tas.set_frame_time", 1, "a frame time in ms, above 0 and at most 1000");
+    }
+    ScriptFrameTime *frameTime = GetFrameTime(L);
+    if (!frameTime || !frameTime->Set(static_cast<float>(ms))) {
+        return PushFail(L, "no script playback is running");
+    }
+    return PushOk(L);
+}
+
+// tas.get_frame_time() -> ms | nil (no script playback)
+static int TasGetFrameTime(lua_State *L) {
+    ScriptFrameTime *frameTime = GetFrameTime(L);
+    if (!frameTime || !frameTime->IsActive()) {
+        lua_pushnil(L);
+    } else {
+        lua_pushnumber(L, frameTime->Get());
+    }
+    return 1;
+}
+
 void LuaApi::RegisterCoreApi(lua_State *state, ScriptContext *context) {
     lua_getglobal(state, "tas");
     SetClosure(state, "log", TasLog, context);
@@ -78,5 +111,7 @@ void LuaApi::RegisterCoreApi(lua_State *state, ScriptContext *context) {
     SetClosure(state, "error", TasError, context);
     SetClosure(state, "get_tick", TasGetTick, context);
     SetClosure(state, "get_manifest", TasGetManifest, context);
+    SetClosure(state, "set_frame_time", TasSetFrameTime, context);
+    SetClosure(state, "get_frame_time", TasGetFrameTime, context);
     lua_pop(state, 1);
 }

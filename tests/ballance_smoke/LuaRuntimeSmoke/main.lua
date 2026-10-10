@@ -21,6 +21,7 @@ local modules = {
   { name = "api_extras_smoke", label = "API Extras Smoke" },
   { name = "menu_smoke", label = "Menu Smoke" },
   { name = "level_smoke", label = "Level Smoke" },
+  { name = "loop_smoke", label = "Loop Smoke" },
   { name = "game_flow_smoke", label = "Game Flow Smoke" },
 }
 

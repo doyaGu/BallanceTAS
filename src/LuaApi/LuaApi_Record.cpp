@@ -1,8 +1,11 @@
 #include "LuaApi.h"
 
 #include "LuaApiCommon.h"
+#include "ProjectManager.h"
+#include "RecordFileIO.h"
 #include "RecordPlayer.h"
 #include "ScriptContext.h"
+#include "TASProject.h"
 
 #include <algorithm>
 #include <optional>
@@ -829,6 +832,82 @@ static int GetAllSavestateLinks(lua_State *L) {
     return 1;
 }
 
+// A record project's name, or else a path to a .tas file.
+static std::string ResolveRecordPath(ScriptContext *context, const char *target) {
+    if (ProjectManager *manager = context ? context->GetProjectManager() : nullptr) {
+        for (const auto &project : manager->GetProjects()) {
+            if (project && project->IsRecordProject() && project->GetName() == target) {
+                return project->GetPath();
+            }
+        }
+    }
+    return target;
+}
+
+// Key names of a record frame, in RecordKeyState bit order.
+static void PushRecordKeys(lua_State *L, int keyStates) {
+    static const char *const kKeys[] = {"up", "down", "left", "right", "shift", "space", "q", "esc", "enter"};
+    lua_newtable(L);
+    lua_Integer index = 1;
+    for (int bit = 0; bit < 9; ++bit) {
+        if (keyStates & (1 << bit)) {
+            lua_pushstring(L, kKeys[bit]);
+            lua_rawseti(L, -2, index++);
+        }
+    }
+}
+
+// tas.record.compare(a, b[, { prefix = bool }]) -> report | nil, reason
+// Compares two records frame by frame: keys and frame times, exactly. a and b are record
+// project names or .tas paths. With prefix, frames past the shorter record are ignored.
+static int Compare(lua_State *L) {
+    const char *a = CheckNonEmptyString(L, 1, "tas.record.compare");
+    const char *b = CheckNonEmptyString(L, 2, "tas.record.compare");
+    bool prefix = false;
+    if (!lua_isnoneornil(L, 3)) {
+        luaL_checktype(L, 3, LUA_TTABLE);
+        lua_getfield(L, 3, "prefix");
+        if (!lua_isnil(L, -1) && !lua_isboolean(L, -1)) {
+            return Raise(L, "tas.record.compare", "options.prefix must be a boolean");
+        }
+        prefix = lua_toboolean(L, -1) != 0;
+        lua_pop(L, 1);
+    }
+
+    ScriptContext *context = GetContext(L);
+    auto readA = tas::record::ReadLegacyRecordFile(ResolveRecordPath(context, a));
+    auto readB = tas::record::ReadLegacyRecordFile(ResolveRecordPath(context, b));
+    if (!readA.IsOk() || !readB.IsOk()) {
+        return PushNilReason(L, (readA.IsOk() ? readB : readA).GetError().message);
+    }
+    const auto result = tas::record::CompareRecordFrames(readA.Unwrap(), readB.Unwrap(), prefix);
+
+    lua_createtable(L, 0, 10);
+    lua_pushboolean(L, result.identical);
+    lua_setfield(L, -2, "identical");
+    lua_pushinteger(L, static_cast<lua_Integer>(result.framesA));
+    lua_setfield(L, -2, "frames_a");
+    lua_pushinteger(L, static_cast<lua_Integer>(result.framesB));
+    lua_setfield(L, -2, "frames_b");
+    lua_pushinteger(L, static_cast<lua_Integer>(result.comparedFrames));
+    lua_setfield(L, -2, "compared_frames");
+    lua_pushinteger(L, static_cast<lua_Integer>(result.differingFrames));
+    lua_setfield(L, -2, "differing_frames");
+    if (result.hasDifference) {
+        lua_pushinteger(L, static_cast<lua_Integer>(result.firstDifference));
+        lua_setfield(L, -2, "first_difference");
+        PushRecordKeys(L, result.frameA.keyStates);
+        lua_setfield(L, -2, "keys_a");
+        PushRecordKeys(L, result.frameB.keyStates);
+        lua_setfield(L, -2, "keys_b");
+        lua_pushnumber(L, result.frameA.deltaTime);
+        lua_setfield(L, -2, "frame_time_a");
+        lua_pushnumber(L, result.frameB.deltaTime);
+        lua_setfield(L, -2, "frame_time_b");
+    }
+    return 1;
+}
+
 static void SetRecordFunction(lua_State *L, const char *name, lua_CFunction function, ScriptContext *context) {
     lua_pushlightuserdata(L, context);
     lua_pushcclosure(L, function, 1);
@@ -953,6 +1032,7 @@ void LuaApi::RegisterRecordApi(lua_State *state, ScriptContext *context) {
     SetRecordFunction(state, "unlink_savestate", UnlinkSavestate, context);
     SetRecordFunction(state, "get_savestate_link", GetSavestateLink, context);
     SetRecordFunction(state, "get_savestate_links", GetAllSavestateLinks, context);
+    SetRecordFunction(state, "compare", Compare, context);
     // Deprecated names, the same function objects.
     SetAlias(state, "delete_macro", "remove_macro");
     SetAlias(state, "delete_branch", "remove_branch");

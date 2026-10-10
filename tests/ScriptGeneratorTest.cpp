@@ -190,3 +190,59 @@ TEST(ScriptGeneratorTest, GeneratedManifestDoesNotStorePreloadRngState) {
     EXPECT_EQ(manifest.find("ivp_seed"), std::string::npos) << manifest;
     EXPECT_EQ(manifest.find("qh_seed"), std::string::npos) << manifest;
 }
+
+TEST(ScriptGeneratorTest, GeneratedScriptAsksForEachFrameTimeChangeOneTickEarly) {
+    std::vector<FrameData> frames(6);
+    const float times[] = {4.1666665f, 4.1666665f, 4.1666665f, 8.0f, 8.0f, 4.1666665f};
+    for (size_t i = 0; i < frames.size(); ++i) {
+        frames[i].frameIndex = i;
+        frames[i].deltaTime = times[i];
+    }
+
+    GenerationOptions options;
+    options.addFrameComments = false;
+    options.addSectionSeparators = false;
+
+    const std::string script = BuildGeneratedLuaScriptForTesting(frames, options);
+    // Frame 3 runs at 8 ms, so tick 2 asks for it; frame 5 goes back, asked at tick 4.
+    const std::string expected =
+        "  tas.wait_ticks(2)\n"
+        "  tas.set_frame_time(8)\n"
+        "  tas.wait_ticks(2)\n"
+        "  tas.set_frame_time(4.16666651)\n";
+    EXPECT_NE(script.find(expected), std::string::npos) << script;
+}
+
+TEST(ScriptGeneratorTest, ConstantFrameTimeNeedsNoFrameTimeCalls) {
+    std::vector<FrameData> frames(4);
+    for (size_t i = 0; i < frames.size(); ++i) {
+        frames[i].frameIndex = i;
+        frames[i].deltaTime = 4.1666665f;
+    }
+    GenerationOptions options;
+    const std::string script = BuildGeneratedLuaScriptForTesting(frames, options);
+    EXPECT_EQ(script.find("set_frame_time"), std::string::npos) << script;
+}
+
+TEST(ScriptGeneratorTest, GeneratedManifestStoresExactFirstFrameTime) {
+    GenerationOptions options;
+    options.updateRate = 1000.0f / 4.1666665f;
+    options.frameTime = 4.1666665f;
+    const std::string manifest = BuildGeneratedManifestForTesting(options, {});
+    EXPECT_NE(manifest.find("frame_time = 4.16666651,"), std::string::npos) << manifest;
+    EXPECT_NE(manifest.find("update_rate = 240.000015,"), std::string::npos) << manifest;
+}
+
+TEST(ScriptGeneratorTest, KeysHeldAtTheEndStayHeldThroughTheLastFrame) {
+    std::vector<FrameData> frames(3);
+    for (size_t i = 0; i < frames.size(); ++i) {
+        frames[i].frameIndex = i;
+        frames[i].inputState = State(i >= 1, false);
+    }
+    GenerationOptions options;
+    options.addFrameComments = false;
+    const std::string script = BuildGeneratedLuaScriptForTesting(frames, options);
+    // A release at the last frame would take the key out of that frame's input.
+    EXPECT_NE(script.find("tas.key_down(\"up\")"), std::string::npos) << script;
+    EXPECT_EQ(script.find("tas.key_up(\"up\")"), std::string::npos) << script;
+}

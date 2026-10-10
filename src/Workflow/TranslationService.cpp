@@ -11,6 +11,7 @@
 #include "InputSystem.h"
 #include "Recorder.h"
 #include "RecordPlayer.h"
+#include "ScriptFrameTime.h"
 #include "ScriptContext.h"
 #include "ScriptContextManager.h"
 #include "TASProject.h"
@@ -58,8 +59,10 @@ TranslationService::TranslationService(Recorder &recorder,
                                        InputSystem &inputSystem,
                                        HookManager &hookManager,
                                        EventBus &eventBus,
+                                       ScriptFrameTime &frameTime,
                                        std::string tasRootPath)
     : m_EventBus(eventBus),
+      m_FrameTime(frameTime),
       m_HookManager(hookManager),
       m_Recorder(recorder),
       m_RecordPlayer(recordPlayer),
@@ -129,7 +132,7 @@ Result<void> TranslationService::ActivateRecordToScriptTranslation() {
     auto options = BuildGenerationOptions(m_CurrentProject);
     m_Recorder.SetGenerationOptions(options);
     m_Recorder.SetUpdateRate(m_CurrentProject->GetUpdateRate());
-    m_Recorder.SetAutoGenerate(true);
+    m_Recorder.SetAutoGenerate(false);
     m_Recorder.SetTranslationMode(true);
 
     m_Recorder.Start();
@@ -168,7 +171,9 @@ Result<void> TranslationService::ActivateScriptToRecordTranslation() {
     if (!ctx) {
         return Result<void>::Error("Failed to create script context", "translation");
     }
+    m_FrameTime.Begin(m_CurrentProject->GetInitialFrameTime());
     if (!ctx->LoadAndExecute(m_CurrentProject)) {
+        m_FrameTime.End();
         return Result<void>::Error("Failed to load and execute script", "translation");
     }
 
@@ -183,6 +188,7 @@ Result<void> TranslationService::ActivateScriptToRecordTranslation() {
     m_InputSystem.SetEnabled(true);
     m_InputSystem.Reset();
     m_CapturedRecordFrames.clear();
+    m_RecordWritten = false;
     m_CurrentTick = 0;
     m_CompletionSignaled = false;
 
@@ -215,14 +221,15 @@ Result<void> TranslationService::StopTranslationGraceful(bool clearProject) {
     }
 
     RemoveHookCallbacks();
+    m_FrameTime.End();
 
     if (m_Direction == TranslationDirection::RecordToScript) {
         m_RecordPlayer.Stop();
 
         if (m_Recorder.IsRecording()) {
             m_Recorder.Stop();
-            Log::Info("TranslationService: Recorder stopped, script generated.");
         }
+        FinishRecordToScript();
     } else if (m_Direction == TranslationDirection::ScriptToRecord) {
         auto ctx = m_ScriptContextManager.GetContext(m_ScriptContextName);
         if (ctx && ctx->IsExecuting()) {
@@ -230,6 +237,8 @@ Result<void> TranslationService::StopTranslationGraceful(bool clearProject) {
         }
         m_InputSystem.Reset();
         m_InputSystem.SetEnabled(false);
+        // The level end can stop the translation before the script returns.
+        WriteCapturedRecord();
     }
 
     auto *im = m_InputAccess.GetInputManager();
@@ -253,6 +262,7 @@ Result<void> TranslationService::StopTranslationGraceful(bool clearProject) {
 
 void TranslationService::StopTranslationImmediate() {
     RemoveHookCallbacks();
+    m_FrameTime.End();
 
     m_RecordPlayer.Stop();
     auto ctx = m_ScriptContextManager.GetContext(m_ScriptContextName);
@@ -301,10 +311,9 @@ void TranslationService::InstallRecordToScriptCallbacks() {
                 return;
             }
 
+            // Each record frame's own time, exactly as record playback gives it.
             auto *tm = static_cast<CKTimeManager *>(man);
-            if (m_CurrentProject && m_CurrentProject->IsValid()) {
-                tm->SetLastDeltaTime(m_CurrentProject->GetDeltaTime());
-            }
+            tm->SetLastDeltaTime(m_RecordPlayer.GetFrameDeltaTime(m_CurrentTick));
         });
 
     m_PostInputGuard = m_HookManager.RegisterPostInputCallback(
@@ -316,12 +325,18 @@ void TranslationService::InstallRecordToScriptCallbacks() {
             auto *im = static_cast<CKInputManager *>(man);
             unsigned char *keyboardState = im->GetKeyboardState();
 
+            // The player notices the record's end one tick after its last frame; that tick
+            // is not a record frame, so the script must not get it.
+            const bool recordFrame = m_RecordPlayer.IsPlaying() && m_CurrentTick < m_RecordPlayer.GetTotalFrames();
+            const float recordFrameTime = recordFrame ? m_RecordPlayer.GetFrameDeltaTimeByFrame(m_CurrentTick) : 0.0f;
             if (m_RecordPlayer.IsPlaying()) {
                 m_RecordPlayer.Tick(m_CurrentTick, keyboardState);
             }
 
-            if (m_Recorder.IsRecording()) {
+            if (recordFrame && m_Recorder.IsRecording()) {
                 m_Recorder.Tick(m_CurrentTick, keyboardState);
+                // The generated script reproduces the record's frame times.
+                m_Recorder.SetLastFrameDeltaTime(recordFrameTime);
             }
 
             ++m_CurrentTick;
@@ -340,9 +355,7 @@ void TranslationService::InstallScriptToRecordCallbacks() {
             }
 
             auto *tm = static_cast<CKTimeManager *>(man);
-            if (m_CurrentProject && m_CurrentProject->IsValid()) {
-                tm->SetLastDeltaTime(m_CurrentProject->GetDeltaTime());
-            }
+            tm->SetLastDeltaTime(m_FrameTime.Get());
         });
 
     m_PostInputGuard = m_HookManager.RegisterPostInputCallback(
@@ -354,22 +367,27 @@ void TranslationService::InstallScriptToRecordCallbacks() {
             auto *im = static_cast<CKInputManager *>(man);
             unsigned char *keyboardState = im->GetKeyboardState();
 
+            // This frame runs at the time in effect before the script's tick; a change the
+            // tick makes applies from the next frame.
+            const float frameTime = m_FrameTime.Get();
             m_ScriptContextManager.TickAll();
-            auto inputs = GetActiveScriptInputs();
-            InputSystem::ApplyMergedToKeyboardState(m_CurrentTick, inputs, keyboardState);
 
-            if (m_CurrentProject) {
+            // The tick a script returns in carries none of its keys, so it is not one of
+            // the script's frames.
+            auto playbackContext = m_ScriptContextManager.GetContext(m_ScriptContextName);
+            const bool playbackRunning = playbackContext && playbackContext->IsExecuting();
+            if (playbackRunning) {
+                auto inputs = GetActiveScriptInputs();
+                InputSystem::ApplyMergedToKeyboardState(m_CurrentTick, inputs, keyboardState);
                 m_CapturedRecordFrames.push_back(
                     tas::record::CaptureKeyboardStateToRecordFrame(
                         keyboardState,
                         m_RecordInputMapping,
-                        m_CurrentProject->GetDeltaTime()));
+                        frameTime));
             }
 
             ++m_CurrentTick;
 
-            auto playbackContext = m_ScriptContextManager.GetContext(m_ScriptContextName);
-            const bool playbackRunning = playbackContext && playbackContext->IsExecuting();
             if (!m_CompletionSignaled && !playbackRunning) {
                 OnScriptToRecordPlaybackComplete();
             }
@@ -398,22 +416,53 @@ void TranslationService::OnScriptToRecordPlaybackComplete() {
     }
 
     m_CompletionSignaled = true;
+    WriteCapturedRecord();
+    m_EventBus.Publish(TranslationCompletedEvent{});
+}
+
+void TranslationService::SetResult(bool ok, std::string outputPath, std::string message) {
+    m_LastSucceeded = ok;
+    m_LastOutputPath = ok ? std::move(outputPath) : std::string();
+    m_LastResultMessage = std::move(message);
+    ++m_ResultSerial;
+    if (ok) {
+        Log::Info("TranslationService: %s", m_LastResultMessage.c_str());
+    } else {
+        Log::Error("TranslationService: %s", m_LastResultMessage.c_str());
+    }
+}
+
+void TranslationService::WriteCapturedRecord() {
+    if (m_RecordWritten) {
+        return;
+    }
+    m_RecordWritten = true;
+    if (m_CapturedRecordFrames.empty()) {
+        SetResult(false, {}, "Record translation failed: the script ran no frames");
+        return;
+    }
 
     const auto outputPath = BuildRecordOutputPath(m_CurrentProject);
     auto result = tas::record::WriteLegacyRecordFile(outputPath, m_CapturedRecordFrames);
     if (result.IsOk()) {
-        m_LastOutputPath = outputPath.string();
-        m_LastResultMessage = "Record written: " + outputPath.filename().string();
-        Log::Info("TranslationService: Script-to-record completed: %s",
-                  m_LastOutputPath.c_str());
+        SetResult(true, outputPath.string(), "Record written: " + outputPath.filename().string());
     } else {
-        m_LastOutputPath.clear();
-        m_LastResultMessage = "Record translation failed: " + result.GetError().message;
-        Log::Error("TranslationService: %s", m_LastResultMessage.c_str());
         std::filesystem::remove(outputPath);
+        SetResult(false, {}, "Record translation failed: " + result.GetError().message);
     }
+}
 
-    m_EventBus.Publish(TranslationCompletedEvent{});
+void TranslationService::FinishRecordToScript() {
+    const bool ok = !m_Recorder.GetFrames().empty() && m_Recorder.GenerateScript(false);
+    const std::string path = ok ? m_Recorder.GetLastGeneratedPath() : std::string();
+    // Leave the recorder as plain recording expects it.
+    m_Recorder.SetTranslationMode(false);
+    m_Recorder.SetAutoGenerate(true);
+    if (ok && !path.empty()) {
+        SetResult(true, path, "Script written: " + std::filesystem::path(path).filename().string());
+    } else {
+        SetResult(false, {}, "Script translation failed: no script was generated");
+    }
 }
 
 GenerationOptions TranslationService::BuildGenerationOptions(const TASProject *project) const {
@@ -423,6 +472,7 @@ GenerationOptions TranslationService::BuildGenerationOptions(const TASProject *p
     options.targetLevel = project->GetTargetLevel();
     options.description = "Translated from legacy record: " + project->GetName();
     options.updateRate = project->GetUpdateRate();
+    options.frameTime = project->GetInitialFrameTime();
     options.addFrameComments = true;
     return options;
 }
@@ -432,7 +482,8 @@ std::filesystem::path TranslationService::BuildRecordOutputPath(const TASProject
         ? std::filesystem::current_path()
         : std::filesystem::path(m_TasRootPath);
 
-    std::string stem = SanitizeFileStem(project ? project->GetName() : "Translated_Record");
+    // "_Record" keeps the record's project name apart from the script it came from.
+    std::string stem = SanitizeFileStem(project ? project->GetName() + "_Record" : "Translated_Record");
     std::filesystem::path candidate = root / (stem + ".tas");
     for (int index = 1; std::filesystem::exists(candidate) && index < 1000; ++index) {
         candidate = root / (stem + "_" + std::to_string(index) + ".tas");

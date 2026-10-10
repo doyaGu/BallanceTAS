@@ -244,6 +244,10 @@ size_t TASEngine::GetRecordingFrameCount() const {
 }
 
 bool TASEngine::StartReplay() {
+    return StartReplay(ReplayValidation{});
+}
+
+bool TASEngine::StartReplay(const ReplayValidation &validation) {
     auto *session = Session();
     if (m_ShuttingDown || !session || !session->IsIdle()) {
         Log::Warn("Cannot start replay: TAS is not idle.");
@@ -278,8 +282,11 @@ bool TASEngine::StartReplay() {
     m_LastCompletedPlaybackProjectName.clear();
     m_Requests.requestedProject = project;
     m_Requests.requestedPlaybackType = type;
+    m_Requests.validate = validation.enabled;
+    m_Requests.validationReference = validation.reference;
+    m_Requests.validationExact = validation.exact;
 
-    auto result = session->StartPlayback(project, type, {m_ValidationEnabled});
+    auto result = session->StartPlayback(project, type, {m_ValidationEnabled || validation.enabled});
     if (!result.IsOk()) {
         Log::Error("Runtime session failed to start replay: %s",
                    result.GetError().message.c_str());
@@ -482,6 +489,15 @@ bool TASEngine::IsPaused() const {
 
 bool TASEngine::IsPlayingScript() const {
     return (IsPlaying() || IsPaused()) && GetPlaybackType() == PlaybackType::Script;
+}
+
+bool TASEngine::DrivesScriptContexts() const {
+    if (IsPlayingScript()) {
+        return true;
+    }
+    auto *translation = m_ServiceContainer.Resolve<TranslationService>();
+    return translation && translation->IsTranslating() &&
+           translation->GetDirection() == TranslationDirection::ScriptToRecord;
 }
 
 bool TASEngine::IsPlayingRecord() const {

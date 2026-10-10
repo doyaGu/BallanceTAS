@@ -95,4 +95,19 @@ TEST(ValidationServiceTest, NonFinitePhysicsCannotMatch) {
     EXPECT_TRUE(std::isinf(report.maxPositionError));
 }
 
+TEST(ValidationServiceTest, ExactModeCatchesTheSmallestDifference) {
+    const std::vector<FrameData> reference{MakeFrame(10, VxVector(1e-30f, 2.0f, 3.0f))};
+    const std::vector<FrameData> same{MakeFrame(10, VxVector(1e-30f, 2.0f, 3.0f))};
+    const std::vector<FrameData> tiny{MakeFrame(10, VxVector(2e-30f, 2.0f, 3.0f))};
+
+    ValidationConfig exact;
+    exact.exact = true;
+    EXPECT_TRUE(ValidationService::CompareFrameData(same, reference, exact).identical);
+    // Within any tolerance, and too small to survive squaring, but not equal.
+    EXPECT_TRUE(ValidationService::CompareFrameData(tiny, reference).identical);
+    const auto report = ValidationService::CompareFrameData(tiny, reference, exact);
+    EXPECT_FALSE(report.identical);
+    EXPECT_EQ(report.firstDivergenceFrame, 10u);
+}
+
 } // namespace

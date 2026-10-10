@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <iomanip>
 #include <set>
 #include <sstream>
@@ -80,6 +81,32 @@ private:
     const GenerationOptions &m_Options;
 };
 
+// A frame whose time differs from the one before it. The script asks for it one tick early:
+// tas.set_frame_time applies from the next frame on.
+struct FrameTimeChange {
+    size_t frame = 0; // the frame that runs at the new time
+    float frameTimeMs = 0.0f;
+};
+
+// Shortest text that reads back as the same float.
+static std::string FormatFloat(float value) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.9g", static_cast<double>(value));
+    return buffer;
+}
+
+static std::vector<FrameTimeChange> FindFrameTimeChanges(const std::vector<FrameData> &frames) {
+    std::vector<FrameTimeChange> changes;
+    for (size_t i = 1; i < frames.size(); ++i) {
+        const float previous = changes.empty() ? frames.front().deltaTime : changes.back().frameTimeMs;
+        // A frame without a usable time keeps the previous one.
+        if (frames[i].deltaTime != previous && frames[i].deltaTime > 0.0f && frames[i].frameIndex > 0) {
+            changes.push_back({frames[i].frameIndex, frames[i].deltaTime});
+        }
+    }
+    return changes;
+}
+
 static int TransitionOrder(KeyTransition transition) {
     switch (transition) {
     case KeyTransition::Pressed: return 0;
@@ -157,7 +184,10 @@ std::string BuildGeneratedManifest(const GenerationOptions &options,
     ss << "  level = \"" << options.targetLevel << "\",\n";
     ss << "  entry_script = \"main.lua\",\n";
     ss << "  description = \"" << options.description << "\",\n";
-    ss << "  update_rate = " << options.updateRate << ",\n";
+    ss << "  update_rate = " << FormatFloat(options.updateRate) << ",\n";
+    if (options.frameTime > 0.0f) {
+        ss << "  frame_time = " << FormatFloat(options.frameTime) << ",\n";
+    }
     ss << "\n";
     ss << "  -- Generation metadata\n";
     ss << "  generated_by = \"BallanceTAS ScriptGenerator\",\n";
@@ -202,8 +232,12 @@ std::string BuildGeneratedLuaScript(const std::vector<FrameData> &frames,
     builder.AddMainFunction();
 
     std::set<std::string> currentlyPressed;
-    std::vector<std::pair<size_t, std::variant<KeyEvent, GameEvent>>> allEvents;
+    std::vector<std::pair<size_t, std::variant<KeyEvent, GameEvent, FrameTimeChange>>> allEvents;
     std::vector<KeyEvent> keyEvents;
+
+    for (const auto &change : FindFrameTimeChanges(frames)) {
+        allEvents.emplace_back(change.frame - 1, change);
+    }
 
     for (const auto &block : blocks) {
         for (const auto &keyEvent : block.keyEvents) {
@@ -218,14 +252,18 @@ std::string BuildGeneratedLuaScript(const std::vector<FrameData> &frames,
         allEvents.emplace_back(keyEvent.frame, keyEvent);
     }
 
-    std::sort(allEvents.begin(), allEvents.end(), [](const auto &a, const auto &b) {
+    // Within a frame: game events, then frame time, then keys.
+    auto kindOrder = [](const auto &event) {
+        return std::holds_alternative<GameEvent>(event) ? 0 : std::holds_alternative<FrameTimeChange>(event) ? 1 : 2;
+    };
+    std::stable_sort(allEvents.begin(), allEvents.end(), [&](const auto &a, const auto &b) {
         if (a.first == b.first) {
-            const bool aIsGame = std::holds_alternative<GameEvent>(a.second);
-            const bool bIsGame = std::holds_alternative<GameEvent>(b.second);
-            if (aIsGame != bIsGame) {
-                return aIsGame && !bIsGame;
+            const int aKind = kindOrder(a.second);
+            const int bKind = kindOrder(b.second);
+            if (aKind != bKind) {
+                return aKind < bKind;
             }
-            if (!aIsGame && !bIsGame) {
+            if (aKind == 2) {
                 const auto &aKey = std::get<KeyEvent>(a.second);
                 const auto &bKey = std::get<KeyEvent>(b.second);
                 return TransitionOrder(aKey.transition) < TransitionOrder(bKey.transition);
@@ -278,6 +316,13 @@ std::string BuildGeneratedLuaScript(const std::vector<FrameData> &frames,
                 }
                 builder.AddLine("tas.press(\"" + keyEvent.key + "\")");
             }
+        } else if (std::holds_alternative<FrameTimeChange>(event)) {
+            const auto &change = std::get<FrameTimeChange>(event);
+            if (options.addFrameComments) {
+                builder.AddComment("Frame " + std::to_string(change.frame) + " on runs at " +
+                                   FormatFloat(change.frameTimeMs) + " ms");
+            }
+            builder.AddLine("tas.set_frame_time(" + FormatFloat(change.frameTimeMs) + ")");
         } else {
             const auto &gameEvent = std::get<GameEvent>(event);
             if (options.addEventAnchors) {
@@ -297,26 +342,26 @@ std::string BuildGeneratedLuaScript(const std::vector<FrameData> &frames,
     }
 
     if (!frames.empty()) {
+        // Through the last frame: a script's keys stop counting in the tick it returns, so
+        // it returns in the tick after the recording's last frame.
         const size_t finalRecordingFrame = frames.back().frameIndex;
-        const int64_t finalWait = static_cast<int64_t>(finalRecordingFrame) - static_cast<int64_t>(lastFrame);
-        if (finalWait > 0) {
-            builder.AddBlankLine();
-            if (options.addFrameComments) {
-                builder.AddComment("Wait until end of recording (frame " + std::to_string(finalRecordingFrame) + ")");
-            }
-            builder.AddLine("tas.wait_ticks(" + std::to_string(finalWait) + ")");
+        const int64_t finalWait = static_cast<int64_t>(finalRecordingFrame) - static_cast<int64_t>(lastFrame) + 1;
+        builder.AddBlankLine();
+        if (options.addFrameComments) {
+            builder.AddComment("Run through the end of recording (frame " + std::to_string(finalRecordingFrame) + ")");
         }
+        builder.AddLine("tas.wait_ticks(" + std::to_string(finalWait) + ")");
 
+        // Releasing here would change the last frame's input; ending the script releases
+        // every key after it, as the end of a record does.
         if (!currentlyPressed.empty()) {
             builder.AddBlankLine();
-            builder.AddComment("Recording ended - release all remaining pressed keys");
+            std::string held;
             for (const auto &key : currentlyPressed) {
-                if (options.addFrameComments) {
-                    builder.AddComment("Release " + key + " at end of recording (frame " +
-                                       std::to_string(finalRecordingFrame) + ")");
-                }
-                builder.AddLine("tas.key_up(\"" + key + "\")");
+                held += (held.empty() ? "" : ", ") + key;
             }
+            builder.AddComment("Held through the last frame (" + std::to_string(finalRecordingFrame) +
+                               "), released when the script ends: " + held);
         }
     }
 

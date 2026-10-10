@@ -488,7 +488,7 @@ void BallanceTAS::OnProcess() {
             m_Engine->IsPlaying() || m_Engine->IsPendingPlay() ||
             m_Engine->IsRecording() || m_Engine->IsPendingRecord() ||
             m_Engine->IsTranslating() || m_Engine->IsPendingTranslate());
-        if (!m_Engine->IsPlayingScript()) {
+        if (!m_Engine->DrivesScriptContexts()) {
             if (auto *contexts = m_Engine->GetServiceProvider().Resolve<ScriptContextManager>()) {
                 contexts->TickAll();
             }

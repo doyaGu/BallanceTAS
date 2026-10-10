@@ -1,5 +1,6 @@
 #include "RecordFileIO.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <vector>
@@ -95,4 +96,62 @@ TEST(RecordFileIOTest, CapturesKeyboardBufferAsRecordBits) {
     EXPECT_TRUE(frame.keyState.key_left);
     EXPECT_FALSE(frame.keyState.key_q);
     EXPECT_TRUE(frame.keyState.key_esc);
+}
+
+static RecordFrameData Frame(float deltaTime, int keys) {
+    RecordFrameData frame(deltaTime);
+    frame.keyStates = keys;
+    return frame;
+}
+
+TEST(RecordFileIOTest, ReadsBackWhatItWrites) {
+    const auto path = TempRecordPath("roundtrip.tas");
+    const std::vector<RecordFrameData> frames = {Frame(4.1666665f, 0), Frame(4.1666665f, 1), Frame(8.0f, 0x30)};
+    ASSERT_TRUE(tas::record::WriteLegacyRecordFile(path, frames).IsOk());
+
+    auto read = tas::record::ReadLegacyRecordFile(path);
+    ASSERT_TRUE(read.IsOk());
+    const auto &back = read.Unwrap();
+    ASSERT_EQ(back.size(), frames.size());
+    EXPECT_TRUE(tas::record::CompareRecordFrames(frames, back, false).identical);
+    std::filesystem::remove(path);
+
+    EXPECT_FALSE(tas::record::ReadLegacyRecordFile(TempRecordPath("missing.tas")).IsOk());
+}
+
+TEST(RecordFileIOTest, ComparesKeysAndFrameTimesExactly) {
+    const std::vector<RecordFrameData> base = {Frame(4.0f, 0), Frame(4.0f, 1), Frame(4.0f, 1), Frame(4.0f, 0)};
+
+    auto keys = base;
+    keys[2].keyStates = 3;
+    auto result = tas::record::CompareRecordFrames(base, keys, false);
+    EXPECT_FALSE(result.identical);
+    EXPECT_EQ(result.firstDifference, 2u);
+    EXPECT_EQ(result.differingFrames, 1u);
+    EXPECT_EQ(result.frameB.keyStates, 3);
+
+    auto times = base;
+    times[1].deltaTime = std::nextafter(4.0f, 5.0f);
+    result = tas::record::CompareRecordFrames(base, times, false);
+    EXPECT_FALSE(result.identical);
+    EXPECT_EQ(result.firstDifference, 1u);
+
+    // Bits past the nine stored keys are not part of a frame.
+    auto padding = base;
+    padding[0].keyStates |= 1 << 12;
+    EXPECT_TRUE(tas::record::CompareRecordFrames(base, padding, false).identical);
+}
+
+TEST(RecordFileIOTest, PrefixComparisonIgnoresTheLongerTail) {
+    const std::vector<RecordFrameData> longer = {Frame(4.0f, 1), Frame(4.0f, 0), Frame(4.0f, 2)};
+    const std::vector<RecordFrameData> shorter = {Frame(4.0f, 1), Frame(4.0f, 0)};
+
+    auto full = tas::record::CompareRecordFrames(longer, shorter, false);
+    EXPECT_FALSE(full.identical);
+    EXPECT_EQ(full.firstDifference, 2u);
+    EXPECT_EQ(full.differingFrames, 0u);
+
+    auto prefix = tas::record::CompareRecordFrames(longer, shorter, true);
+    EXPECT_TRUE(prefix.identical);
+    EXPECT_EQ(prefix.comparedFrames, 2u);
 }

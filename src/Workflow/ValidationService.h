@@ -19,6 +19,8 @@ struct ValidationConfig {
     float positionEpsilon = 1.0f;
     /// Max allowable ball velocity deviation (units/sec) before a frame counts as diverged.
     float velocityEpsilon = 2.0f;
+    /// Frames must match bit for bit (position and velocity components); the epsilons are ignored.
+    bool exact = false;
 };
 
 /**
@@ -107,6 +109,7 @@ private:
     size_t m_CaptureFrame = 0;
 
     bool m_IsActive = false;
+    size_t m_DumpCount = 0; // keeps dumps written within one second apart
     std::string m_OutputPath;
 
     ValidationConfig m_Config;

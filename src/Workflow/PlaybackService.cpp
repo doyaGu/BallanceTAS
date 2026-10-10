@@ -13,6 +13,7 @@
 #include "ScriptContextManager.h"
 #include "ScriptContext.h"
 #include "RecordPlayer.h"
+#include "ScriptFrameTime.h"
 #include "InputSystem.h"
 #include "Logger.h"
 #include "TASProject.h"
@@ -46,6 +47,7 @@ PlaybackService::PlaybackService(ServiceProvider *provider)
     m_HookManager = m_ServiceProvider->Resolve<HookManager>();
     m_ScriptManager = m_ServiceProvider->Resolve<ScriptContextManager>();
     m_RecordPlayer = m_ServiceProvider->Resolve<RecordPlayer>();
+    m_FrameTime = m_ServiceProvider->Resolve<ScriptFrameTime>();
     m_InputSystem = m_ServiceProvider->Resolve<InputSystem>();
     m_GameControl = m_ServiceProvider->Resolve<IGameControl>();
     m_InputAccess = m_ServiceProvider->Resolve<IInputAccess>();
@@ -147,6 +149,9 @@ Result<void> PlaybackService::StopPlaybackGraceful(bool clearProject) {
     }
 
     RemoveHookCallbacks();
+    if (m_FrameTime) {
+        m_FrameTime->End();
+    }
 
     if (m_Type == PlaybackType::Script) {
         auto ctx = m_ScriptManager->GetContext(m_PlaybackContextName);
@@ -180,6 +185,9 @@ Result<void> PlaybackService::StopPlaybackGraceful(bool clearProject) {
 
 void PlaybackService::StopPlaybackImmediate() {
     RemoveHookCallbacks();
+    if (m_FrameTime) {
+        m_FrameTime->End();
+    }
 
     if (m_Type == PlaybackType::Script) {
         auto ctx = m_ScriptManager->GetContext(m_PlaybackContextName);
@@ -269,8 +277,15 @@ Result<void> PlaybackService::ActivateScriptPlayback() {
     if (!ctx) {
         return Result<void>::Error("Failed to create script context", "playback_service");
     }
+    // Before the script loads, so even its top level can change the frame time.
+    if (m_FrameTime) {
+        m_FrameTime->Begin(m_CurrentProject->GetInitialFrameTime());
+    }
 
     if (!ctx->LoadAndExecute(m_CurrentProject)) {
+        if (m_FrameTime) {
+            m_FrameTime->End();
+        }
         return Result<void>::Error("Failed to load and execute script", "playback_service");
     }
 
@@ -315,8 +330,10 @@ void PlaybackService::InstallScriptCallbacks() {
                 return;
             }
 
-            if (m_CurrentProject && m_CurrentProject->IsValid()) {
-                tm->SetLastDeltaTime(m_CurrentProject->GetDeltaTime());
+            if (m_FrameTime && m_FrameTime->IsActive()) {
+                tm->SetLastDeltaTime(m_FrameTime->Get());
+            } else if (m_CurrentProject && m_CurrentProject->IsValid()) {
+                tm->SetLastDeltaTime(m_CurrentProject->GetInitialFrameTime());
             }
         });
 

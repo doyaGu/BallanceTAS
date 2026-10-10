@@ -114,7 +114,7 @@ Result<void> RuntimeSession::OnLevelStart() {
         return result;
     }
 
-    if (!m_PlaybackValidation || GetPlaybackType() != PlaybackType::Script || !IsPlaying()) {
+    if (!m_PlaybackValidation || GetPlaybackType() == PlaybackType::None || !IsPlaying()) {
         return Result<void>::Ok();
     }
     if (m_Hooks.isValidationActive && m_Hooks.isValidationActive()) {

@@ -1,6 +1,8 @@
 #include "RecordFileIO.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <limits>
 
@@ -114,6 +116,78 @@ Result<void> WriteLegacyRecordFile(const std::filesystem::path &path,
     }
 
     return Result<void>::Ok();
+}
+
+Result<std::vector<RecordFrameData>> ReadLegacyRecordFile(const std::filesystem::path &path) {
+    using FramesResult = Result<std::vector<RecordFrameData>>;
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        return FramesResult::Error("Could not open record file: " + path.string(), "record_file");
+    }
+    const std::streamoff fileSize = file.tellg();
+    uint32_t uncompressedSize = 0;
+    if (fileSize <= static_cast<std::streamoff>(sizeof(uncompressedSize))) {
+        return FramesResult::Error("Record file is truncated: " + path.string(), "record_file");
+    }
+    file.seekg(0, std::ios::beg);
+    file.read(reinterpret_cast<char *>(&uncompressedSize), sizeof(uncompressedSize));
+    if (uncompressedSize == 0 || uncompressedSize % sizeof(RecordFrameData) != 0 ||
+        !CanUseLegacyPackSize(uncompressedSize)) {
+        return FramesResult::Error("Record header is invalid: " + path.string(), "record_file");
+    }
+
+    std::vector<char> compressed(static_cast<size_t>(fileSize) - sizeof(uncompressedSize));
+    file.read(compressed.data(), static_cast<std::streamsize>(compressed.size()));
+    if (static_cast<size_t>(file.gcount()) != compressed.size()) {
+        return FramesResult::Error("Record payload is incomplete: " + path.string(), "record_file");
+    }
+
+    char *data = CKUnPackData(static_cast<int>(uncompressedSize), compressed.data(),
+                              static_cast<int>(compressed.size()));
+    if (!data) {
+        return FramesResult::Error("Record payload could not be decompressed: " + path.string(), "record_file");
+    }
+    std::vector<RecordFrameData> frames(uncompressedSize / sizeof(RecordFrameData));
+    std::memcpy(frames.data(), data, uncompressedSize);
+    CKDeletePointer(data);
+    return FramesResult::Ok(std::move(frames));
+}
+
+static bool SameFrame(const RecordFrameData &a, const RecordFrameData &b) {
+    return (a.keyStates & kRecordKeyMask) == (b.keyStates & kRecordKeyMask) && a.deltaTime == b.deltaTime;
+}
+
+RecordComparison CompareRecordFrames(const std::vector<RecordFrameData> &a,
+                                     const std::vector<RecordFrameData> &b,
+                                     bool prefixOnly) {
+    RecordComparison result;
+    result.framesA = a.size();
+    result.framesB = b.size();
+    result.comparedFrames = (std::min)(a.size(), b.size());
+    for (size_t frame = 0; frame < result.comparedFrames; ++frame) {
+        if (SameFrame(a[frame], b[frame])) {
+            continue;
+        }
+        if (!result.hasDifference) {
+            result.hasDifference = true;
+            result.firstDifference = frame;
+            result.frameA = a[frame];
+            result.frameB = b[frame];
+        }
+        ++result.differingFrames;
+    }
+    if (!result.hasDifference && !prefixOnly && a.size() != b.size()) {
+        result.hasDifference = true;
+        result.firstDifference = result.comparedFrames;
+        if (result.comparedFrames < a.size()) {
+            result.frameA = a[result.comparedFrames];
+        }
+        if (result.comparedFrames < b.size()) {
+            result.frameB = b[result.comparedFrames];
+        }
+    }
+    result.identical = !result.hasDifference;
+    return result;
 }
 
 } // namespace tas::record

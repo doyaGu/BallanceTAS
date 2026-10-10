@@ -39,6 +39,10 @@ void TASProject::ParseManifest(const tas::lua::LuaValue &manifest) {
     if (!std::isfinite(m_UpdateRate) || m_UpdateRate <= 0.0f) {
         m_UpdateRate = kDefaultUpdateRate;
     }
+    m_InitialFrameTime = static_cast<float>(manifest.GetNumberField("frame_time", 0.0));
+    if (!std::isfinite(m_InitialFrameTime) || m_InitialFrameTime <= 0.0f) {
+        m_InitialFrameTime = 0.0f;
+    }
 
     // Parse project scope (default to Level for backward compatibility)
     std::string scopeStr = manifest.GetStringField("scope", "level");
@@ -202,6 +206,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
             }
 
             m_UpdateRate = 1000.0f / initialDeltaTime; // Convert from ms to Hz
+            m_InitialFrameTime = initialDeltaTime;
 
             // Store delta time consistency information
             m_HasConstantDeltaTime = hasConstantDeltaTime;
@@ -218,11 +223,7 @@ void TASProject::ParseRecordProject(const std::string &tasFilePath) {
         m_Description = desc.str();
 
         m_IsValid = true;
-        if (m_HasConstantDeltaTime) {
-            m_ValidationMessage.clear();
-        } else {
-            m_ValidationMessage = "Variable timing detected; translation disabled";
-        }
+        m_ValidationMessage.clear();
     } catch (const std::exception &) {
         // If we can't read the file properly, mark as invalid
         m_IsValid = false;
@@ -296,10 +297,7 @@ std::string TASProject::GetTranslationCompatibilityMessage() const {
     }
 
     if (!m_HasConstantDeltaTime) {
-        std::ostringstream msg;
-        msg << "Variable timing detected. "
-            << "Only records with constant delta time can be translated to scripts.";
-        return msg.str();
+        return "Compatible - variable timing is kept with tas.set_frame_time";
     }
 
     return "Compatible - constant timing detected";
@@ -339,7 +337,7 @@ std::vector<std::string> TASProject::GetRequirements() const {
     // Add translation-specific requirements for record projects
     if (IsRecordProject() && IsValid()) {
         if (!m_HasConstantDeltaTime) {
-            requirements.emplace_back("Variable Timing (Translation Not Recommended)");
+            requirements.emplace_back("Variable Timing");
         }
     }
 

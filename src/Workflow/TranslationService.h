@@ -19,6 +19,7 @@ class GameInterface;
 class InputSystem;
 class ProjectManager;
 class ScriptContextManager;
+class ScriptFrameTime;
 struct GenerationOptions;
 
 enum class TranslationDirection {
@@ -52,6 +53,7 @@ public:
                        InputSystem &inputSystem,
                        HookManager &hookManager,
                        EventBus &eventBus,
+                       ScriptFrameTime &frameTime,
                        std::string tasRootPath);
     ~TranslationService();
 
@@ -90,6 +92,10 @@ public:
     size_t GetCurrentTick() const { return m_CurrentTick; }
     const std::string &GetLastOutputPath() const { return m_LastOutputPath; }
     const std::string &GetLastResultMessage() const { return m_LastResultMessage; }
+    /// Whether the last finished translation wrote its output.
+    bool WasLastSuccessful() const { return m_LastSucceeded; }
+    /// Increases each time a translation finishes, so callers can tell a new result.
+    size_t GetResultSerial() const { return m_ResultSerial; }
 
 private:
     Result<void> ActivateRecordToScriptTranslation();
@@ -99,11 +105,15 @@ private:
     void RemoveHookCallbacks();
     void OnRecordToScriptPlaybackComplete();
     void OnScriptToRecordPlaybackComplete();
+    void FinishRecordToScript();
+    void WriteCapturedRecord();
+    void SetResult(bool ok, std::string outputPath, std::string message);
     GenerationOptions BuildGenerationOptions(const TASProject *project) const;
     std::filesystem::path BuildRecordOutputPath(const TASProject *project) const;
     std::vector<InputSystem *> GetActiveScriptInputs() const;
 
     EventBus &m_EventBus;
+    ScriptFrameTime &m_FrameTime;
     HookManager &m_HookManager;
     Recorder &m_Recorder;
     RecordPlayer &m_RecordPlayer;
@@ -126,6 +136,9 @@ private:
     std::vector<RecordFrameData> m_CapturedRecordFrames;
     std::string m_LastOutputPath;
     std::string m_LastResultMessage;
+    bool m_LastSucceeded = false;
+    size_t m_ResultSerial = 0;
+    bool m_RecordWritten = false;
 
     // RAII hook guards
     ScopedCallback m_PostTickGuard;

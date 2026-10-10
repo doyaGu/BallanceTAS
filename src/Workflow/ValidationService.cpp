@@ -96,7 +96,7 @@ Result<void> ValidationService::Stop() {
 
     // Write the validation dump (existing behaviour).
     const std::filesystem::path path = std::filesystem::path(m_OutputPath) /
-        ("validation_" + std::to_string(std::time(nullptr)) + ".txt");
+        ("validation_" + std::to_string(std::time(nullptr)) + "_" + std::to_string(++m_DumpCount) + ".txt");
 
     bool ok = m_Recorder.DumpFrameData(path.string(), true);
 

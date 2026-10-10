@@ -212,13 +212,13 @@ TEST(TASMenuPresentationTest, ReportsRecordTranslationCompatibility) {
     EXPECT_TRUE(variableRecord.IsValid());
     EXPECT_TRUE(variableRecord.CanPlayRecord());
     EXPECT_EQ(variableRecord.GetRecordFrameCount(), 32u);
-    EXPECT_FALSE(variableRecord.CanBeTranslated());
-    EXPECT_THAT(variableRecord.GetTranslationCompatibilityMessage(), HasSubstr("Variable timing"));
+    // Variable frame times translate too: the script asks for them with tas.set_frame_time.
+    EXPECT_TRUE(variableRecord.CanBeTranslated());
+    EXPECT_THAT(variableRecord.GetTranslationCompatibilityMessage(), HasSubstr("variable timing"));
 
     auto variablePresentation = BuildProjectPresentation(variableRecord, BuildMenuStatePresentation(TASMenuRuntimeSnapshot{}));
     EXPECT_TRUE(variablePresentation.playAction.enabled);
-    EXPECT_FALSE(variablePresentation.translateAction.enabled);
-    EXPECT_THAT(variablePresentation.translateAction.disabledReason, HasSubstr("Variable timing"));
+    EXPECT_TRUE(variablePresentation.translateAction.enabled);
 }
 
 TEST(TASMenuPresentationTest, PresentsRecordAndScriptPlaybackWithConsistentTasSemantics) {

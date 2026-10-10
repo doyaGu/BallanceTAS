@@ -8,6 +8,7 @@
 #include <string>
 
 // Forward declarations
+class ScriptFrameTime;
 class ServiceProvider;
 class TASProject;
 class ScriptContextManager;
@@ -105,6 +106,7 @@ private:
     InputSystem *m_InputSystem = nullptr;
     IGameControl *m_GameControl = nullptr;
     IInputAccess *m_InputAccess = nullptr;
+    ScriptFrameTime *m_FrameTime = nullptr;
 #ifdef ENABLE_REPL
     LuaREPLServer *m_REPLServer = nullptr;
 #endif

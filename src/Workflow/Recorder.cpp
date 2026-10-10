@@ -118,7 +118,12 @@ void Recorder::SetUpdateRate(float tickPerSecond) {
     m_DeltaTime = 1000.0f / tickPerSecond;
 }
 
-bool Recorder::GenerateScript() {
+std::string Recorder::GetLastGeneratedPath() const {
+    auto *scriptGenerator = m_Engine->GetServiceProvider().Resolve<ScriptGenerator>();
+    return scriptGenerator ? scriptGenerator->GetLastGeneratedPath() : std::string();
+}
+
+bool Recorder::GenerateScript(bool async) {
     if (m_Frames.empty()) {
         Log::Warn("No frames recorded, cannot generate script.");
         return false;
@@ -169,6 +174,14 @@ bool Recorder::GenerateScript() {
 
         const char *modeStr = m_IsTranslationMode ? "translation" : "recording";
         Log::Info("Auto-generating TAS script from %s: %s", modeStr, options.projectName.c_str());
+
+        if (!async) {
+            const bool success = scriptGenerator->Generate(m_Frames, options);
+            if (!success) {
+                Log::Error("Failed to generate script from %s: %s", modeStr, options.projectName.c_str());
+            }
+            return success;
+        }
 
         // Generate the script
         scriptGenerator->GenerateAsync(
@@ -256,20 +269,22 @@ bool Recorder::DumpFrameData(const std::string &filePath, bool includePhysics) c
         file << "# Total Frames: " << m_Frames.size() << "\n";
         file << "# Delta Time: " << m_DeltaTime << "ms\n";
         if (includePhysics) {
-            file << "# Format: Frame | DeltaTime | Input | Position | Velocity | Speed\n";
+            file << "# Format: Frame | DeltaTime | Input | Position | Velocity | Speed | AngularVelocity\n";
         } else {
             file << "# Format: Frame | DeltaTime | Input\n";
         }
         file << "\n";
 
-        // Write frame data
+        // Write frame data. Nine significant digits read back as the same floats, so two
+        // dumps can be compared exactly.
+        file << std::defaultfloat << std::setprecision(9);
         for (const auto &frame : m_Frames) {
             file << frame.frameIndex << " | "
-                << std::fixed << std::setprecision(3) << frame.deltaTime << " | "
+                << frame.deltaTime << " | "
                 << FormatInputStateText(frame.inputState);
 
             if (includePhysics) {
-                file << " | (" << std::fixed << std::setprecision(2)
+                file << " | ("
                     << frame.physics.position.x << ","
                     << frame.physics.position.y << ","
                     << frame.physics.position.z << ")"
@@ -277,6 +292,8 @@ bool Recorder::DumpFrameData(const std::string &filePath, bool includePhysics) c
                     << frame.physics.velocity.y << ","
                     << frame.physics.velocity.z << ")"
                     << " | " << frame.physics.speed;
+                file << " | (" << frame.physics.angularVelocity.x << "," << frame.physics.angularVelocity.y << ","
+                     << frame.physics.angularVelocity.z << ")";
             }
 
             file << "\n";
@@ -369,6 +386,9 @@ bool Recorder::LoadFrameData(const std::string &filePath, bool includePhysics) {
                 frame.physics.position = ParseVectorText(TrimString(parts[3]));
                 frame.physics.velocity = ParseVectorText(TrimString(parts[4]));
                 frame.physics.speed = std::stof(TrimString(parts[5]));
+                if (parts.size() >= 7) {
+                    frame.physics.angularVelocity = ParseVectorText(TrimString(parts[6]));
+                }
 
                 // Calculate derived physics values
                 frame.physics.angularSpeed = frame.physics.angularVelocity.Magnitude();
@@ -578,7 +598,6 @@ void Recorder::CapturePhysicsData(FrameData &frameData) const {
         physics.position = gameInterface->GetPosition(ball);
         physics.velocity = gameInterface->GetVelocity(ball);
         physics.angularVelocity = gameInterface->GetAngularVelocity(ball);
-
         // Derived values
         physics.speed = physics.velocity.Magnitude();
         physics.angularSpeed = physics.angularVelocity.Magnitude();

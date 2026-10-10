@@ -68,6 +68,9 @@ public:
     bool IsIdle() const;
     bool IsPaused() const;
     bool IsPlayingScript() const;
+    /// Script playback and script-to-record translation tick the script contexts themselves,
+    /// once per frame in step with the inputs they apply.
+    bool DrivesScriptContexts() const;
     bool IsPlayingRecord() const;
     bool IsShuttingDown() const { return m_ShuttingDown; }
     PlaybackType GetPlaybackType() const;
@@ -80,6 +83,14 @@ public:
     void StopRecording();
     size_t GetRecordingFrameCount() const;
     bool StartReplay();
+
+    /// What one playback validates; see tas.project.play.
+    struct ReplayValidation {
+        bool enabled = false;
+        std::string reference;
+        bool exact = false;
+    };
+    bool StartReplay(const ReplayValidation &validation);
     void StopReplay(bool clearProject = false);
     bool StartTranslation();
     void StopTranslation(bool clearProject = false);
@@ -125,6 +136,8 @@ public:
     TASProject *GetRequestedProject() const { return m_Requests.requestedProject; }
     PlaybackType GetRequestedPlaybackType() const { return m_Requests.requestedPlaybackType; }
     bool ShouldUseValidationForRecording() const { return m_Requests.requestedValidationRecording; }
+    const std::string &GetRequestedValidationReference() const { return m_Requests.validationReference; }
+    bool IsRequestedValidationExact() const { return m_Requests.validationExact; }
     bool ShouldClearProjectOnStop() const { return m_Requests.clearProjectOnStop; }
     void ClearControlRequests();
 

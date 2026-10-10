@@ -156,6 +156,23 @@ public:
     void Tick(size_t currentTick, const unsigned char *keyboardState);
 
     /**
+     * @brief Generates a TAS script from the current recorded frames.
+     * @param async  Generate on a worker thread (true) or before returning (false).
+     * @return True if generation started (async) or succeeded (sync).
+     */
+    bool GenerateScript(bool async = true);
+
+    /// Directory of the project the last finished generation wrote.
+    std::string GetLastGeneratedPath() const;
+
+    /// Overrides the frame time of the frame Tick just captured (e.g. a record's own time).
+    void SetLastFrameDeltaTime(float deltaTimeMs) {
+        if (!m_Frames.empty()) {
+            m_Frames.back().deltaTime = deltaTimeMs;
+        }
+    }
+
+    /**
      * @brief A callback for the TASEngine to notify the recorder of a game event.
      * @param currentTick The current game tick/frame index.
      * @param eventName The name of the event that occurred.
@@ -305,12 +322,6 @@ public:
 
 private:
     static constexpr float kDefaultUpdateRate = 132.0f;
-
-    /**
-     * @brief Generates a TAS script from the current recorded frames.
-     * @return True if generation was successful.
-     */
-    bool GenerateScript();
 
     /**
      * @brief Generates an automatic project name with timestamp.

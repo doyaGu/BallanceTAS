@@ -16,7 +16,9 @@
 #include "LuaScheduler.h"
 #include "TASEngine.h"
 #include "TASProject.h"
+#include "TranslationService.h"
 
+#include <filesystem>
 #include <string>
 
 using namespace LuaApiCommon;
@@ -210,11 +212,52 @@ static int PlayContinuation(lua_State *L, int, lua_KContext) {
     return PushOk(L);
 }
 
-// tas.project.play(name) -> true | false, reason
+struct PlayOptions {
+    bool validate = false;
+    const char *reference = nullptr; // owned by the options table
+    bool exact = false;
+};
+
+static bool OptBoolField(lua_State *L, int table, const char *field, const char *where) {
+    lua_getfield(L, table, field);
+    if (!lua_isnil(L, -1) && !lua_isboolean(L, -1)) {
+        Raise(L, where, "options.%s must be a boolean", field);
+    }
+    const bool value = lua_toboolean(L, -1) != 0;
+    lua_pop(L, 1);
+    return value;
+}
+
+// play's options: { validate = bool, reference = dump path, exact = bool }. A reference or
+// exact implies validate.
+static PlayOptions CheckPlayOptions(lua_State *L, int arg, const char *where) {
+    PlayOptions options;
+    if (lua_isnoneornil(L, arg)) {
+        return options;
+    }
+    luaL_checktype(L, arg, LUA_TTABLE);
+    options.validate = OptBoolField(L, arg, "validate", where);
+    options.exact = OptBoolField(L, arg, "exact", where);
+    lua_getfield(L, arg, "reference");
+    if (!lua_isnil(L, -1)) {
+        if (lua_type(L, -1) != LUA_TSTRING || lua_rawlen(L, -1) == 0) {
+            Raise(L, where, "options.reference must be a non-empty path");
+        }
+        options.reference = lua_tostring(L, -1);
+    }
+    lua_pop(L, 1);
+    options.validate = options.validate || options.exact || options.reference;
+    return options;
+}
+
+// tas.project.play(name[, options]) -> true | false, reason
 // Arms a project the way the TAS menu's Play button does: playback starts when its level
-// starts. Waits until the engine is armed, so a following tas.level.load is safe.
+// starts. Waits until the engine is armed, so a following tas.level.load is safe. With
+// options.validate the playback writes a validation dump from its first frame, compared
+// against options.reference when given, bit for bit when options.exact.
 static int Play(lua_State *L) {
     const char *name = CheckNonEmptyString(L, 1, "tas.project.play");
+    const PlayOptions options = CheckPlayOptions(L, 2, "tas.project.play");
     LuaScheduler *scheduler = RequireYieldableScheduler(L, "tas.project.play");
     ProjectManager *manager = RequireManager(L, "tas.project.play");
     ScriptContext *context = GetContext(L);
@@ -227,13 +270,94 @@ static int Play(lua_State *L) {
         return Raise(L, "tas.project.play", "a script cannot replay its own project");
     }
     manager->SetCurrentProject(project);
-    if (!engine->StartReplay()) {
+    bool started = false;
+    {
+        // Gone before the yield below, which does not unwind C++ objects.
+        TASEngine::ReplayValidation validation;
+        validation.enabled = options.validate;
+        validation.reference = options.reference ? options.reference : "";
+        validation.exact = options.exact;
+        started = engine->StartReplay(validation);
+    }
+    if (!started) {
         return PushFail(L, engine->IsIdle() ? "the project cannot be played" : "a TAS is already running or armed");
     }
     lua_pushlightuserdata(L, engine);
     lua_pushcclosure(L, PlaybackArmedPredicate, 1);
     scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
     return lua_yieldk(L, 0, 0, PlayContinuation);
+}
+
+static int TranslationArmedPredicate(lua_State *L) {
+    auto *engine = static_cast<TASEngine *>(lua_touserdata(L, lua_upvalueindex(1)));
+    lua_pushboolean(L, !engine || engine->IsPendingTranslate() || engine->IsTranslating());
+    return 1;
+}
+
+// tas.project.translate(name) -> true | false, reason
+// Arms a translation like the TAS menu's Translate button: a record becomes a script, a
+// level script becomes a record, while its level plays. Waits until armed; the outcome is
+// tas.project.get_translation_result() once the level has played through.
+static int Translate(lua_State *L) {
+    const char *name = CheckNonEmptyString(L, 1, "tas.project.translate");
+    LuaScheduler *scheduler = RequireYieldableScheduler(L, "tas.project.translate");
+    ProjectManager *manager = RequireManager(L, "tas.project.translate");
+    ScriptContext *context = GetContext(L);
+    TASEngine *engine = context->GetEngine();
+    TASProject *project = FindProject(*manager, name);
+    if (!project) {
+        return PushFail(L, "no project with that name");
+    }
+    if (IsCallersProject(context, project)) {
+        return Raise(L, "tas.project.translate", "a script cannot translate its own project");
+    }
+    if (project->IsRecordProject() ? !project->CanBeTranslated() : !project->CanTranslateToRecord()) {
+        return PushFail(L, project->IsRecordProject() ? project->GetTranslationCompatibilityMessage()
+                                                      : project->GetScriptToRecordCompatibilityMessage());
+    }
+    manager->SetCurrentProject(project);
+    if (!engine->StartTranslation()) {
+        return PushFail(L, engine->IsIdle() ? "the project cannot be translated" : "a TAS is already running or armed");
+    }
+    lua_pushlightuserdata(L, engine);
+    lua_pushcclosure(L, TranslationArmedPredicate, 1);
+    scheduler->YieldUntil(tas::lua::LuaFunction::FromStack(L, -1));
+    return lua_yieldk(L, 0, 0, PlayContinuation);
+}
+
+// tas.project.get_translation_result()
+//   -> { ok, project = name | nil, path = string | nil, message } | nil (none finished yet)
+// The output project is listed by the time this returns it.
+static int GetTranslationResult(lua_State *L) {
+    ScriptContext *context = GetContext(L);
+    TASEngine *engine = context ? context->GetEngine() : nullptr;
+    auto *translation = engine ? engine->GetServiceProvider().Resolve<TranslationService>() : nullptr;
+    if (!translation || translation->GetResultSerial() == 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    if (ProjectManager *manager = context->GetProjectManager()) {
+        manager->RefreshIfChanged();
+    }
+
+    lua_createtable(L, 0, 4);
+    lua_pushboolean(L, translation->WasLastSuccessful());
+    lua_setfield(L, -2, "ok");
+    const std::string &path = translation->GetLastOutputPath();
+    if (!path.empty()) {
+        const std::filesystem::path output(path);
+        // A record is named after its file, a script project after its directory.
+        const std::string projectName = output.extension() == ".tas" ? output.stem().string()
+                                                                     : output.filename().string();
+        lua_pushlstring(L, projectName.data(), projectName.size());
+        lua_setfield(L, -2, "project");
+        lua_pushlstring(L, path.data(), path.size());
+        lua_setfield(L, -2, "path");
+    }
+    const std::string &message = translation->GetLastResultMessage();
+    lua_pushlstring(L, message.data(), message.size());
+    lua_setfield(L, -2, "message");
+    return 1;
 }
 
 // tas.project.stop_playback(): stops or disarms the playback started by play()
@@ -245,14 +369,17 @@ static int StopPlayback(lua_State *L) {
     return 0;
 }
 
-// tas.project.get_playback_state() -> "idle" | "armed" | "playing"
-// "armed": a project waits for its level to load; "playing" includes a paused playback.
+// tas.project.get_playback_state() -> "idle" | "armed" | "playing" | "translating"
+// "armed": a playback or translation waits for its level to load; "playing" includes a
+// paused playback.
 static int GetPlaybackState(lua_State *L) {
     ScriptContext *context = GetContext(L);
     TASEngine *engine = context ? context->GetEngine() : nullptr;
     const char *state = "idle";
-    if (engine && engine->IsPendingPlay()) {
+    if (engine && (engine->IsPendingPlay() || engine->IsPendingTranslate())) {
         state = "armed";
+    } else if (engine && engine->IsTranslating()) {
+        state = "translating";
     } else if (engine && (engine->IsPlaying() ||
                           (engine->IsPaused() && engine->GetPlaybackType() != PlaybackType::None))) {
         state = "playing";
@@ -275,6 +402,8 @@ void LuaApi::RegisterProjectApi(lua_State *state, ScriptContext *context) {
     SetClosure(state, "play", Play, context);
     SetClosure(state, "stop_playback", StopPlayback, context);
     SetClosure(state, "get_playback_state", GetPlaybackState, context);
+    SetClosure(state, "translate", Translate, context);
+    SetClosure(state, "get_translation_result", GetTranslationResult, context);
     lua_setfield(state, -2, "project");
     lua_pop(state, 1);
 }

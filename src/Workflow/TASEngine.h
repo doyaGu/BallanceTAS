@@ -113,7 +113,6 @@ public:
     void OnLevelStartedForReload();
     /// Loads the level again once the main menu is up; call every frame.
     void TickLevelReload();
-    bool IsReloadingLevel() const { return m_LevelReload != LevelReload::None; }
 
     // Settings
     bool IsValidationEnabled() const;

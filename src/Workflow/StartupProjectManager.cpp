@@ -85,16 +85,20 @@ TASProject *StartupProjectManager::FindReplayProject() const {
     if (!projectManager) {
         return nullptr;
     }
-    for (const auto &project : projectManager->GetProjects()) {
-        // Records are also accepted by file name ("SR_01.tas").
-        if (project && (project->GetName() == m_StartupProjectName ||
-                        project->GetName() + ".tas" == m_StartupProjectName)) {
-            const bool replayable = project->IsRecordProject() ||
-                                    (project->IsScriptProject() && !project->IsGlobalProject());
-            return replayable && project->IsValid() ? project.get() : nullptr;
-        }
+    TASProject *project = projectManager->FindProject(m_StartupProjectName);
+    // Records are also accepted by file name ("SR_01.tas").
+    const std::string extension = ".tas";
+    const std::string &name = m_StartupProjectName;
+    if (!project && name.size() > extension.size() &&
+        name.compare(name.size() - extension.size(), extension.size(), extension) == 0) {
+        project = projectManager->FindProject(name.substr(0, name.size() - extension.size()));
     }
-    return nullptr;
+    if (!project) {
+        return nullptr;
+    }
+    const bool replayable = project->IsRecordProject() ||
+                            (project->IsScriptProject() && !project->IsGlobalProject());
+    return replayable && project->IsValid() ? project : nullptr;
 }
 
 // Startup.Level wins; otherwise the project's own level, if it has one.
@@ -131,14 +135,7 @@ void StartupProjectManager::Tick() {
 void StartupProjectManager::TickArm() {
     if (m_PendingStep == PendingStep::Arm) {
         auto *projectManager = m_Engine->GetServiceProvider().Resolve<ProjectManager>();
-        TASProject *project = nullptr;
-        if (projectManager) {
-            for (const auto &candidate : projectManager->GetProjects()) {
-                if (candidate && candidate->GetName() == m_ReplayProjectName) {
-                    project = candidate.get();
-                }
-            }
-        }
+        TASProject *project = projectManager ? projectManager->FindProject(m_ReplayProjectName) : nullptr;
         if (!project) {
             Log::Error("Startup project '%s' disappeared before it could be armed.", m_ReplayProjectName.c_str());
             m_PendingStep = PendingStep::None;

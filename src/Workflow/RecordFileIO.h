@@ -44,7 +44,7 @@ struct RecordComparison {
     size_t comparedFrames = 0;   ///< min(framesA, framesB)
     size_t differingFrames = 0;
     bool hasDifference = false;
-    size_t firstDifference = 0;  ///< First differing frame; framesA/framesB-wide when only lengths differ.
+    size_t firstDifference = 0;  ///< First differing frame; comparedFrames when only the lengths differ.
     RecordFrameData frameA;      ///< The frames at firstDifference (zero past a record's end).
     RecordFrameData frameB;
 };

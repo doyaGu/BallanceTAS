@@ -184,16 +184,23 @@ void ProjectManager::RefreshProjects() {
                                 static_cast<int>(m_Projects.size()), directoryProjects, zipProjects, recordProjects);
 }
 
+TASProject *ProjectManager::FindProject(const std::string &name) const {
+    for (const auto &project : m_Projects) {
+        if (project && project->GetName() == name) {
+            return project.get();
+        }
+    }
+    return nullptr;
+}
+
 TASProject *ProjectManager::ResolveLaunchTarget(const std::string &target, std::string &error) {
     if (target.empty()) {
         error = "TAS launch target is empty";
         return nullptr;
     }
 
-    for (const auto &project : m_Projects) {
-        if (project && project->GetName() == target) {
-            return project.get();
-        }
+    if (TASProject *project = FindProject(target)) {
+        return project;
     }
 
     std::error_code ec;

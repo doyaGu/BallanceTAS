@@ -282,7 +282,6 @@ bool TASEngine::StartReplay(const ReplayValidation &validation) {
     m_LastCompletedPlaybackProjectName.clear();
     m_Requests.requestedProject = project;
     m_Requests.requestedPlaybackType = type;
-    m_Requests.validate = validation.enabled;
     m_Requests.validationReference = validation.reference;
     m_Requests.validationExact = validation.exact;
 

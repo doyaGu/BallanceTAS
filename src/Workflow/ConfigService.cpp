@@ -174,14 +174,14 @@ void ConfigService::SetStartupProjectChoices(const std::vector<std::string> &pro
 
 OSDConfig ConfigService::GetOSDConfig() const {
     OSDConfig cfg;
-    if (m_ShowOSDStatus)   cfg.showStatus   = m_ShowOSDStatus->GetBoolean();
+    if (m_ShowOSDStatus)     cfg.showStatus     = m_ShowOSDStatus->GetBoolean();
     if (m_ShowOSDBall)       cfg.showBall       = m_ShowOSDBall->GetBoolean();
     if (m_ShowOSDInput)      cfg.showInput      = m_ShowOSDInput->GetBoolean();
     if (m_ShowOSDValidation) cfg.showValidation = m_ShowOSDValidation->GetBoolean();
     if (m_ShowOSDWatches)    cfg.showWatches    = m_ShowOSDWatches->GetBoolean();
-    if (m_OSDPositionX)    cfg.positionX    = m_OSDPositionX->GetFloat();
-    if (m_OSDPositionY)    cfg.positionY    = m_OSDPositionY->GetFloat();
-    if (m_OSDOpacity)      cfg.opacity      = m_OSDOpacity->GetFloat();
-    if (m_OSDScale)        cfg.scale        = m_OSDScale->GetFloat();
+    if (m_OSDPositionX)      cfg.positionX      = m_OSDPositionX->GetFloat();
+    if (m_OSDPositionY)      cfg.positionY      = m_OSDPositionY->GetFloat();
+    if (m_OSDOpacity)        cfg.opacity        = m_OSDOpacity->GetFloat();
+    if (m_OSDScale)          cfg.scale          = m_OSDScale->GetFloat();
     return cfg;
 }

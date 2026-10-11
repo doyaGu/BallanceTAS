@@ -53,9 +53,10 @@ public:
     void SetScale(float scale) { m_Scale = scale; }
 
 private:
-    // Key bits as records store them (RecordKeyState).
+    // Input timeline columns around this frame.
     static constexpr int kTimelinePast = 5;
     static constexpr int kTimelineFuture = 10;
+    static constexpr size_t kKeyHistoryFrames = kTimelinePast + 1;
 
     void DrawStatusPanel();
     void DrawBallPanel();
@@ -98,6 +99,7 @@ private:
     } m_Ball;
     std::optional<VxVector> m_PreviousVelocity;
 
-    // Keys the game saw in recent frames, oldest first; the last entry is this frame.
+    // Keys the game saw in recent frames (RecordKeyState bits), oldest first; the last
+    // entry is this frame.
     std::deque<int> m_KeyHistory;
 };

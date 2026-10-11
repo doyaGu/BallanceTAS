@@ -46,24 +46,8 @@ local function run_level(what, arm)
   arm()
   expect_ok("tas.level.load(1) for " .. what, tas.level.load(1))
   wait_for(what .. " to start", function() return started.fired end, 60)
-  wait_for(what .. " to end", function()
-    local state = tas.project.get_playback_state()
-    return state ~= "playing" and state ~= "translating"
-  end, 180)
-  -- TAS.AutoRestart arms a finished playback again a frame later.
-  tas.wait_ticks(2)
-  tas.project.stop_playback()
-
-  local exited = listen("post_exit_level")
-  if tas.menu.get_current() == "dead" then
-    -- The run lost every life.
-    wait_screen("dead")
-    expect_ok("main on the dead screen after " .. what, tas.menu.click_button("main"))
-  else
-    expect_ok("exit Level 1 after " .. what, tas.level.exit_to_menu())
-  end
-  wait_for("the exit after " .. what, function() return exited.fired end, 60)
-  wait_screen("main", 60)
+  util.wait_playback_end(what)
+  util.leave_level(what)
   return finished.fired
 end
 
@@ -170,43 +154,38 @@ end
 return function()
   wait_screen("main", 60)
   cleanup()
-  local ok, err = pcall(function()
-    -- Level Smoke runs before this module and leaves a level early, which is what used to
-    -- make the next replay differ (see docs/IVP-Determinism-Analysis.md).
-    make_record("LoopSmoke_Constant")
-    local constant, constantDump, finished, roundTrip = loop("LoopSmoke_Constant")
-    check(finished, "the SR_01 record and its script should both finish Level 1")
-    check(roundTrip > 19000, "the round trip should cover the whole run, not " .. roundTrip .. " frames")
-    check(not script_text(constant):find("set_frame_time", 1, true),
-      "a constant-time record needs no tas.set_frame_time")
+  -- Level Smoke runs before this module and leaves a level early, which is what used to
+  -- make the next replay differ (see docs/IVP-Determinism-Analysis.md).
+  make_record("LoopSmoke_Constant")
+  local constant, constantDump, finished, roundTrip = loop("LoopSmoke_Constant")
+  check(finished, "the SR_01 record and its script should both finish Level 1")
+  check(roundTrip > 19000, "the round trip should cover the whole run, not " .. roundTrip .. " frames")
+  check(not script_text(constant):find("set_frame_time", 1, true),
+    "a constant-time record needs no tas.set_frame_time")
 
-    -- Frame times change during the load and before the run starts. The run may no longer
-    -- finish; record and script must still play alike.
-    make_record("LoopSmoke_Variable", function(r)
-      for frame = 20, 40 do
-        expect_ok("set_frame_delta_time", r.set_frame_delta_time(frame, 5.0))
-      end
-      for frame = 200, 220 do
-        expect_ok("set_frame_delta_time", r.set_frame_delta_time(frame, 3.5))
-      end
-    end)
-    local variable = loop("LoopSmoke_Variable")
-    check(script_text(variable):find("tas.set_frame_time(5)", 1, true),
-      "the variable-time script should ask for its frame times")
-
-    -- The changed frame times reach the game: the run no longer plays like the original.
-    run_level("playing " .. variable .. " against the constant run", function()
-      expect_ok("tas.project.play(" .. variable .. ")",
-        tas.project.play(variable, { reference = constantDump, exact = true }))
-    end)
-    local changed = tas.validation.get_report()
-    generated[#generated + 1] = { dump = changed.dump_path }
-    check(changed.has_reference and not changed.identical,
-      "the variable frame times should change the run, but it played like the constant one")
+  -- Frame times change during the load and before the run starts. The run may no longer
+  -- finish; record and script must still play alike.
+  make_record("LoopSmoke_Variable", function(r)
+    for frame = 20, 40 do
+      expect_ok("set_frame_delta_time", r.set_frame_delta_time(frame, 5.0))
+    end
+    for frame = 200, 220 do
+      expect_ok("set_frame_delta_time", r.set_frame_delta_time(frame, 3.5))
+    end
   end)
-  -- A failed run keeps its records, scripts and dumps for inspection.
-  if not ok then
-    error(err, 0)
-  end
+  local variable = loop("LoopSmoke_Variable")
+  check(script_text(variable):find("tas.set_frame_time(5)", 1, true),
+    "the variable-time script should ask for its frame times")
+
+  -- The changed frame times reach the game: the run no longer plays like the original.
+  run_level("playing " .. variable .. " against the constant run", function()
+    expect_ok("tas.project.play(" .. variable .. ")",
+      tas.project.play(variable, { reference = constantDump, exact = true }))
+  end)
+  local changed = tas.validation.get_report()
+  generated[#generated + 1] = { dump = changed.dump_path }
+  check(changed.has_reference and not changed.identical,
+    "the variable frame times should change the run, but it played like the constant one")
+  -- A failed run stops before this and keeps its records, scripts and dumps for inspection.
   cleanup()
 end

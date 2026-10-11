@@ -29,12 +29,6 @@ struct KeyRow {
 constexpr KeyRow kKeyRows[] = {
     {"Up", 0}, {"Dn", 1}, {"Lt", 2}, {"Rt", 3}, {"Sh", 4}, {"Sp", 5}, {"Q", 6},
 };
-
-constexpr size_t kKeyHistoryFrames = 6; // kTimelinePast + this frame
-
-void SectionTitle(const char *title) {
-    ImGui::TextColored(kDim, "%s", title);
-}
 } // namespace
 
 InGameOSD::InGameOSD(const std::string &name, TASEngine *engine)

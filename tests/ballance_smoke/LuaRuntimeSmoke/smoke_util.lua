@@ -59,4 +59,28 @@ function util.click(button, screen)
   end
 end
 
+-- Waits until no playback or translation runs; an armed TAS counts as ended.
+function util.wait_playback_end(what, seconds)
+  util.wait_for(what .. " to end", function()
+    local state = tas.project.get_playback_state()
+    return state ~= "playing" and state ~= "translating"
+  end, seconds or 180)
+end
+
+-- Stops the TAS (TAS.AutoRestart arms a finished playback again a frame later) and leaves
+-- the level for the main menu, through the dead screen when the run lost every life.
+function util.leave_level(what)
+  tas.wait_ticks(2)
+  tas.project.stop_playback()
+  local exited = util.listen("post_exit_level")
+  if tas.menu.get_current() == "dead" then
+    util.wait_screen("dead")
+    util.expect_ok("main on the dead screen after " .. what, tas.menu.click_button("main"))
+  else
+    util.expect_ok("exit the level after " .. what, tas.level.exit_to_menu())
+  end
+  util.wait_for("the exit after " .. what, function() return exited.fired end, 60)
+  util.wait_screen("main", 60)
+end
+
 return util

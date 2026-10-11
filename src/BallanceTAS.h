@@ -183,7 +183,6 @@ private:
     void Shutdown();
 
     void OnMenuStart();
-    void StopLeftoverBallNavigation();
 
     // Picks up projects added, removed or edited while the game runs.
     void PollProjects();

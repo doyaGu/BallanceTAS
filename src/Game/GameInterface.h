@@ -88,6 +88,19 @@ public:
      */
     void NormalizeBehaviorOrder();
 
+    /**
+     * @brief Ball and camera control a level left early would carry into the next level.
+     *
+     * The game turns them off when the ball falls or the level ends, but not when a level is
+     * left early. Left on, Gameplay_Ingame's ball keys run before the next level hands the
+     * ball over, and Sound_Manager's hit-sound collision listeners (which flip impact normals)
+     * stay set. TurnOffNavigation() sends the game's own deactivate messages at the exit, which
+     * reach the sound manager in time; StopLeftoverBallNavigation() turns the ball keys off at
+     * the next load. A clean level load finds both off already.
+     */
+    void TurnOffNavigation(bool ballNav, bool camNav);
+    void StopLeftoverBallNavigation();
+
     void RestorePhysicsLevelBaseline(const PhysicsDeterminism::PhysicsLevelBaseline &baseline);
     void SetPhysicsTimeFactor(float factor = 1.0f) override;
 

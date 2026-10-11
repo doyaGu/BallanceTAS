@@ -48,12 +48,8 @@ static void PushProjectInfo(lua_State *L, const TASProject &project) {
 }
 
 static TASProject *FindProject(ProjectManager &manager, const char *name) {
-    for (const auto &project : manager.GetProjects()) {
-        if (project && project->IsValid() && project->GetName() == name) {
-            return project.get();
-        }
-    }
-    return nullptr;
+    TASProject *project = manager.FindProject(name);
+    return project && project->IsValid() ? project : nullptr;
 }
 
 // Stopping the context that is running this call would tear down the coroutine we are in.
@@ -376,12 +372,15 @@ static int GetPlaybackState(lua_State *L) {
     ScriptContext *context = GetContext(L);
     TASEngine *engine = context ? context->GetEngine() : nullptr;
     const char *state = "idle";
-    if (engine && (engine->IsPendingPlay() || engine->IsPendingTranslate())) {
+    if (!engine) {
+        lua_pushstring(L, state);
+        return 1;
+    }
+    if (engine->IsPendingPlay() || engine->IsPendingTranslate()) {
         state = "armed";
-    } else if (engine && engine->IsTranslating()) {
+    } else if (engine->IsTranslating()) {
         state = "translating";
-    } else if (engine && (engine->IsPlaying() ||
-                          (engine->IsPaused() && engine->GetPlaybackType() != PlaybackType::None))) {
+    } else if (engine->IsPlaying() || (engine->IsPaused() && engine->GetPlaybackType() != PlaybackType::None)) {
         state = "playing";
     }
     lua_pushstring(L, state);

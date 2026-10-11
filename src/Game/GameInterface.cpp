@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <stdexcept>
 
 #include "LevelNames.h"
@@ -165,6 +166,63 @@ void GameInterface::NormalizeBehaviorOrder() {
     });
     for (size_t i = 0; i < ordered.size(); ++i) {
         objects[static_cast<int>(i)] = ordered[i];
+    }
+}
+
+static void DeactivateGraph(CKBehavior *behavior) {
+    for (int i = 0; i < behavior->GetSubBehaviorCount(); ++i) {
+        DeactivateGraph(behavior->GetSubBehavior(i));
+    }
+    if (behavior->IsActive()) {
+        behavior->Activate(FALSE);
+    }
+}
+
+// Gameplay_Ingame is already stopped when the BallNav deactivate message TurnOffNavigation sends
+// arrives, so do what the message would: forget "on" and switch the keys off (their forces
+// went away with the old ball).
+void GameInterface::StopLeftoverBallNavigation() {
+    CKBehavior *ingame = m_BML->GetScriptByName("Gameplay_Ingame");
+    if (!ingame) {
+        return;
+    }
+    bool stopped = false;
+    if (CKBehavior *onOff = ScriptHelper::FindFirstBB(ingame, "BallNav On/Off")) {
+        for (int i = 0; i < onOff->GetSubBehaviorCount(); ++i) {
+            CKBehavior *memory = onOff->GetSubBehavior(i);
+            if (std::strcmp(memory->GetName(), "Binary Memory") != 0 || memory->GetOutputParameterCount() < 1) {
+                continue;
+            }
+            CKBOOL on = FALSE;
+            memory->GetOutputParameterValue(0, &on);
+            if (on) {
+                const CKBOOL off = FALSE;
+                memory->SetOutputParameterValue(0, &off);
+                stopped = true;
+            }
+        }
+    }
+    if (CKBehavior *navigation = ScriptHelper::FindFirstBB(ingame, "Ball Navigation")) {
+        if (navigation->IsActive()) {
+            DeactivateGraph(navigation);
+            stopped = true;
+        }
+    }
+    if (stopped) {
+        Log::Info("Turned off the ball navigation an early level exit left on.");
+    }
+}
+
+void GameInterface::TurnOffNavigation(bool ballNav, bool camNav) {
+    CKMessageManager *messages = m_CKContext ? m_CKContext->GetMessageManager() : nullptr;
+    if (!messages) {
+        return;
+    }
+    if (ballNav) {
+        messages->SendMessageBroadcast(messages->AddMessageType((CKSTRING) "BallNav deactivate"), CKCID_BEOBJECT);
+    }
+    if (camNav) {
+        messages->SendMessageBroadcast(messages->AddMessageType((CKSTRING) "CamNav deactivate"), CKCID_BEOBJECT);
     }
 }
 

@@ -69,6 +69,8 @@ public:
     const std::vector<std::unique_ptr<TASProject>> &GetProjects() const { return m_Projects; }
     TASProject *GetCurrentProject() const { return m_CurrentProject; }
     void SetCurrentProject(TASProject *project);
+    /** The scanned project with this name, or nullptr. */
+    TASProject *FindProject(const std::string &name) const;
 
     /** Resolve a scanned project name or load an explicit directory/zip/.tas path. */
     TASProject *ResolveLaunchTarget(const std::string &target, std::string &error);

@@ -185,7 +185,6 @@ public:
      */
     void ToggleOSDPanel(OSDPanel panel);
 
-
     // --- State Management ---
 
     /**
@@ -229,20 +228,6 @@ public:
      */
     void SetOSDHotkey(CKKEYBOARD key) { m_OSDHotkey = Bui::CKKeyToImGuiKey(key); }
 
-    /**
-     * @brief Sets the hotkey for toggling the status panel.
-     * @param key The key code (default: CKKEY_F5).
-     */
-    void SetStatusPanelHotkey(CKKEYBOARD key) { m_StatusPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-
-    /**
-     * @brief Sets the hotkeys toggling the ball, input, validation and watch panels.
-     */
-    void SetBallPanelHotkey(CKKEYBOARD key) { m_BallPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-    void SetInputPanelHotkey(CKKEYBOARD key) { m_InputPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-    void SetValidationPanelHotkey(CKKEYBOARD key) { m_ValidationPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-    void SetWatchesPanelHotkey(CKKEYBOARD key) { m_WatchesPanelHotkey = Bui::CKKeyToImGuiKey(key); }
-
 private:
     // --- Internal Methods ---
     void UpdateHotkeys();
@@ -262,9 +247,10 @@ private:
     // --- Configuration ---
     ImGuiKey m_StopHotkey = ImGuiKey_F3;
     ImGuiKey m_OSDHotkey = ImGuiKey_F11;
+    // OSD panel toggles
     ImGuiKey m_StatusPanelHotkey = ImGuiKey_F5;
     ImGuiKey m_BallPanelHotkey = ImGuiKey_F6;
+    ImGuiKey m_InputPanelHotkey = ImGuiKey_F4;
     ImGuiKey m_ValidationPanelHotkey = ImGuiKey_F7;
     ImGuiKey m_WatchesPanelHotkey = ImGuiKey_F8;
-    ImGuiKey m_InputPanelHotkey = ImGuiKey_F4;
 };

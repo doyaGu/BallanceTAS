@@ -598,6 +598,7 @@ void Recorder::CapturePhysicsData(FrameData &frameData) const {
         physics.position = gameInterface->GetPosition(ball);
         physics.velocity = gameInterface->GetVelocity(ball);
         physics.angularVelocity = gameInterface->GetAngularVelocity(ball);
+
         // Derived values
         physics.speed = physics.velocity.Magnitude();
         physics.angularSpeed = physics.angularVelocity.Magnitude();

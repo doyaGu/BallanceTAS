@@ -15,7 +15,6 @@ struct OperationRequestStore {
     // loads again. 0 plays in whatever level loads next.
     int restartLevel = 0;
     // Validation asked for by this playback (tas.project.play), on top of TAS.Validation.
-    bool validate = false;
     std::string validationReference; // a previous dump to compare against; empty for none
     bool validationExact = false;
 
@@ -25,7 +24,6 @@ struct OperationRequestStore {
         requestedValidationRecording = false;
         clearProjectOnStop = false;
         restartLevel = 0;
-        validate = false;
         validationReference.clear();
         validationExact = false;
     }
